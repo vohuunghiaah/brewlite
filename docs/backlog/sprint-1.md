@@ -9,5 +9,5 @@ Mục tiêu: có repository và quy trình cộng tác kiểm chứng được, 
 | 3 | [BL-02 / #3](https://github.com/vohuunghiaah/brewlite/issues/3) | P1 | BL-01 | Quyết định stack, vị trí mã nguồn và chiến lược kiểm thử được review |
 
 Tiêu chí kết thúc: các mục được nhóm nhận vào sprint đạt [DoD](../definition-of-done.md); các đề xuất chưa xác nhận không tự tính là đã hoàn thành.
-Trở ngại BL-00: Project thiếu quyền API; PR chờ review. Chưa có chức năng ứng dụng để nghiệm thu.
+BL-00 đang In Review: [Project Board](https://github.com/users/vohuunghiaah/projects/2) đã cấu hình và liên kết đủ Issues; PR #6 chờ review. Chưa có chức năng ứng dụng để nghiệm thu.
 Xem [Product Backlog](product-backlog.md) cho mô tả, ước lượng và trạng thái.

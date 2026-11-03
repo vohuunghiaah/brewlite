@@ -10,18 +10,21 @@ Repository: https://github.com/vohuunghiaah/brewlite
 - Approval bắt buộc: 0 vì chưa xác định người review khác; review vẫn là điều kiện DoD. Nhóm nên đặt 1 khi có reviewer phù hợp.
 - Chưa yêu cầu status check vì chưa có ứng dụng/CI để tạo check thực tế.
 
-## Project — BLOCKED
+## Project — PASS
 
-Connector GitHub không cung cấp công cụ Projects. GitHub CLI không có trong PATH. API GraphQL trả INSUFFICIENT_SCOPES: credential hiện có repo/gist/workflow nhưng thiếu read:project (đọc) và project (ghi). Chưa tạo Project, chưa cấu hình trạng thái hoặc liên kết Issues vào bảng. Không thay đổi quyền tài khoản tự động.
+[BrewLite — Product Backlog](https://github.com/users/vohuunghiaah/projects/2), Project #2, đã liên kết repository vohuunghiaah/brewlite.
+
+- Dùng GitHub CLI tại C:/Program Files/GitHub CLI/gh.exe; tài khoản vohuunghiaah có scope project. PATH của phiên Codex chưa chứa CLI nên gọi đường dẫn tuyệt đối.
+- Trước khi tạo đã đọc toàn bộ Projects (hasNextPage=false): chỉ có một Project trống chưa đặt tên, không liên kết BrewLite. Giữ nguyên bảng đó và tạo đúng một bảng BrewLite; không tạo Issues mới.
+- GraphQL đọc lại view Product Backlog có layout BOARD_LAYOUT.
+- Status có đúng năm giá trị: Backlog, Todo, In Progress, In Review, Done.
+- Có đúng 5 items, mỗi Issue #1–#5 xuất hiện một lần. #1 ở In Review, #2–#5 ở Backlog; Sprint 1 là #1–#3, Sprint 2 là #4–#5 theo labels.
+- Lỗi quyền Projects trước đây đã được giải quyết bằng credential GitHub CLI có scope project. Không ghi token vào repository.
 
 ## Thao tác chủ repository cần làm
 
-1. Mở GitHub Projects của tài khoản vohuunghiaah; kiểm tra bảng có sẵn để tránh trùng.
-2. Tạo hoặc dùng Project tên BrewLite, chọn Board và liên kết repository brewlite.
-3. Đặt trường Status gồm Backlog, Todo, In Progress, In Review, Done; nhóm Board theo Status.
-4. Add item → chọn Issues #1–#5 của repository.
-5. Đặt #1 In Progress khi Project/review còn thiếu; #2–#5 Backlog cho tới khi nhóm xác nhận. Chuyển #1 In Review khi sẵn sàng nghiệm thu.
-6. Lưu URL Project vào tài liệu này; xác minh đủ năm Issues và năm trạng thái.
-7. Review PR thiết lập; chỉ merge khi đạt DoD. Sau đó cập nhật BL-00/Issue #1 và chuyển Done khi mọi điều kiện hoàn tất.
+1. Review [PR #6](https://github.com/vohuunghiaah/brewlite/pull/6); chỉ merge sau khi đạt DoD.
+2. Sau nghiệm thu, cập nhật BL-00/Issue #1 sang Done và cập nhật liên kết tài liệu trong Issues sang main hoặc permalink commit.
+3. Xác nhận phạm vi nghiệp vụ và đề xuất BL-01–BL-04 trước khi đưa vào Todo.
 
-Nếu muốn cấu hình qua API, cấp quyền Projects phù hợp trong công cụ quản lý credential của GitHub rồi chạy lại các thao tác đọc/tạo sau kiểm tra trùng. Không dán token vào chat hoặc repository.
+Không tự merge PR hoặc đánh dấu review hoàn tất thay cho nhóm.

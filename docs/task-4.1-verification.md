@@ -19,7 +19,7 @@ Ngày kiểm tra: 03/11/2026 (Asia/Saigon).
 - Không tạo AGENTS.md theo chỉ thị bổ sung của chủ repository; ignore mọi AGENTS.md để dùng local.
 - GitHub Issues #1–#5 tạo qua REST sau khi connector trả 403 Resource not accessible by integration.
 - Labels Sprint 1/Sprint 2 và bảo vệ main đã tạo, đọc lại thành công.
-- Project BLOCKED: GraphQL INSUFFICIENT_SCOPES, thiếu quyền Projects. Xem [cấu hình thủ công](github-setup.md).
+- Ban đầu Project bị chặn bởi INSUFFICIENT_SCOPES; đã giải quyết sau khi chủ repository cấp scope project cho GitHub CLI. Xem [cấu hình GitHub](github-setup.md).
 
 ## Kiểm tra
 
@@ -32,6 +32,15 @@ Ngày kiểm tra: 03/11/2026 (Asia/Saigon).
 
 Kiểm thử frontend/backend, build, dependency, import, Docker: N/A vì không có ứng dụng. Không khẳng định đã chạy test ứng dụng. Quét bí mật bằng mẫu chỉ là kiểm tra hỗ trợ; không bảo đảm phát hiện mọi loại bí mật.
 
+## Kiểm tra bổ sung Projects ngày 03/11/2026
+
+- PASS: GitHub CLI đăng nhập vohuunghiaah, có scope project; GraphQL đọc/ghi thành công.
+- PASS: kiểm tra toàn bộ danh sách trước khi tạo, không có Project BrewLite; không tạo Issues mới.
+- PASS: [Project #2 — BrewLite — Product Backlog](https://github.com/users/vohuunghiaah/projects/2) liên kết vohuunghiaah/brewlite; view Product Backlog trả BOARD_LAYOUT.
+- PASS: trường Status trả đúng Backlog, Todo, In Progress, In Review, Done.
+- PASS: items.totalCount=5, Issue #1–#5 xuất hiện duy nhất; #1 In Review, #2–#5 Backlog. Labels Sprint 1/Sprint 2 được giữ nguyên.
+- PASS: [PR #6](https://github.com/vohuunghiaah/brewlite/pull/6) vào main, OPEN, mergedAt=null; chứa đủ 17 tệp thiết lập. reviews=[] tại thời điểm kiểm tra.
+
 ## Chưa hoàn tất
 
-Project và review của nhóm chưa hoàn tất. Không đánh dấu Task 4.1 PASS toàn bộ. Chủ repository thực hiện các bước trong github-setup.md; không tự merge PR.
+Phần thiết lập kỹ thuật đã hoàn thành; review của nhóm còn chờ. Trạng thái nghiệm thu tổng thể: PARTIAL / In Review, không đánh dấu Done trước review. Không tự merge PR.

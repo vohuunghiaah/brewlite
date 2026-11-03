@@ -4,7 +4,7 @@ Nguồn: yêu cầu Task 4.1 và kiểm tra repository trống ngày 03/11/2026.
 
 | Mã | Công việc | Ưu tiên | Ước lượng | Sprint | Trạng thái | Issue |
 | --- | --- | --- | --- | --- | --- | --- |
-| BL-00 | Hoàn tất Task 4.1 — thiết lập repository | P0 | 3 điểm (tạm tính) | 1 | In Progress; chờ review và Project | [#1](https://github.com/vohuunghiaah/brewlite/issues/1) |
+| BL-00 | Hoàn tất Task 4.1 — thiết lập repository | P0 | 3 điểm (tạm tính) | 1 | In Review; chờ review của nhóm | [#1](https://github.com/vohuunghiaah/brewlite/issues/1) |
 | BL-01 | Xác nhận phạm vi nghiệp vụ BrewLite | P0 | 2 điểm (tạm tính) | 1 | Backlog — đề xuất chưa xác nhận | [#2](https://github.com/vohuunghiaah/brewlite/issues/2) |
 | BL-02 | Ghi quyết định kiến trúc và công nghệ | P1 | 2 điểm (tạm tính) | 1 | Backlog — đề xuất chưa xác nhận | [#3](https://github.com/vohuunghiaah/brewlite/issues/3) |
 | BL-03 | Thiết lập ứng dụng theo kiến trúc được duyệt | P1 | Chưa ước lượng; phụ thuộc BL-02 | 2 | Backlog — đề xuất chưa xác nhận | [#4](https://github.com/vohuunghiaah/brewlite/issues/4) |
@@ -55,4 +55,4 @@ Tạo nền tảng chạy được sau khi chọn stack; không tạo ứng dụ
 - Tiêu chí chấp nhận: Có hợp đồng tích hợp nếu kiến trúc cần; kiểm tra luồng tối thiểu đã xác nhận; CI chạy các lệnh thực sự tồn tại; ghi kết quả và hướng dẫn tái hiện.
 - Phụ thuộc: BL-01, BL-02, BL-03
 
-Xem [Sprint 1](sprint-1.md), [Sprint 2](sprint-2.md). Không chuyển BL-00 sang Done trước khi hoàn tất Project và review. Sau merge PR, cập nhật liên kết backlog trong Issues sang main hoặc permalink commit.
+Xem [Sprint 1](sprint-1.md), [Sprint 2](sprint-2.md) và [Project Board](https://github.com/users/vohuunghiaah/projects/2). Project đã có đủ năm Issues và năm trạng thái. Không chuyển BL-00 sang Done trước khi hoàn tất review. Sau merge PR, cập nhật liên kết backlog trong Issues sang main hoặc permalink commit.
