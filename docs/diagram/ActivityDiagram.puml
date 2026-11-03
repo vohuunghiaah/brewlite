@@ -1,0 +1,71 @@
+@startuml
+
+skinparam backgroundColor #FFFFFF
+skinparam DefaultTextAlignment center
+
+
+skinparam ActivityBackgroundColor #E2E8F0
+skinparam ActivityBorderColor #4A5568
+skinparam ActivityFontColor #1A202C
+
+
+skinparam ActivityDiamondBackgroundColor #CBD5E1
+skinparam ActivityDiamondBorderColor #4A5568
+skinparam ActivityDiamondFontColor #1A202C
+
+skinparam ArrowColor #2D3748
+
+|Khách hàng (Frontend)|
+start
+:Truy cập ứng dụng & Xem danh sách menu;
+:Chọn món, tuỳ chỉnh size/topping & Thêm vào giỏ hàng;
+:Kiểm tra giỏ hàng và nhấn "Đặt đơn & Thanh toán";
+
+|Hệ thống (Backend)|
+if (Khách hàng đã đăng nhập / JWT hợp lệ?) then (Chưa đăng nhập)
+  |Khách hàng (Frontend)|
+  :Chuyển hướng đến màn hình Đăng nhập / Đăng ký;
+  :Nhập thông tin tài khoản;
+  |Hệ thống (Backend)|
+  :Xác thực thông tin và cấp JWT;
+  if (Xác thực thành công?) then (Sai)
+    :Thông báo lỗi đăng nhập;
+    stop
+  else (Đúng)
+  endif
+else (Đã đăng nhập)
+endif
+
+|Hệ thống (Backend)|
+:Kiểm tra trạng thái sản phẩm và tồn kho trong Database;
+
+if (Sản phẩm còn hàng và đang bán?) then (Hết hàng / Ngừng bán)
+  |Khách hàng (Frontend)|
+  :Hiển thị thông báo sản phẩm hết hàng;
+  :Yêu cầu khách hàng chỉnh sửa giỏ hàng;
+  stop
+else (Còn hàng)
+  |Khách hàng (Frontend)|
+  :Chọn phương thức thanh toán Ví / Thẻ;
+  :Xác nhận thanh toán;
+  
+  |Dịch vụ thanh toán (Mock)|
+  :Xử lý giao dịch thanh toán mô phỏng;
+  
+  |Hệ thống (Backend)|
+  if (Kết quả thanh toán?) then (Thanh toán thất bại)
+    |Khách hàng (Frontend)|
+    :Hiển thị thông báo thanh toán thất bại;
+    :Cho phép thử lại hoặc đổi phương thức thanh toán;
+    stop
+  else (Thanh toán thành công)
+    |Hệ thống (Backend)|
+    :Thực hiện Transaction: Tạo đơn hàng & Cập nhật tồn kho;
+    :Ghi nhận trạng thái "Received" (Đã tiếp nhận);
+    
+    |Khách hàng (Frontend)|
+    :Hiển thị màn hình xác nhận thành công & Mã đơn hàng;
+    stop
+  endif
+endif
+@enduml

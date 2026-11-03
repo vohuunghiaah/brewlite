@@ -1,0 +1,126 @@
+@startuml
+title BrewLite - Domain Class Diagram (UC-01: Đặt đồ uống & Thanh toán)
+
+skinparam classAttributeIconSize 0
+skinparam backgroundColor #FFFFFF
+skinparam Shadowing false
+
+' ================= Enumerations =================
+enum OrderStatus {
+  PENDING
+  RECEIVED
+  PREPARING
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentMethod {
+  MOCK_EWALLET
+  MOCK_CARD
+  CASH
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+}
+
+enum LoyaltyType {
+  EARN
+  REDEEM
+}
+
+' ================= Domain Classes =================
+class User {
+  - userId: String
+  - fullName: String
+  - email: String
+  - passwordHash: String
+  - phoneNumber: String
+  - loyaltyPoints: Integer
+  --
+  + register(): Void
+  + login(): String
+}
+
+class Product {
+  - productId: String
+  - name: String
+  - basePrice: Decimal
+  - stockQuantity: Integer
+  - status: ProductStatus
+  --
+  + isAvailable(): Boolean
+}
+
+class Order {
+  - orderId: String
+  - totalAmount: Decimal
+  - idempotencyKey: String
+  - status: OrderStatus
+  - createdAt: DateTime
+  --
+  + calculateTotal(): Decimal
+}
+
+class OrderItem {
+  - orderItemId: String
+  - size: String
+  - toppings: List<String>
+  - quantity: Integer
+  - unitPrice: Decimal
+  - subTotal: Decimal
+  --
+  + calculateSubTotal(): Decimal
+}
+
+class Payment {
+  - paymentId: String
+  - amount: Decimal
+  - method: PaymentMethod
+  - status: PaymentStatus
+  - transactionId: String
+  - idempotencyKey: String
+  - createdAt: DateTime
+  --
+  + processPayment(): Boolean
+}
+
+class Promotion {
+  - promotionId: String
+  - code: String
+  - discountPercent: Decimal
+  - maxDiscountAmount: Decimal
+  - startDate: DateTime
+  - endDate: DateTime
+  - isActive: Boolean
+  --
+  + isValid(): Boolean
+}
+
+class LoyaltyTransaction {
+  - transactionId: String
+  - points: Integer
+  - type: LoyaltyType
+  - createdAt: DateTime
+}
+
+' ================= Relationships & Multiplicities =================
+User "1" -- "0..*" Order : places >
+User "1" -- "0..*" LoyaltyTransaction : accumulates >
+
+Order "1" *-- "1..*" OrderItem : contains >
+Order "1" -- "0..1" Payment : processed by >
+Order "0..*" -- "0..1" Promotion : applies >
+
+Product "1" -- "0..*" OrderItem : ordered as >
+Order "0..1" -- "0..1" LoyaltyTransaction : generates / uses >
+
+@enduml

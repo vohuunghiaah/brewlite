@@ -1,0 +1,81 @@
+@startuml
+title BrewLite - UC-01: Đặt đồ uống (Tạo đơn)
+autonumber
+actor "Khách hàng" as Customer
+boundary "Next.js UI" as UI
+control "NestJS API" as API
+database "PostgreSQL Database" as DB
+participant "Payment Service (Mock)" as Pay
+
+Customer -> UI: Xem menu, chọn đồ uống/size/topping/số lượng
+UI -> API: GET /products
+API -> DB: Truy vấn sản phẩm đang bán
+DB --> API: Danh sách sản phẩm
+API --> UI: 200 OK + danh sách sản phẩm
+UI --> Customer: Hiển thị menu
+
+Customer -> UI: Mở giỏ và xác nhận đặt hàng
+UI -> UI: Tạo Idempotency-Key
+UI -> API: POST /orders + JWT + Idempotency-Key\n(items, size, toppings, quantity)
+activate API
+
+API -> API: Kiểm tra JWT (nếu yêu cầu đăng nhập)
+alt JWT không hợp lệ / hết hạn
+  API --> UI: 401 Unauthorized
+  UI --> Customer: Yêu cầu đăng nhập lại
+else Được phép tiếp tục
+  API -> API: Validate giỏ hàng và dữ liệu đầu vào
+  alt Giỏ trống / size, topping hoặc số lượng không hợp lệ
+    API --> UI: 400 Bad Request + lỗi cụ thể
+    UI --> Customer: Hiển thị lỗi và yêu cầu sửa giỏ
+  else Dữ liệu hợp lệ
+    API -> DB: Tra cứu Idempotency-Key
+    DB --> API: Kết quả tra cứu
+    alt Yêu cầu đã xử lý trước đó
+      API --> UI: Trả kết quả đơn hàng đã tạo
+      UI --> Customer: Hiển thị mã đơn hiện có
+    else Yêu cầu mới
+      API -> DB: BEGIN TRANSACTION
+      API -> DB: Kiểm tra trạng thái bán, tồn kho,\nsize/topping và giá hiện tại
+      DB --> API: Kết quả kiểm tra sản phẩm và giá
+      alt Sản phẩm ngừng bán / hết hàng
+        API -> DB: ROLLBACK
+        API --> UI: 409 Conflict + sản phẩm cần sửa
+        UI --> Customer: Thông báo sản phẩm không khả dụng
+      else Giá thay đổi
+        API -> DB: ROLLBACK
+        API --> UI: 409 Conflict + giá mới
+        UI --> Customer: Hiển thị giá mới và yêu cầu xác nhận lại
+      else Sản phẩm hợp lệ, giá không đổi
+        API -> DB: Tạo Order + OrderItem\n(lưu lựa chọn, số lượng, đơn giá, tổng tiền)
+        API -> DB: Cập nhật/giữ tồn kho và lưu Idempotency-Key
+        API -> DB: COMMIT
+        DB --> API: Mã đơn duy nhất + tổng tiền + trạng thái ban đầu
+        API -> Pay: Yêu cầu thanh toán mô phỏng\n(orderId, amount, idempotencyKey)
+        activate Pay
+        Pay -> Pay: Kiểm tra idempotency thanh toán
+        alt Thanh toán thành công
+          Pay --> API: SUCCESS + transactionId
+          deactivate Pay
+          API -> DB: BEGIN TRANSACTION
+          API -> DB: Lưu kết quả Payment=SUCCESS\nvà trạng thái đơn tương ứng
+          API -> DB: COMMIT
+          DB --> API: Đã lưu kết quả
+          API --> UI: 201 Created + mã đơn + tổng tiền\n+ kết quả thanh toán thành công
+          UI --> Customer: Hiển thị mã đơn và xác nhận thành công
+        else Thanh toán thất bại
+          Pay --> API: FAILED + lý do
+          deactivate Pay
+          API -> DB: BEGIN TRANSACTION
+          API -> DB: Lưu kết quả Payment=FAILED\nvà trạng thái đơn tương ứng
+          API -> DB: COMMIT
+          DB --> API: Đã lưu kết quả
+          API --> UI: Mã đơn + kết quả thanh toán thất bại
+          UI --> Customer: Thông báo thất bại và hướng dẫn thử lại
+        end
+      end
+    end
+  end
+end
+deactivate API
+@enduml

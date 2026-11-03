@@ -1,0 +1,27 @@
+# Local agent instructions (owner request)
+AGENTS.md
+# Secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+# Logs, caches and temporary files
+*.log
+*.tmp
+*.temp
+.cache/
+tmp/
+temp/
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+# No application stack selected: add dependency/build rules with actual tooling.
