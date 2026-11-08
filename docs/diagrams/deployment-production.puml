@@ -1,0 +1,89 @@
+@startuml deployment-production
+skinparam DefaultFontSize 12
+skinparam DefaultFontName "Segoe UI", Arial, sans-serif
+skinparam RoundCorner 8
+skinparam Shadowing false
+
+skinparam node {
+  BackgroundColor #F8F9FA
+  BorderColor #2C3E50
+}
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #2980B9
+}
+skinparam database {
+  BackgroundColor #FEF9E7
+  BorderColor #B7950B
+}
+skinparam cloud {
+  BackgroundColor #EBF5FB
+  BorderColor #3498DB
+}
+
+title **SƠ ĐỒ TRIỂN KHAI PRODUCTION (PRODUCTION DEPLOYMENT DIAGRAM) — BREWLITE**\n//Mô hình hóa hạ tầng: Client, CI/CD, Container Registry, Cloud Host, Next.js, NestJS & PostgreSQL//
+
+node "Client Device\n(Smartphones / Desktops)" as client_device {
+  component [Web Browser / PWA Client\n(Next.js React 18/19 SPA)] as browser
+}
+
+cloud "GitHub Platform" as github_platform {
+  node "GitHub Repository & Actions" as gh_actions {
+    component [CI/CD Pipeline\n(.github/workflows/ci.yml & cd.yml)] as pipeline
+    component [GitHub Container Registry (GHCR)\nghcr.io/vohuunghiaah/brewlite-*] as ghcr
+  }
+}
+
+cloud "Production Cloud Host\n(Render / Railway / Cloud VPS)" as prod_cloud {
+  
+  node "Edge & Ingress Layer" as edge_layer {
+    component [Reverse Proxy / TLS Termination\n(Nginx / Cloud Ingress / HTTPS 443)] as ingress
+  }
+
+  node "Application Containers" as app_layer {
+    component [Next.js Web Container\n(:3000 -> HTTPS /)\nNode.js 20+ Runtime] as web_container
+    component [NestJS API Container\n(:4000 -> HTTPS /api)\nNode.js 20+ Runtime] as api_container
+  }
+
+  node "Database Storage Node" as db_node {
+    database "PostgreSQL 16 Engine\n(Port 5432 - Internal VPC Only)" as postgres {
+      folder "Persistent Volume\n(/var/lib/postgresql/data)" as pg_storage
+    }
+  }
+
+  node "Monitoring & Logs" as obs_node {
+    component [Health Check Endpoint\n(GET /api/health -> 200 OK)] as health_mon
+    component [Application Logging\n(Structured JSON Logs)] as app_logs
+  }
+}
+
+' Relationships & Protocols
+browser -down-> ingress : "1. HTTPS (Port 443)\nTLS 1.3 / User Interactions"
+ingress -down-> web_container : "2. Proxy Pass (:3000)\nStatic Assets & SSR HTML"
+web_container -right-> ingress : "3. Client Fetch / API Calls\nAuthorization: Bearer <JWT>"
+ingress -down-> api_container : "4. Proxy Pass (:4000/api)\nREST JSON Requests"
+
+pipeline -right-> ghcr : "Build & Push\nDocker Images (SHA tags)"
+pipeline -down-> prod_cloud : "Automated Deploy Webhook / SSH\nInject Secrets (JWT, DB_URL)"
+ghcr -down-> app_layer : "Pull Images\n(:latest & :sha-xxx)"
+
+api_container -down-> postgres : "5. Database Connection Pool\nPrisma ORM (TCP :5432 Internal VPC)\nACID Transactions & Optimistic Locks"
+api_container .right.> health_mon : "Exposes liveness/readiness"
+api_container .down.> app_logs : "Streams logs"
+
+note right of postgres
+  **Bảo mật dữ liệu:**
+  Cổng 5432 KHÔNG mở công khai ra Internet.
+  Chỉ cho phép container NestJS trong cùng mạng
+  nội bộ VPC kết nối với mật khẩu mạnh.
+end note
+
+note bottom of pipeline
+  **Quy trình CI/CD:**
+  1. Quality Gate: Lint, Unit Test, Integration Test, Build
+  2. Multi-stage Docker Image build
+  3. Safe Database Migration execution
+  4. Smoke Test sau triển khai (/api/health)
+end note
+
+@enduml

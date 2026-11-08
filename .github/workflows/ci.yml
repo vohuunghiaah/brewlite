@@ -1,0 +1,41 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches: [main, 'feature/**', 'chore/**', 'test/**', 'ci/**']
+  pull_request:
+    branches: [main, 'chore/setup-repository']
+
+jobs:
+  quality-gate:
+    name: Install, Lint, Unit Test, Build
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: "postgresql://brewlite:brewlite@localhost:5432/brewlite?schema=public"
+      JWT_SECRET: "ci-test-jwt-secret-key-minimum-32-chars-long"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate --workspace=apps/api
+
+      - name: Run Linting
+        run: npm run lint
+
+      - name: Run Unit Tests
+        run: npm run test
+
+      - name: Build Applications
+        run: npm run build
