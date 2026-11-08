@@ -11,24 +11,24 @@ import {
 } from '@nestjs/common';
 
 import { ProductsService } from './products.service';
-import { Product } from './entities/product.entity';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Controller('products')
 export class ProductsController {
-
   constructor(
     private readonly productsService: ProductsService,
   ) {}
 
   // GET /products
-  // Lấy danh sách sản phẩm
+  // Lấy danh sách tất cả sản phẩm
   @Get()
   findAll() {
     return this.productsService.findAll();
   }
 
   // GET /products/:id
-  // Lấy chi tiết sản phẩm
+  // Lấy thông tin chi tiết sản phẩm
   @Get(':id')
   findOne(
     @Param('id', ParseIntPipe) id: number,
@@ -39,16 +39,18 @@ export class ProductsController {
   // POST /products
   // Thêm sản phẩm mới
   @Post()
-  create(@Body() data: Partial<Product>) {
+  create(
+    @Body() data: CreateProductDto,
+  ) {
     return this.productsService.create(data);
   }
 
   // PATCH /products/:id
-  // Cập nhật sản phẩm
+  // Cập nhật thông tin sản phẩm
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() data: Partial<Product>,
+    @Body() data: UpdateProductDto,
   ) {
     return this.productsService.update(id, data);
   }

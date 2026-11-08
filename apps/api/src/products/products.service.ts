@@ -8,27 +8,28 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Product } from './entities/product.entity';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-
   constructor(
     @InjectRepository(Product)
-    private readonly productRepository: Repository<Product>,
+    private readonly productsRepository: Repository<Product>,
   ) {}
 
-  // 1. Lấy danh sách sản phẩm
+  // Lấy danh sách sản phẩm
   async findAll(): Promise<Product[]> {
-    return this.productRepository.find({
+    return this.productsRepository.find({
       order: {
         id: 'ASC',
       },
     });
   }
 
-  // 2. Lấy sản phẩm theo ID
+  // Lấy chi tiết sản phẩm theo ID
   async findOne(id: number): Promise<Product> {
-    const product = await this.productRepository.findOne({
+    const product = await this.productsRepository.findOne({
       where: { id },
     });
 
@@ -41,35 +42,45 @@ export class ProductsService {
     return product;
   }
 
-  // 3. Thêm sản phẩm
-  async create(data: Partial<Product>): Promise<Product> {
-    const product = this.productRepository.create(data);
+  // Thêm sản phẩm mới
+  async create(
+    createProductDto: CreateProductDto,
+  ): Promise<Product> {
+    const product = this.productsRepository.create({
+      ...createProductDto,
+      price: String(createProductDto.price),
+    });
 
-    return this.productRepository.save(product);
+    return this.productsRepository.save(product);
   }
 
-  // 4. Cập nhật sản phẩm
+  // Cập nhật sản phẩm
   async update(
     id: number,
-    data: Partial<Product>,
+    updateProductDto: UpdateProductDto,
   ): Promise<Product> {
-
     const product = await this.findOne(id);
 
-    Object.assign(product, data);
+    this.productsRepository.merge(product, {
+      ...updateProductDto,
+      ...(updateProductDto.price !== undefined && {
+        price: String(updateProductDto.price),
+      }),
+    });
 
-    return this.productRepository.save(product);
+    return this.productsRepository.save(product);
   }
 
-  // 5. Xóa sản phẩm
-  async remove(id: number) {
-
+  // Xóa sản phẩm
+  async remove(
+    id: number,
+  ): Promise<{ message: string }> {
     const product = await this.findOne(id);
 
-    await this.productRepository.remove(product);
+    await this.productsRepository.remove(product);
 
     return {
-      message: 'Xóa sản phẩm thành công',
+      message: `Đã xóa sản phẩm có ID ${id}`,
     };
   }
 }

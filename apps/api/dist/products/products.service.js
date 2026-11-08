@@ -18,19 +18,19 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const product_entity_1 = require("./entities/product.entity");
 let ProductsService = class ProductsService {
-    productRepository;
-    constructor(productRepository) {
-        this.productRepository = productRepository;
+    productsRepository;
+    constructor(productsRepository) {
+        this.productsRepository = productsRepository;
     }
     async findAll() {
-        return this.productRepository.find({
+        return this.productsRepository.find({
             order: {
                 id: 'ASC',
             },
         });
     }
     async findOne(id) {
-        const product = await this.productRepository.findOne({
+        const product = await this.productsRepository.findOne({
             where: { id },
         });
         if (!product) {
@@ -38,20 +38,28 @@ let ProductsService = class ProductsService {
         }
         return product;
     }
-    async create(data) {
-        const product = this.productRepository.create(data);
-        return this.productRepository.save(product);
+    async create(createProductDto) {
+        const product = this.productsRepository.create({
+            ...createProductDto,
+            price: String(createProductDto.price),
+        });
+        return this.productsRepository.save(product);
     }
-    async update(id, data) {
+    async update(id, updateProductDto) {
         const product = await this.findOne(id);
-        Object.assign(product, data);
-        return this.productRepository.save(product);
+        this.productsRepository.merge(product, {
+            ...updateProductDto,
+            ...(updateProductDto.price !== undefined && {
+                price: String(updateProductDto.price),
+            }),
+        });
+        return this.productsRepository.save(product);
     }
     async remove(id) {
         const product = await this.findOne(id);
-        await this.productRepository.remove(product);
+        await this.productsRepository.remove(product);
         return {
-            message: 'Xóa sản phẩm thành công',
+            message: `Đã xóa sản phẩm có ID ${id}`,
         };
     }
 };

@@ -163,9 +163,10 @@ export default function Home() {
 
     const payload = {
       name: form.name.trim(),
-      description: form.description.trim(),
-      price,
-      imageUrl: form.imageUrl.trim(),
+      description: form.description.trim() || null,
+      // Backend DTO sử dụng @IsNumberString(), vì vậy gửi giá dạng chuỗi
+      price: String(price),
+      imageUrl: form.imageUrl.trim() || null,
       isAvailable: form.isAvailable,
     };
 
