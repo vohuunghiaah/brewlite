@@ -14,3 +14,4 @@ Triển khai cơ chế xác thực không lưu trạng thái (Stateless Authenti
 ## Hệ quả (Consequences)
 - **Tích cực:** Backend không cần lưu session trong RAM hay Redis, mở rộng linh hoạt theo chiều ngang; token có thể giải mã nhanh chóng ở các lớp Guard.
 - **Tiêu cực:** Không thể thu hồi tức thì token trước thời hạn trừ khi bổ sung cơ chế blacklist hoặc token versioning.
+

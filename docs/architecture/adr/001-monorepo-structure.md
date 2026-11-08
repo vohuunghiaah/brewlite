@@ -12,3 +12,4 @@ Lựa chọn cấu trúc **Monorepo** với cơ chế tiêu chuẩn **npm worksp
 ## Hệ quả (Consequences)
 - **Tích cực:** Một lệnh cài đặt duy nhất (`npm install`) tại root; các pipeline CI/CD kiểm tra đồng bộ cả frontend và backend trên mỗi Pull Request; tránh việc phân mảnh nhiều repository riêng lẻ.
 - **Tiêu cực:** Kích thước repository lớn hơn so với từng repo riêng biệt; cần cấu hình bộ lọc đường dẫn (path filter) cẩn thận khi xây dựng container image độc lập.
+

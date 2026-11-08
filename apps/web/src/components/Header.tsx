@@ -1,12 +1,25 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Coffee, ShoppingBag, User } from 'lucide-react';
+import { useAppStore } from '../lib/store';
 
 interface HeaderProps {
   cartItemCount?: number;
 }
 
-export function Header({ cartItemCount = 0 }: HeaderProps) {
+export function Header({ cartItemCount: propCount }: HeaderProps = {}) {
+  const [mounted, setMounted] = useState(false);
+  const cartTotalCount = useAppStore((state) => state.getCartTotalCount());
+  const user = useAppStore((state) => state.user);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const count = propCount !== undefined ? propCount : mounted ? cartTotalCount : 0;
+
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-brand-100 shadow-sm">
       <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
@@ -24,18 +37,23 @@ export function Header({ cartItemCount = 0 }: HeaderProps) {
             aria-label="Giỏ hàng"
           >
             <ShoppingBag className="w-5 h-5" />
-            {cartItemCount > 0 && (
+            {count > 0 && (
               <span className="absolute top-1 right-1 w-4 h-4 bg-amber-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                {cartItemCount}
+                {count}
               </span>
             )}
           </Link>
           <Link
-            href="/login"
-            className="p-2 text-brand-700 hover:text-brand-900 transition-colors"
+            href={user ? '/orders' : '/login'}
+            className="p-2 text-brand-700 hover:text-brand-900 transition-colors flex items-center gap-1"
             aria-label="Tài khoản"
           >
             <User className="w-5 h-5" />
+            {mounted && user && (
+              <span className="text-xs font-semibold text-brand-800 hidden sm:inline max-w-[80px] truncate">
+                {user.fullName}
+              </span>
+            )}
           </Link>
         </div>
       </div>

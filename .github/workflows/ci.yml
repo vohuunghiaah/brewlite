@@ -4,12 +4,27 @@ on:
   push:
     branches: [main, 'feature/**', 'chore/**', 'test/**', 'ci/**']
   pull_request:
-    branches: [main, 'chore/setup-repository']
+    branches: [main, 'chore/setup-repository', 'feature/**']
 
 jobs:
   quality-gate:
-    name: Install, Lint, Unit Test, Build
+    name: Install, Lint, Unit Test, E2E Integration, Build
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: brewlite
+          POSTGRES_PASSWORD: brewlite
+          POSTGRES_DB: brewlite
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     env:
       DATABASE_URL: "postgresql://brewlite:brewlite@localhost:5432/brewlite?schema=public"
@@ -26,16 +41,24 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Generate Prisma Client
         run: npm run prisma:generate --workspace=apps/api
 
+      - name: Sync Database Schema & Seed
+        run: |
+          npx prisma db push --schema=apps/api/prisma/schema.prisma
+          npm --workspace=@brewlite/api run prisma:seed
+
       - name: Run Linting
         run: npm run lint
 
-      - name: Run Unit Tests
+      - name: Run Monorepo Unit Tests
         run: npm run test
+
+      - name: Run E2E Integration Tests
+        run: npm --workspace=@brewlite/api run test:e2e
 
       - name: Build Applications
         run: npm run build

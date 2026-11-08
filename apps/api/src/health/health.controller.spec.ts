@@ -43,3 +43,4 @@ describe('HealthController', () => {
     expect(health.database).toBe('error');
   });
 });
+

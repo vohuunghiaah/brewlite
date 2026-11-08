@@ -1,0 +1,3 @@
+# Robots.txt for BrewLite
+User-agent: *
+Allow: /

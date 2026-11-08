@@ -52,3 +52,4 @@ Live Serving via HTTPS
 - Khi smoke test thất bại hoặc phiên bản mới gặp lỗi nghiêm trọng:
   1. Điều hướng lưu lượng tại Reverse Proxy / Ingress quay trở lại container image ổn định liền trước (dựa trên commit SHA tag).
   2. Các migration cơ sở dữ liệu tuân thủ nguyên tắc mở rộng tương thích ngược (Expand-Contract), không xóa bảng/cột ngay trong cùng phiên bản để bảo toàn dữ liệu khi rollback.
+
