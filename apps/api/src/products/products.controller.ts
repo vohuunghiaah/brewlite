@@ -18,4 +18,3 @@ export class ProductsController {
     return this.productsService.findOne(id);
   }
 }
-

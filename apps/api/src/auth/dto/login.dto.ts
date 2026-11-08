@@ -8,4 +8,3 @@ export class LoginDto {
   @MinLength(6, { message: 'Mật khẩu phải chứa ít nhất 6 ký tự.' })
   password: string;
 }
-

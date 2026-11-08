@@ -26,4 +26,3 @@ export class ProcessPaymentDto {
   @IsOptional()
   mockOutcome?: 'SUCCESS' | 'FAILED' | 'PENDING';
 }
-

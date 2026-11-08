@@ -12,4 +12,3 @@ export class RegisterDto {
   @IsNotEmpty({ message: 'Họ và tên không được để trống.' })
   fullName: string;
 }
-

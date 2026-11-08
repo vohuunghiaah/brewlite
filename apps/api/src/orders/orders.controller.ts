@@ -42,4 +42,3 @@ export class OrdersController {
     return this.ordersService.updateStatus(id, dto.status, req.user.role);
   }
 }
-

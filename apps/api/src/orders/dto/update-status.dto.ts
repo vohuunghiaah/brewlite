@@ -5,4 +5,3 @@ export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus, { message: 'Trạng thái đơn hàng không hợp lệ.' })
   status: OrderStatus;
 }
-
