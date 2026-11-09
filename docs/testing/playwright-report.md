@@ -87,3 +87,4 @@ Running 2 tests using 1 worker
 5. **Auth Guard & Redirect:** Xác minh người dùng vãng lai được điều hướng an toàn sang trang `/login` và tự động quay lại `/checkout` sau khi đăng nhập thành công.
 6. **Order Creation & Payment Processing:** Xác minh backend NestJS tạo mã đơn hàng duy nhất (ví dụ: `#BL-4311`), trừ kho với Optimistic Locking và ghi nhận thanh toán `PAID`.
 7. **Order History Isolation:** Xác minh người dùng xem được đơn hàng của chính mình trong `/orders`, bảo đảm phân quyền dữ liệu và ngăn chặn IDOR.
+

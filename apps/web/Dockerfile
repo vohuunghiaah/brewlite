@@ -9,8 +9,8 @@ RUN apk add --no-cache libc6-compat
 
 COPY package*.json ./
 COPY tsconfig.json ./
-COPY tailwind.config.ts ./
-COPY postcss.config.mjs ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
 COPY next.config.js ./
 
 RUN npm install --legacy-peer-deps
@@ -18,7 +18,11 @@ RUN npm install --legacy-peer-deps
 COPY src ./src
 COPY public ./public
 
+# Configurable API URL baked at build time for client-side bundle
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
 ENV NEXT_TELEMETRY_DISABLED=1
+
 RUN npm run build
 
 # ==========================================
@@ -39,7 +43,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Copy static assets and standalone server
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
@@ -50,5 +54,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:3000 || exit 1
 
-CMD ["node", "server.js"]
-
+CMD ["sh", "-c", "if [ -f server.js ]; then node server.js; elif [ -f apps/web/server.js ]; then node apps/web/server.js; else find . -name 'server.js' -exec node {} \\;; fi"]

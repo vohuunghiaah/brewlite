@@ -6,9 +6,16 @@ on:
   pull_request:
     branches: [main, 'chore/setup-repository', 'feature/**']
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
+  # ==============================================================================
+  # Job 1: Automated Quality Gate (Lint, Tests, Builds, Playwright E2E UI)
+  # ==============================================================================
   quality-gate:
-    name: Install, Lint, Unit Test, E2E Integration, Build
+    name: Install, Lint, Unit Test, E2E Integration, Build, Playwright UI
     runs-on: ubuntu-latest
 
     services:
@@ -68,3 +75,67 @@ jobs:
 
       - name: Run Playwright Frontend E2E UI Tests
         run: npm run test:e2e:ui
+
+  # ==============================================================================
+  # Job 2: Real Docker Build & GHCR Verification
+  # ==============================================================================
+  docker-build-verify:
+    name: Docker Build & Publish Verification (GHCR)
+    needs: [quality-gate]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push API Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Web Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/web
+          file: ./apps/web/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=http://localhost:4000/api
+          tags: |
+            ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/web:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify API Image Retrievability from GHCR
+        run: |
+          echo "Kéo image API từ GHCR để xác minh tính truy xuất thực tế..."
+          docker pull ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+          docker image inspect ghcr.io/${{ github.repository }}/api:${{ github.sha }} > /tmp/api_inspect.json
+          echo "Xác nhận Image ID: $(jq -r '.[0].Id' /tmp/api_inspect.json)"
+          echo "Xác nhận Architecture: $(jq -r '.[0].Architecture' /tmp/api_inspect.json)"
+
+      - name: Verify Web Image Retrievability from GHCR
+        run: |
+          echo "Kéo image Web từ GHCR để xác minh tính truy xuất thực tế..."
+          docker pull ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+          docker image inspect ghcr.io/${{ github.repository }}/web:${{ github.sha }} > /tmp/web_inspect.json
+          echo "Xác nhận Image ID: $(jq -r '.[0].Id' /tmp/web_inspect.json)"
+          echo "Xác nhận Architecture: $(jq -r '.[0].Architecture' /tmp/web_inspect.json)"

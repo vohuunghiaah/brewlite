@@ -62,6 +62,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       JWT_SECRET: ${JWT_SECRET:?Error: JWT_SECRET must be set and secure (min 32 chars)}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,6 +97,8 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Error: NEXT_PUBLIC_API_URL must be configured}
     container_name: brewlite-prod-web
     restart: always
     ports:

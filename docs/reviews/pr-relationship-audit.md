@@ -51,3 +51,4 @@ Tuân thủ nguyên tắc bắt buộc: **Agent không tự động merge bất 
 2. **Bước 2 (PR #7):** Chuyển base của PR #7 về `main`, đánh giá và merge PR #7 vào `main`.
 3. **Bước 3 (PR #9):** Chuyển base của PR #9 về `main`, xác nhận CI Quality Gate hoàn tất và merge vào `main`.
 4. **Bước 4 (PR #8):** Đóng PR #8 với lý do "Đã cấu hình Docker Compose chuẩn trong PR #9 và PR #8 chứa node_modules vượt quá giới hạn an toàn".
+

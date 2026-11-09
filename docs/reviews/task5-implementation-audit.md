@@ -40,3 +40,4 @@
 2. **Về Môi trường Production:**
    - Hệ thống mã nguồn và cấu hình container đóng gói đã đạt tiêu chuẩn 12-factor và sản xuất.
    - Để đưa hệ thống lên URL HTTPS thực tế, người dùng chỉ cần cung cấp dịch vụ hosting (như Render, Railway, hoặc VPS) và cấu hình secret `DEPLOY_WEBHOOK_URL` cùng `PRODUCTION_API_URL` trên GitHub.
+

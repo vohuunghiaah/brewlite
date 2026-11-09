@@ -19,9 +19,9 @@ permissions:
   packages: write
 
 jobs:
-  # ==========================================
-  # Job 1: Build & Publish Container Images
-  # ==========================================
+  # ==============================================================================
+  # Job 1: Build & Publish Container Images with Immutable Tags
+  # ==============================================================================
   build-and-push:
     name: Build & Publish Docker Images to GHCR
     runs-on: ubuntu-latest
@@ -39,33 +39,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push API Image
+      - name: Build & Push API Image (Immutable SHA Tag)
         uses: docker/build-push-action@v5
         with:
           context: ./apps/api
           file: ./apps/api/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/api:latest
             ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build & Push Web Image
+      - name: Build & Push Web Image (Immutable SHA Tag)
         uses: docker/build-push-action@v5
         with:
           context: ./apps/web
           file: ./apps/web/Dockerfile
           push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.PRODUCTION_API_URL || secrets.PRODUCTION_API_URL || 'http://localhost:4000/api' }}
           tags: |
-            ghcr.io/${{ github.repository }}/web:latest
             ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/web:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ==========================================
+      - name: Verify Image Retrievability from GHCR
+        run: |
+          echo "Kiểm tra tính truy xuất của image trên GHCR..."
+          docker pull ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+          docker pull ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+          echo "XÁC NHẬN: Cả 2 image API và Web đều có thể truy xuất thành công từ GHCR."
+
+  # ==============================================================================
   # Job 2: Real Production Deployment & Verification
-  # ==========================================
+  # ==============================================================================
   deploy:
     name: Deploy & Verify Health Smoke Test
     needs: [build-and-push]
@@ -89,11 +98,23 @@ jobs:
             exit 1
           fi
 
-      - name: Trigger Real Deployment
+      - name: Run Safe Production Database Migrations
+        if: env.HAS_PROD_DB == 'true'
+        env:
+          HAS_PROD_DB: ${{ secrets.PRODUCTION_DATABASE_URL != '' }}
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          echo "Tiến hành áp dụng migration cơ sở dữ liệu production với prisma migrate deploy..."
+          npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+
+      - name: Trigger Real Deployment with Immutable Tag
         id: deploy_trigger
         run: |
-          echo "Gửi tín hiệu triển khai tới Production Webhook..."
-          HTTP_CODE=$(curl -s -o /tmp/deploy_res.txt -w "%{http_code}" -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}")
+          echo "Gửi tín hiệu triển khai tới Production Webhook với immutable tag: ${{ github.sha }}..."
+          HTTP_CODE=$(curl -s -o /tmp/deploy_res.txt -w "%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"image_tag\":\"${{ github.sha }}\",\"environment\":\"${{ inputs.deploy_env || 'production' }}\"}" \
+            "${{ secrets.DEPLOY_WEBHOOK_URL }}")
           echo "HTTP Response Code: $HTTP_CODE"
           cat /tmp/deploy_res.txt || true
           
@@ -127,10 +148,16 @@ jobs:
               cat /tmp/health_res.json
               echo ""
               
-              # Xác thực nội dung JSON phản hồi chứa status ok
               if grep -q '"status":"ok"' /tmp/health_res.json; then
-                echo "XÁC NHẬN: Health check phản hồi hợp lệ (status: ok). Smoke test PASS."
-                exit 0
+                echo "XÁC NHẬN: Health check phản hồi hợp lệ (status: ok)."
+                
+                # Kiểm tra tiếp endpoint catalog sản phẩm để xác minh CSDL
+                echo "Kiểm tra kết nối CSDL qua endpoint: $TARGET_URL/api/products"
+                PROD_STATUS=$(curl -s -o /tmp/products_res.json -w "%{http_code}" --max-time 10 "$TARGET_URL/api/products" || echo "000")
+                if [ "$PROD_STATUS" == "200" ]; then
+                  echo "XÁC NHẬN: Catalog API và CSDL hoạt động ổn định (HTTP 200). Smoke test PASS."
+                  exit 0
+                fi
               fi
             fi
             
@@ -142,12 +169,43 @@ jobs:
           cat /tmp/health_res.json 2>/dev/null || true
           exit 1
 
-      - name: Rollback Notification on Failure
+      # ==============================================================================
+      # Rollback: Tách biệt rõ ràng Rollback Tự Động và Phục Hồi Thủ Công
+      # ==============================================================================
+      - name: Execute Automated Rollback on Failure
         if: failure()
         run: |
           echo "::error::CRITICAL: Quá trình triển khai hoặc kiểm thử Production thất bại!"
-          echo "Quy trình an toàn: Không chuyển hướng lưu lượng truy cập sang bản build mới lỗi."
+          echo "Bắt đầu quy trình Rollback tự động..."
+          
           if [ -n "${{ secrets.ROLLBACK_WEBHOOK_URL }}" ]; then
-            echo "Kích hoạt Rollback Webhook..."
-            curl -s -X POST "${{ secrets.ROLLBACK_WEBHOOK_URL }}" || true
+            echo "Gửi yêu cầu hoàn tác tới ROLLBACK_WEBHOOK_URL..."
+            ROLLBACK_CODE=$(curl -s -o /tmp/rollback_res.txt -w "%{http_code}" -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"action\":\"rollback\",\"failed_commit\":\"${{ github.sha }}\"}" \
+              "${{ secrets.ROLLBACK_WEBHOOK_URL }}")
+            echo "Rollback Webhook HTTP Response Code: $ROLLBACK_CODE"
+            cat /tmp/rollback_res.txt || true
+            
+            # Kiểm tra HTTP response thật, KHÔNG bỏ qua lỗi bằng || true
+            if [[ "$ROLLBACK_CODE" -lt 200 || "$ROLLBACK_CODE" -ge 300 ]]; then
+              echo "::error::GỌI ROLLBACK WEBHOOK THẤT BẠI VỚI MÃ HTTP $ROLLBACK_CODE. Cần can thiệp thủ công khẩn cấp!"
+              exit 1
+            fi
+            echo "Rollback tự động hoàn tất: Lưu lượng đã được chuyển về phiên bản ổn định trước đó."
+          else
+            echo "::warning::ROLLBACK_WEBHOOK_URL chưa được cấu hình. Bắt buộc thực hiện quy trình phục hồi thủ công."
           fi
+
+      - name: Manual Disaster Recovery Runbook
+        if: failure()
+        run: |
+          echo "=========================================================="
+          echo "QUY TRÌNH PHỤC HỒI THỦ CÔNG (MANUAL DISASTER RECOVERY RUNBOOK):"
+          echo "1. Chuyển hướng lưu lượng container tại Reverse Proxy / Ingress về commit tag ổn định liền trước."
+          echo "2. Kiểm tra nhật ký cơ sở dữ liệu và khôi phục bản sao lưu snapshot pre-deploy:"
+          echo "   pg_restore -h \$POSTGRES_HOST -U \$POSTGRES_USER -d \$POSTGRES_DB --clean --if-exists -v /backups/brewlite_pre_deploy_<timestamp>.dump"
+          echo "3. Chỉ sau khi schema và dữ liệu vật lý đã hoàn nguyên, cập nhật bảng migration tracking:"
+          echo "   npx prisma migrate resolve --rolled-back <migration_name>"
+          echo "4. Thực thi lại Smoke Test xác nhận khôi phục: GET /api/health"
+          echo "=========================================================="
