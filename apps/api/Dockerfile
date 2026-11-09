@@ -46,6 +46,7 @@ USER nestjs
 EXPOSE 4000
 
 HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:4000/health || exit 1
+  CMD curl -f http://localhost:4000/api/health || exit 1
 
 CMD ["node", "dist/src/main"]
+

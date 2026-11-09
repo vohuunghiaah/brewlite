@@ -49,3 +49,4 @@ Tại buổi đánh giá Sprint 2, nhóm đã trình diễn trực tiếp kịch
 - **Khả năng triển khai:** Toàn bộ hệ thống chạy độc lập chỉ với một câu lệnh `docker compose up -d`.
 - **Hồ sơ tài liệu:** Đã hoàn thiện kiến trúc, 5 quyết định ADR, RTM ma trận truy vết và hướng dẫn demo.
 - **Quyết định của Product Owner:** **CHẤP THUẬN NGHIỆM THU VÀ PHÁT HÀNH BẢN V1.0.0.**
+

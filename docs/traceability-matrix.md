@@ -43,3 +43,4 @@
 ## 3. Kết Luận Đánh Giá
 
 100% các yêu cầu từ **FR-01 đến FR-13** và **NFR-01 đến NFR-06** đã được ánh xạ đầy đủ, thiết kế chuẩn mực, cài đặt mã nguồn hoàn chỉnh và có ca kiểm thử tự động xác minh không sót bất kỳ trường hợp nào.
+

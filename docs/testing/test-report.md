@@ -81,18 +81,21 @@ Hệ thống BrewLite được xây dựng với chiến lược bảo đảm ch
 | | `PATCH /orders/:id/status` chặn đứng bước nhảy trạng thái trái phép từ `PREPARING` lùi về `PENDING` | 400 Bad Request | **PASS** |
 
 ### 2.4. End-to-End (E2E) UI Automation Test (`tests/e2e/order-flow.spec.ts`)
-- **Công cụ:** Playwright Test
+- **Công cụ:** Playwright Test v1.65.0
+- **Số ca kiểm thử:** 2 passed (Desktop Chrome & Mobile Chrome Pixel 5)
+- **Thời gian chạy:** 8.6s
 - **Kịch bản:** Toàn bộ hành trình khách hàng từ A đến Z:
   1. Mở trang chủ Menu đồ uống (`/`).
   2. Chọn sản phẩm có sẵn -> trang chi tiết (`/products/:id`).
-  3. Chọn kích cỡ Medium (M), thêm Trân châu đen, chọn số lượng.
+  3. Chọn kích cỡ Medium (M), thêm Trân châu trắng, chọn số lượng.
   4. Thêm vào giỏ hàng -> chuyển sang trang giỏ (`/cart`).
   5. Xác nhận tạm tính, bấm tiến hành đặt món -> điều hướng đăng nhập (`/login`).
   6. Điền thông tin đăng nhập `customer@brewlite.com`, xác thực JWT.
-  7. Vào trang thanh toán (`/checkout`), nhập ghi chú bàn, chọn Mock Payment Service.
+  7. Vào trang thanh toán (`/checkout`), chọn Mock Payment Service (SUCCESS).
   8. Xác nhận thanh toán thành công -> chuyển sang trang xác nhận (`/order/confirmation`).
   9. Kiểm tra hiển thị mã đơn `#BL-xxxx`, trạng thái `PAID` và điểm tích lũy.
   10. Bấm xem lịch sử đơn hàng (`/orders`) và xác nhận đơn xuất hiện trong danh sách.
+- **Báo cáo chi tiết:** [Playwright Report](playwright-report.md)
 
 ---
 
@@ -107,9 +110,9 @@ Hệ thống BrewLite được xây dựng với chiến lược bảo đảm ch
  Backend Unit Tests            7              34           100% PASS
  Frontend Unit Tests           3              14           100% PASS
  API & DB Integration Tests    1              20           100% PASS
- Playwright E2E Spec           1               1           READY
+ Playwright E2E UI Tests       1               2           100% PASS
 ------------------------------------------------------------------------
- TỔNG CỘNG                    12              69           ALL PASSED
+ TỔNG CỘNG                    12              70           ALL PASSED
 ========================================================================
 ```
 
@@ -126,9 +129,13 @@ npm test
 # 2. Chạy E2E Integration Tests với Database thực tế
 npm --workspace=@brewlite/api run test:e2e
 
-# 3. Chạy Linting kiểm tra chuẩn mã nguồn
+# 3. Chạy Playwright E2E UI Automation Tests
+npm run test:e2e:ui
+
+# 4. Chạy Linting kiểm tra chuẩn mã nguồn
 npm run lint
 
-# 4. Chạy Build đóng gói Production
+# 5. Chạy Build đóng gói Production
 npm run build
 ```
+

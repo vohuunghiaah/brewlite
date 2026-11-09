@@ -124,8 +124,8 @@ docker compose up -d --build
 docker compose ps
 ```
 - **Giao diện Web:** `http://localhost:3000`
-- **Backend API:** `http://localhost:4000`
-- **Endpoint kiểm tra sống còn:** `http://localhost:4000/health`
+- **Backend API:** `http://localhost:4000/api`
+- **Endpoint kiểm tra sống còn:** `http://localhost:4000/api/health`
 
 ---
 
@@ -138,8 +138,8 @@ npm install --legacy-peer-deps
 # 2. Cấu hình biến môi trường
 cp .env.example .env
 
-# 3. Đồng bộ cơ sở dữ liệu và gieo mầm dữ liệu mẫu
-npx prisma db push --schema=apps/api/prisma/schema.prisma
+# 3. Chạy migration phiên bản và gieo mầm dữ liệu mẫu
+npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
 npm --workspace=@brewlite/api run prisma:seed
 
 # 4. Khởi chạy song song 2 dịch vụ
@@ -216,10 +216,23 @@ Mọi tài liệu kỹ thuật của dự án được lưu trữ tại thư m�
 ## 7. Quy Trình Vận Hành & Hoàn Tác (Rollback Procedure)
 
 Trong trường hợp phát hiện sự cố nghiêm trọng sau khi triển khai phiên bản mới trên môi trường production:
-1. **Kiểm tra trạng thái lỗi:** Gọi `curl -f http://<production-host>/health`. Nếu trả về mã lỗi 5xx hoặc không phản hồi, kích hoạt quy trình hoàn tác.
-2. **Rollback Container:** Chuyển hướng traffic hoặc khởi động lại image phiên bản trước đó (`ghcr.io/<repo>/api:<previous-commit-sha>`).
-3. **Rollback Database:** Nếu có migration dữ liệu, sử dụng lệnh:
-   ```bash
-   npx prisma migrate resolve --rolled-back <migration_name>
-   ```
-4. **Xác nhận phục hồi:** Thực thi lại kịch bản Smoke Test kiểm tra `/health` và `/products` bảo đảm hệ thống hoạt động ổn định trở lại.
+1. **Kiểm tra trạng thái lỗi:** Gọi `curl -f https://<production-host>/api/health`. Nếu trả về mã lỗi 5xx, timeout hoặc smoke test thất bại, lập tức kích hoạt quy trình hoàn tác.
+2. **Rollback Container Ứng dụng:**
+   - Chuyển hướng lưu lượng truy cập (Ingress/Reverse Proxy) quay trở lại container image của phiên bản ổn định liền trước:
+     ```bash
+     docker compose -f docker-compose.prod.yml down
+     IMAGE_TAG=<previous_stable_commit_sha> docker compose -f docker-compose.prod.yml up -d
+     ```
+3. **Rollback Cơ sở dữ liệu (Chiến lược bảo toàn dữ liệu):**
+   - *Lưu ý an toàn:* Không sử dụng `prisma migrate resolve --rolled-back` như một cơ chế khôi phục dữ liệu tự động, vì lệnh này chỉ cập nhật bảng metadata `_prisma_migrations` chứ không hoàn nguyên schema hay dữ liệu vật lý.
+   - *Quy tắc Expand-Contract:* Toàn bộ migration sản xuất phải tuân thủ tính tương thích ngược (chỉ thêm mới trường/bảng, không xóa ngay trường đang dùng) để container phiên bản cũ vẫn hoạt động trơn tru.
+   - *Khôi phục khi xảy ra sự cố schema/dữ liệu nghiêm trọng:* Phục hồi từ bản sao lưu snapshot được tạo tự động ngay trước mỗi đợt deploy:
+     ```bash
+     # Phục hồi snapshot an toàn từ bản sao lưu pre-deploy
+     pg_restore -h localhost -U brewlite_admin -d brewlite_prod --clean --if-exists /backups/brewlite_pre_deploy_<timestamp>.dump
+     
+     # Chỉ đồng bộ lại trạng thái migration tracking table sau khi database vật lý đã hoàn nguyên:
+     npx prisma migrate resolve --rolled-back <migration_name>
+     ```
+4. **Xác nhận phục hồi (Post-Rollback Verification):**
+   - Thực thi lại kịch bản Smoke Test kiểm tra `/api/health` và `/api/products` bảo đảm hệ thống hoạt động ổn định và toàn vẹn dữ liệu.

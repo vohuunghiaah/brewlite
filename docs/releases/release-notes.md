@@ -1,24 +1,24 @@
-# BrewLite Release Notes — Phiên Bản v1.0.0 (Sprint 2 Delivery)
+# BrewLite Release Notes — Phiên Bản v1.0.0-rc (Sprint 2 Delivery)
 
 **Dự án:** BrewLite Coffee & Tea Delivery System  
-**Phiên bản phát hành:** `v1.0.0` (Production Ready)  
-**Ngày phát hành:** 08/11/2026  
+**Phiên bản phát hành:** `v1.0.0-rc` (Release Candidate — Production Ready)  
+**Ngày phát hành:** 09/11/2026  
 **Nhánh nguồn:** `feature/sprint2-full-flow` -> `main`  
-**Git Tag:** `v1.0.0`
+**Trạng thái Git Tag:** Dự kiến gắn tag `v1.0.0` sau khi hoàn tất nghiệm thu và triển khai cloud thực tế bởi maintainer.
 
 ---
 
 ## 1. Điểm Nổi Bật Của Bản Phát Hành (Key Highlights)
 
-Bản phát hành `v1.0.0` đánh dấu sự hoàn thiện toàn diện của hệ thống BrewLite theo đúng mục tiêu của **Task 5 — Sprint 2, CI/CD và Production Delivery**:
+Bản phát hành đánh dấu sự hoàn thiện toàn diện của hệ thống BrewLite theo đúng mục tiêu của **Task 5 — Sprint 2, CI/CD và Production Delivery**:
 - Hoàn tất 100% luồng người dùng: **Menu → Tùy chỉnh (Size/Toppings) → Giỏ hàng → Đăng nhập/Đăng ký → Tạo đơn → Thanh toán mô phỏng → Xác nhận mã nhận món → Lịch sử đơn hàng**.
 - Thiết lập cơ chế chống thanh toán trùng lặp chuẩn công nghiệp qua header `Idempotency-Key`.
 - Bảo vệ toàn vẹn kho hàng bằng giải pháp Khóa lạc quan (Optimistic Concurrency Control — OCC) với cột `version`.
 - Ngăn chặn triệt để lỗ hổng rò rỉ dữ liệu cá nhân (Insecure Direct Object Reference — IDOR) trên tất cả endpoint đơn hàng.
 - Quy chuẩn hóa vòng đời đơn hàng qua Máy trạng thái hữu hạn (`order-state-machine.ts`).
-- Bộ kiểm thử tự động đạt 68/68 ca kiểm thử thành công (Unit + Integration với PostgreSQL thực tế).
-- Đóng gói container hóa đa tầng (Multi-stage Dockerfiles) và điều phối toàn cục bằng `docker-compose.yml`.
-- Tự động hóa kiểm thử và triển khai với GitHub Actions CI/CD.
+- Bộ kiểm thử tự động đạt 70/70 ca kiểm thử thành công: 48 Unit tests + 20 Integration tests với PostgreSQL thực tế + 2 Playwright UI E2E tests (Desktop & Mobile).
+- Đóng gói container hóa đa tầng (Multi-stage Dockerfiles), cấu hình tách biệt môi trường phát triển và sản xuất (`docker-compose.prod.yml`).
+- Tự động hóa kiểm thử và triển khai với GitHub Actions CI/CD (loại bỏ hoàn toàn giả lập, xác minh HTTP thật).
 
 ---
 
@@ -133,3 +133,4 @@ npm run start:web
 
 1. **Thanh toán thật:** Hệ thống hiện tại sử dụng `MockPaymentService` để mô phỏng an toàn luồng thanh toán theo đúng yêu cầu đồ án (ADR-005). Bản thương mại trong tương lai sẽ tích hợp cổng thanh toán thực tế (VNPay / MoMo API).
 2. **Thông báo đẩy (Push Notification):** Hiện tại khách hàng theo dõi trạng thái đơn qua làm mới trang hoặc truy cập `/orders`. Kế hoạch giai đoạn tiếp theo sẽ bổ sung WebSocket / Server-Sent Events (SSE) để thông báo chuông khi Barista hoàn tất đồ uống.
+

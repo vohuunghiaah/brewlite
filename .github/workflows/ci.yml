@@ -46,9 +46,9 @@ jobs:
       - name: Generate Prisma Client
         run: npm run prisma:generate --workspace=apps/api
 
-      - name: Sync Database Schema & Seed
+      - name: Deploy Versioned Migrations & Seed Database
         run: |
-          npx prisma db push --schema=apps/api/prisma/schema.prisma
+          npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
           npm --workspace=@brewlite/api run prisma:seed
 
       - name: Run Linting
@@ -57,8 +57,14 @@ jobs:
       - name: Run Monorepo Unit Tests
         run: npm run test
 
-      - name: Run E2E Integration Tests
+      - name: Run Backend Integration E2E Tests
         run: npm --workspace=@brewlite/api run test:e2e
 
       - name: Build Applications
         run: npm run build
+
+      - name: Install Playwright Browsers & System Deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright Frontend E2E UI Tests
+        run: npm run test:e2e:ui

@@ -48,8 +48,23 @@ Smoke Test Health Check (GET /api/health)
 Live Serving via HTTPS
 ```
 
-### Chiến lược Rollback khi có sự cố
-- Khi smoke test thất bại hoặc phiên bản mới gặp lỗi nghiêm trọng:
-  1. Điều hướng lưu lượng tại Reverse Proxy / Ingress quay trở lại container image ổn định liền trước (dựa trên commit SHA tag).
-  2. Các migration cơ sở dữ liệu tuân thủ nguyên tắc mở rộng tương thích ngược (Expand-Contract), không xóa bảng/cột ngay trong cùng phiên bản để bảo toàn dữ liệu khi rollback.
+### Chiến lược Rollback & Phục Hồi Dữ Liệu Khi Có Sự Cố
+- **Nguyên tắc an toàn:**
+  1. Tuyệt đối không dùng `prisma migrate resolve --rolled-back` như một lệnh khôi phục dữ liệu mặc định. Lệnh này chỉ cập nhật metadata trong bảng `_prisma_migrations`, không hoàn nguyên schema hay dữ liệu thực tế.
+  2. Áp dụng quy tắc thiết kế cơ sở dữ liệu **Expand-Contract**: Các migration schema phải tương thích ngược (non-breaking, nullable hoặc có default value), cho phép phiên bản ứng dụng cũ tiếp tục chạy an toàn khi rollback container.
+  3. Trước mỗi đợt deploy production, kích hoạt tác vụ sao lưu tự động tạo snapshot cơ sở dữ liệu:
+     ```bash
+     pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB -F c -b -v -f /backups/brewlite_pre_deploy_$(date +%Y%m%d_%H%M%S).dump
+     ```
+- **Quy trình thực hiện hoàn tác khi Smoke Test thất bại hoặc sự cố nghiêm trọng:**
+  1. *Tầng Container:* Điều hướng lưu lượng tại Reverse Proxy / Ingress quay trở lại container image ổn định liền trước (dựa trên commit SHA tag).
+  2. *Tầng Database Schema:* Nếu cần rollback schema vật lý, nạp script hạ cấp có kiểm soát (`down.sql`) hoặc phục hồi hoàn toàn từ bản snapshot pre-deploy:
+     ```bash
+     pg_restore -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB --clean --if-exists -v /backups/brewlite_pre_deploy_<timestamp>.dump
+     ```
+  3. *Tầng Metadata Tracking:* Sau khi schema vật lý đã được hoàn nguyên, cập nhật lại trạng thái trong Prisma:
+     ```bash
+     npx prisma migrate resolve --rolled-back <migration_name>
+     ```
+  4. *Kiểm chứng sau hoàn tác:* Thực hiện smoke test `GET /api/health` và các giao dịch mẫu để bảo đảm hệ thống khôi phục hoàn toàn.
 

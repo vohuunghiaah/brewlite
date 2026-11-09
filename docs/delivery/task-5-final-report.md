@@ -1,30 +1,38 @@
-# Báo Cáo Tổng Kết & Nghiệm Thu Toàn Diện Task 5 (Task 5 Final Report)
-## Sprint 2 Delivery, CI/CD Pipeline & Production Readiness
+# Báo Cáo Tổng Kết & Nghiệm Thu Kỹ Thuật Task 5 (Task 5 Technical Audit & Delivery Report)
+## Sprint 2 Delivery, CI/CD Hardening, Versioned Migrations & Production Readiness
 
-**Dự án:** BrewLite Coffee & Tea Delivery System  
-**Repository:** `https://github.com/vohuunghiaah/brewlite.git`  
-**Thư mục làm việc:** `C:\dev\brewlite`  
-**Ngày hoàn thành:** 08/11/2026  
-**Nhóm thực hiện:** Nhóm Kỹ sư Phần mềm Cấp cao (Software Architect, Frontend Engineer, Backend Engineer, Database Engineer, QA Lead, DevOps Lead, Code Reviewer)  
-**Trạng thái bàn giao:** **HOÀN THÀNH TOÀN DIỆN 100% — ĐẠT TẤT CẢ TIÊU CHÍ NGHIỆM THU**
+- **Dự án:** BrewLite Coffee & Tea Delivery System  
+- **Repository:** `https://github.com/vohuunghiaah/brewlite.git`  
+- **Thư mục làm việc:** `C:\dev\brewlite`  
+- **Ngày kiểm toán & nghiệm thu:** 09/11/2026  
+- **Nhóm thực hiện:** Nhóm Kỹ sư Phần mềm Cấp cao (Architect, Frontend, Backend, Database, QA, DevOps, Reviewer)  
+- **Trạng thái tổng thể:** **PARTIAL / HARDENED & PRODUCTION-READY**
+  - *Mã nguồn & Nghiệp vụ (Task 5.1):* **PASS**
+  - *Kiểm thử tự động đa tầng (Task 5.2):* **PASS** (48 Unit Tests + 20 Integration Tests + 2 Playwright UI E2E Tests = 70 Tests)
+  - *CI/CD Quality Gate (Task 5.3):* **PASS** (Loại bỏ hoàn toàn giả lập, kiểm tra HTTP thật, fail-safe)
+  - *Cơ sở dữ liệu & Docker Hardening (Task 5.4):* **PASS** (Prisma Versioned Migration, `docker-compose.prod.yml`, quy trình sao lưu/rollback chuẩn)
+  - *Triển khai Live Production Cloud:* **BLOCKED (CHỜ PHÊ DUYỆT TÀI NGUYÊN ĐÁM MÂY)** — Tuân thủ nguyên tắc không tự ý phát sinh chi phí hoặc khởi tạo hạ tầng cloud trả phí khi người dùng chưa cung cấp credentials / target URL.
+  - *Tag / Release v1.0.0:* **DEFERRED (TẠM HOÃN)** — Chỉ gắn tag release chính thức sau khi môi trường cloud production live được xác minh bằng URL HTTPS thực tế.
 
 ---
 
-## 1. Tóm Tắt Kết Quả Triển Khai Đối Chiếu Master Prompt
+## 1. Bảng Đối Chiếu Hiện Trạng Triển Khai Task 5
 
-| Giai đoạn / Nhiệm vụ | Yêu cầu nghiệp vụ & kỹ thuật | Kết quả đạt được | Trạng thái nghiệm thu |
+| Hạng mục / Giai đoạn | Yêu cầu kỹ thuật & Nghiệp vụ | Kết quả thực tế & Minh chứng | Trạng thái nghiệm thu |
 |---|---|---|:---:|
-| **Giai đoạn 0: Tiền đề** | Kiểm toán GitHub PR, đối chiếu Task 1–4, đánh giá ranh giới SRS & use-case | Hoàn thành báo cáo `docs/reviews/pre-task5-audit.md`; bổ sung đầy đủ tài liệu SRS, use-cases, 4 sơ đồ PlantUML (Activity, Class, Sequence, Deployment), 5 ADRs, PR #7 hoàn thiện Sprint 1 MVP | **ĐẠT (PASS)** |
-| **Task 5.1: Hoàn thiện MVP** | Triển khai toàn bộ luồng nghiệp vụ end-to-end: Menu → Chi tiết (Size/Topping) → Giỏ hàng → Đăng nhập → Tạo đơn Transaction → Thanh toán mô phỏng OCC & Idempotency → Xác nhận mã `#BL-xxxx` → Lịch sử cá nhân (Anti-IDOR) | Xây dựng hoàn chỉnh Next.js 14 App Router (`apps/web`) và NestJS 10 Monolith (`apps/api`), Prisma ORM kết nối PostgreSQL 16; máy trạng thái `order-state-machine.ts`; kiểm soát tồn kho bằng Khóa lạc quan | **ĐẠT (PASS)** |
-| **Task 5.2: Tích hợp & Kiểm thử** | Kiểm thử Unit đa tầng, kiểm thử Integration với cơ sở dữ liệu thực tế, kiểm thử tự động UI Playwright, đóng gói Docker đa tầng và điều phối `docker-compose.yml` | Đạt **68/68 ca kiểm thử thành công (100% PASS)**: 48 Unit tests + 20 Integration tests kết nối PostgreSQL thực qua Supertest; Docker Compose điều phối 3 containers | **ĐẠT (PASS)** |
-| **Task 5.3: Tự động hóa CI/CD** | Pipeline CI Quality Gate: Install → Prisma Generate → Schema Push & Seed → Lint → Unit Test → E2E Test → Build; Pipeline CD: Build Docker images → GHCR → Deploy & Smoke Test | File `.github/workflows/ci.yml` và `.github/workflows/cd.yml` cấu hình đầy đủ PostgreSQL service container, tự động chạy toàn bộ bộ test | **ĐẠT (PASS)** |
-| **Task 5.4: Bàn giao & Phát hành** | Ma trận truy vết RTM (FR-01..13, NFR-01..06), Release Notes v1.0.0, Sprint 2 Review & Retrospective, Kịch bản demo 11 bước, cập nhật toàn bộ `README.md` | Bộ hồ sơ tài liệu đầy đủ tại thư mục `docs/`, `docs/traceability-matrix.md`, `docs/releases/release-notes.md`, `README.md` trung tâm | **ĐẠT (PASS)** |
+| **Giai đoạn 0: Tiền đề** | Kiểm toán GitHub PR, đối chiếu Task 1–4, ranh giới SRS & use-case | Hoàn thành báo cáo `docs/reviews/pre-task5-audit.md` và `docs/reviews/pr-relationship-audit.md`. Bổ sung đầy đủ SRS, use-cases, 4 sơ đồ PlantUML, 5 ADRs. PR #7 chuẩn bị nền tảng Sprint 1 MVP. | **PASS** |
+| **Task 5.1: Hoàn thiện MVP** | Triển khai luồng khép kín: Menu → Chi tiết (Size/Topping) → Giỏ hàng → Đăng nhập → Tạo đơn Transaction → Thanh toán mô phỏng OCC & Idempotency → Xác nhận mã `#BL-xxxx` → Lịch sử cá nhân (Anti-IDOR) | Xây dựng hoàn chỉnh Next.js 14 App Router (`apps/web`) và NestJS 10 Monolith (`apps/api`), Prisma ORM kết nối PostgreSQL 16; máy trạng thái `order-state-machine.ts`; kiểm soát tồn kho bằng Khóa lạc quan (OCC). | **PASS** |
+| **Task 5.2: Tích hợp & Kiểm thử** | Kiểm thử Unit đa tầng, kiểm thử Integration với PostgreSQL thực, kiểm thử Playwright UI E2E, ma trận truy vết RTM | Tổng cộng **70/70 ca kiểm thử thành công**: 48 Unit tests + 20 Integration tests kết nối PostgreSQL thực qua Supertest + 2 Playwright UI E2E tests (Desktop & Mobile Chrome). | **PASS** |
+| **Task 5.3: Tự động hóa CI/CD** | Pipeline CI Quality Gate (Install, Migrate Deploy, Seed, Lint, Unit Test, Integration Test, Build, Playwright UI Test); Pipeline CD (Build Docker, Push GHCR, Real Webhook Trigger, Real HTTP Health Smoke Test, Failure Rollback) | `.github/workflows/ci.yml` và `.github/workflows/cd.yml` đã được làm sạch: loại bỏ toàn bộ các bước giả lập `echo SUCCESS`. Pipeline bắt buộc kiểm tra biến bí mật, gửi webhook thật, kiểm tra HTTP 200 tại `/api/health` thật và fail nếu lỗi. | **PASS** |
+| **Task 5.4.1: Database Migrations** | Quản lý phiên bản migration với `prisma migrate deploy`, loại bỏ `db push` | Khởi tạo thư mục `apps/api/prisma/migrations/20261108000000_init_schema` kèm `migration_lock.toml`. Xác minh bằng `npx prisma migrate status`. | **PASS** |
+| **Task 5.4.2: Docker Hardening** | Tách cấu hình Local vs Production, bảo vệ port 5432, loại bỏ secret mặc định | Tạo `docker-compose.prod.yml` cô lập CSDL trên mạng nội bộ `brewlite-internal`, loại bỏ port mapping 5432 ra host, bắt buộc biến môi trường không có fallback không an toàn. Cung cấp `.env.production.example`. | **PASS** |
+| **Task 5.4.3: Rollback Strategy** | Không dùng `prisma migrate resolve --rolled-back` như lệnh hoàn tác mặc định; xây dựng phương án thực tế | Cập nhật quy trình hoàn tác 4 tầng: Container rollback tag, Expand-Contract, Pre-deploy snapshot backup/restore bằng `pg_dump`/`pg_restore`, chỉ dùng resolve metadata sau khi DB vật lý đã hoàn nguyên. | **PASS** |
+| **Task 5.4.4: Live Production Cloud** | Triển khai live trên nền tảng cloud với chứng chỉ HTTPS thực tế | Tạm dừng để không phát sinh chi phí đám mây không mong muốn. Đã chuẩn bị sẵn sàng script, workflow và cấu hình để chạy ngay khi có target host & webhook. | **BLOCKED (PENDING CLOUD TARGET)** |
+| **Task 5.4.5: Release Tag v1.0.0** | Phát hành tag và release chính thức trên GitHub | Tạm hoãn tạo tag release `v1.0.0` trên GitHub cho tới khi URL Production HTTPS thực tế được bàn giao và smoke test thành công. | **DEFERRED** |
 
 ---
 
-## 2. Bằng Chứng Kỹ Thuật Thực Tế (Verifiable Evidence)
-
-Mọi kết quả kiểm thử và biên dịch dưới đây đều được thực thi trực tiếp trên hệ thống thực tế tại `C:\dev\brewlite`, tuyệt đối không làm giả kết quả:
+## 2. Bằng Chứng Kỹ Thuật Thực Tế (Verifiable Execution Logs)
 
 ### 2.1. Kết Quả Kiểm Tra Chuẩn Mã Nguồn (Linting)
 ```text
@@ -112,71 +120,51 @@ Tests:       20 passed, 20 total
 
 ---
 
-### 2.4. Kết Quả Đóng Gói Biên Dịch Production (Production Build)
+### 2.4. Kết Quả Playwright E2E UI Tests (Desktop & Mobile)
 ```text
-> npm run build
-> npm run build --workspaces
+> npx playwright test
 
-> @brewlite/api@1.0.0 build
-> nest build
+Running 2 tests using 1 worker
 
-> @brewlite/web@1.0.0 build
-> next build
+  ok 1 [Desktop Chrome] › tests\e2e\order-flow.spec.ts:4:3 › Complete Customer Ordering Lifecycle (1.4s)
+  ok 2 [Mobile Chrome] › tests\e2e\order-flow.spec.ts:4:3 › Complete Customer Ordering Lifecycle (1.3s)
 
-Route (app)                              Size     First Load JS
-┌ ○ /                                    2.19 kB         102 kB
-├ ○ /_not-found                          873 B            88 kB
-├ ○ /cart                                4.01 kB        99.9 kB
-├ ○ /checkout                            7.01 kB         103 kB
-├ ○ /login                               4.93 kB         101 kB
-├ ○ /order/confirmation                  2.52 kB         102 kB
-├ ○ /orders                              2.78 kB         103 kB
-└ ƒ /products/[id]                       3.06 kB         103 kB
-+ First Load JS shared by all            87.2 kB
+  2 passed (8.6s)
 ```
-*Kết quả:* Cả hai ứng dụng `@brewlite/api` và `@brewlite/web` biên dịch **thành công 100% không có lỗi**.
+*Kết quả:* **2/2 tests passed** trên cả Desktop và Mobile Viewport. Chi tiết tại `docs/testing/playwright-report.md`.
 
 ---
 
-## 3. Danh Mục Các Hiện Vật Đã Bàn Giao (Artifacts Inventory)
+### 2.5. Trạng Thái Prisma Versioned Migrations
+```text
+> npx prisma migrate status --schema=apps/api/prisma/schema.prisma
 
-| Phân nhóm | Tên tệp tin / Hiện vật | Nội dung chi tiết |
+Environment variables loaded from .env
+Prisma schema loaded from apps\api\prisma\schema.prisma
+Datasource "db": PostgreSQL database "brewlite", schema "public" at "127.0.0.1:5432"
+
+1 migration found in prisma/migrations
+
+Database schema is up to date!
+```
+*Kết quả:* Schema đồng bộ 100% với migration `20261108000000_init_schema`.
+
+---
+
+## 3. Danh Mục Các Hiện Vật Kỹ Thuật Đã Bàn Giao
+
+| Phân nhóm | Đường dẫn tệp tin | Nội dung chi tiết |
 |---|---|---|
-| **Mã nguồn Backend** | `apps/api/src/` | 5 modules: `AuthModule`, `ProductsModule`, `OrdersModule`, `PaymentsModule`, `HealthModule` |
+| **Mã nguồn Backend** | `apps/api/src/` | 6 modules: `AuthModule`, `ProductsModule`, `OrdersModule`, `PaymentsModule`, `UsersModule`, `HealthModule` |
 | **Máy trạng thái** | `apps/api/src/orders/state-machine/` | `order-state-machine.ts` cài đặt hàm `assertTransition` bảo vệ toàn vẹn trạng thái |
 | **Mã nguồn Frontend** | `apps/web/src/` | 7 màn hình Next.js App Router: Menu (`/`), Chi tiết (`/products/[id]`), Giỏ (`/cart`), Đăng nhập (`/login`), Thanh toán (`/checkout`), Xác nhận (`/order/confirmation`), Lịch sử (`/orders`) |
 | **Quản lý Giỏ & Auth**| `apps/web/src/lib/store.ts` | Zustand Store với persist LocalStorage, tự động gộp món trùng |
-| **Cơ sở dữ liệu** | `apps/api/prisma/schema.prisma` | 7 bảng thực thể PostgreSQL, cột `version` cho OCC, unique index trên `idempotencyKey` |
+| **Migration CSDL** | `apps/api/prisma/migrations/` | Migration `20261108000000_init_schema` và `migration_lock.toml` |
 | **Dữ liệu mẫu** | `apps/api/prisma/seed.ts` | Gieo mầm người dùng mẫu (`customer@brewlite.com`, `staff@brewlite.com`), 10 món đồ uống thực tế, mã giảm giá `BREW20` |
-| **Containerization** | `docker-compose.yml`, `Dockerfile` (x2) | Điều phối cụm PostgreSQL 16 + API + Web, image siêu nhẹ với Multi-stage build |
-| **CI/CD Workflows** | `.github/workflows/{ci.yml, cd.yml}` | Tự động hóa kiểm thử Quality Gate và đóng gói image phát hành GHCR |
-| **Hồ sơ Kiểm thử** | `docs/testing/test-report.md` | Báo cáo chi tiết 68 ca kiểm thử tự động đạt 100% thành công |
+| **Container Hardened** | `docker-compose.prod.yml`, `.env.production.example` | Cấu hình Docker bảo vệ CSDL trên mạng nội bộ, giới hạn tài nguyên CPU/RAM, xoay vòng log |
+| **CI/CD Workflows** | `.github/workflows/{ci.yml, cd.yml}` | CI tự động hóa Quality Gate; CD kiểm tra HTTP response thật, không giả lập |
+| **Hồ sơ Kiểm thử** | `docs/testing/{test-report.md, playwright-report.md}` | Báo cáo chi tiết 70 ca kiểm thử tự động (Unit, Integration, E2E UI) đạt 100% thành công |
+| **Báo cáo Kiểm toán** | `docs/reviews/{pr-relationship-audit.md, task5-implementation-audit.md}` | Kiểm toán quan hệ PR #6-#9 và đối chiếu thực tế từng tính năng |
 | **Ma trận RTM** | `docs/traceability-matrix.md` | Truy vết toàn diện FR-01..13 và NFR-01..06 đến Sơ đồ, Code và Test |
 | **Kịch bản Demo** | `docs/delivery/demo-script.md` | Hướng dẫn 11 bước trình diễn tương tác trực tiếp cho hội đồng nghiệm thu |
-| **Ghi chú phát hành** | `docs/releases/release-notes.md` | Release Notes chính thức phiên bản v1.0.0 |
-| **Biên bản Agile** | `docs/sprints/sprint-2-{review,retrospective}.md` | Biên bản đánh giá nghiệm thu và cải tiến quy trình kỹ thuật |
-| **Tài liệu trung tâm** | `README.md` | Hướng dẫn đầy đủ cấu trúc, cài đặt nhanh, API, biến môi trường và quy trình rollback |
-
----
-
-## 4. Hướng Dẫn Hội Đồng Kiểm Tra & Nghiệm Thu (Evaluation Instructions)
-
-Để kiểm chứng toàn bộ hệ thống ngay trên máy tính của quý hội đồng:
-
-1. **Khởi động cụm dịch vụ tự động:**
-   ```bash
-   docker compose up -d --build
-   ```
-2. **Kiểm tra giao diện người dùng:** Mở trình duyệt truy cập `http://localhost:3000` và thực hiện theo [Kịch Bản Demo 11 Bước](docs/delivery/demo-script.md).
-3. **Kiểm tra bộ kiểm thử tự động:**
-   ```bash
-   npm test
-   npm --workspace=@brewlite/api run test:e2e
-   ```
-4. **Kiểm tra CI/CD:** Kiểm tra tab Actions tại GitHub Repository để xác nhận pipeline xanh sạch hoàn toàn.
-
----
-
-## 5. Kết Luận Bàn Giao
-
-Nhóm Kỹ sư Phần mềm Cấp cao xin tuyên bố: **Toàn bộ các yêu cầu của Task 5 và đồ án Assignment 2 – BrewLite đã được hoàn thành trọn vẹn, vượt mức mong đợi, có đầy đủ bằng chứng kiểm thử thực chất và sẵn sàng bàn giao đưa vào vận hành thực tế.**
+| **Tài liệu trung tâm** | `README.md`, `docs/deployment.md` | Hướng dẫn đầy đủ cấu trúc, cài đặt nhanh, API, biến môi trường và quy trình rollback 4 tầng |

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy_env:
-        description: 'Môi trường triển khai (Target Environment)'
+        description: 'Target Environment (production / staging)'
         required: true
         default: 'production'
         type: choice
@@ -64,43 +64,90 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ==========================================
-  # Job 2: Deploy to Production Environment
+  # Job 2: Real Production Deployment & Verification
   # ==========================================
   deploy:
-    name: Deploy & Execute Smoke Test
+    name: Deploy & Verify Health Smoke Test
     needs: [build-and-push]
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://brewlite-demo.onrender.com
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Trigger Deployment Webhook
+      - name: Validate Deployment Configuration
         run: |
           echo "=========================================================="
-          echo "Bắt đầu triển khai Production cho commit: ${{ github.sha }}"
+          echo "Kiểm tra cấu hình triển khai Production (Commit: ${{ github.sha }})"
           echo "Môi trường mục tiêu: ${{ inputs.deploy_env || 'production' }}"
           echo "=========================================================="
           
-          # Nếu có secret WEBHOOK_URL cấu hình trong repo, kích hoạt triển khai:
-          if [ -n "${{ secrets.DEPLOY_WEBHOOK_URL }}" ]; then
-            echo "Kích hoạt Deploy Webhook..."
-            curl -s -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}" || echo "Webhook trigger completed."
-          else
-            echo "Deploy Webhook chưa được thiết lập bí mật; giả lập bước kích hoạt tự động thành công."
+          if [ -z "${{ secrets.DEPLOY_WEBHOOK_URL }}" ]; then
+            echo "::error::Bí mật DEPLOY_WEBHOOK_URL chưa được cấu hình trên GitHub Repository."
+            echo "Triển khai tự động dừng lại để bảo đảm an toàn. Không giả lập trạng thái thành công."
+            exit 1
           fi
+
+      - name: Trigger Real Deployment
+        id: deploy_trigger
+        run: |
+          echo "Gửi tín hiệu triển khai tới Production Webhook..."
+          HTTP_CODE=$(curl -s -o /tmp/deploy_res.txt -w "%{http_code}" -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}")
+          echo "HTTP Response Code: $HTTP_CODE"
+          cat /tmp/deploy_res.txt || true
+          
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            echo "::error::Gọi Webhook triển khai thất bại với HTTP code $HTTP_CODE"
+            exit 1
+          fi
+          echo "Tín hiệu triển khai đã được tiếp nhận thành công."
 
       - name: Post-Deploy Health Check & Smoke Test
         run: |
-          echo "Tiến hành Smoke Test kiểm tra dịch vụ sống còn..."
-          echo "Kiểm tra cấu hình và trạng thái container..."
-          # Kiểm tra endpoint mẫu hoặc cấu hình
-          echo "SMOKE TEST: SUCCESS (Health OK)"
+          TARGET_URL="${{ vars.PRODUCTION_API_URL || secrets.PRODUCTION_API_URL }}"
+          if [ -z "$TARGET_URL" ]; then
+            echo "::error::PRODUCTION_API_URL chưa được cấu hình. Không thể xác minh dịch vụ thực tế."
+            exit 1
+          fi
+          
+          echo "Tiến hành Smoke Test kiểm tra endpoint thực tế tại: $TARGET_URL/api/health"
+          ATTEMPTS=0
+          MAX_ATTEMPTS=12
+          SLEEP_SECONDS=10
+          
+          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            ATTEMPTS=$((ATTEMPTS+1))
+            echo "[$ATTEMPTS/$MAX_ATTEMPTS] Đang gửi yêu cầu GET $TARGET_URL/api/health..."
+            
+            HTTP_STATUS=$(curl -s -o /tmp/health_res.json -w "%{http_code}" --max-time 10 "$TARGET_URL/api/health" || echo "000")
+            
+            if [ "$HTTP_STATUS" == "200" ]; then
+              echo "Nhận HTTP 200 từ dịch vụ Production."
+              cat /tmp/health_res.json
+              echo ""
+              
+              # Xác thực nội dung JSON phản hồi chứa status ok
+              if grep -q '"status":"ok"' /tmp/health_res.json; then
+                echo "XÁC NHẬN: Health check phản hồi hợp lệ (status: ok). Smoke test PASS."
+                exit 0
+              fi
+            fi
+            
+            echo "Dịch vụ chưa sẵn sàng (HTTP: $HTTP_STATUS). Đợi $SLEEP_SECONDS giây..."
+            sleep $SLEEP_SECONDS
+          done
+          
+          echo "::error::Quá thời gian chờ (Timeout): Dịch vụ production không phản hồi HTTP 200 sau $MAX_ATTEMPTS lần thử."
+          cat /tmp/health_res.json 2>/dev/null || true
+          exit 1
 
-      - name: Rollback Strategy on Failure
+      - name: Rollback Notification on Failure
         if: failure()
         run: |
-          echo "CRITICAL: Triển khai production thất bại! Kích hoạt quy trình hoàn tác (Rollback)..."
-          echo "Chuyển hướng lưu lượng truy cập về phiên bản ổn định trước đó."
+          echo "::error::CRITICAL: Quá trình triển khai hoặc kiểm thử Production thất bại!"
+          echo "Quy trình an toàn: Không chuyển hướng lưu lượng truy cập sang bản build mới lỗi."
+          if [ -n "${{ secrets.ROLLBACK_WEBHOOK_URL }}" ]; then
+            echo "Kích hoạt Rollback Webhook..."
+            curl -s -X POST "${{ secrets.ROLLBACK_WEBHOOK_URL }}" || true
+          fi

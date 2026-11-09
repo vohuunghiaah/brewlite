@@ -43,3 +43,4 @@
 | 1 | **Tích hợp Real-time Notifications** | Backend & Frontend | Sprint tiếp theo | Áp dụng WebSocket / Server-Sent Events (SSE) để đẩy trạng thái pha chế tức thì tới màn hình khách hàng mà không cần F5 |
 | 2 | **Cấu hình APM & Observability** | DevOps | Sprint tiếp theo | Bổ sung OpenTelemetry hoặc Prometheus exporter tại endpoint `/metrics` để theo dõi tải hệ thống |
 | 3 | **Cải tiến Cache Sản Phẩm** | Backend | Sprint tiếp theo | Ứng dụng Redis Cache cho endpoint `GET /products` giúp giảm tải cho cơ sở dữ liệu khi lượng truy cập tăng vọt |
+
