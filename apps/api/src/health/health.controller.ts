@@ -19,7 +19,8 @@ export class HealthController {
       status: dbStatus === 'connected' ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
       service: 'brewlite-api',
-      version: '1.0.0',
+      version: process.env.APP_VERSION || '1.0.0',
+      commit: process.env.GIT_COMMIT_SHA || process.env.IMAGE_TAG || 'dev',
       database: dbStatus,
     };
   }

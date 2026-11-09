@@ -29,6 +29,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=4000
+ARG GIT_COMMIT_SHA=unknown
+ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 RUN apk add --no-cache openssl curl
 

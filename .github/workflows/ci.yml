@@ -98,15 +98,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Determine Docker Image Tags
+        id: meta
+        run: |
+          API_TAGS="ghcr.io/${{ github.repository }}/api:${{ github.sha }}"
+          WEB_TAGS="ghcr.io/${{ github.repository }}/web:${{ github.sha }}"
+          # CHỈ gắn tag 'latest' khi chạy trên nhánh chính 'main'
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Đang trên nhánh main: cho phép gắn thêm tag latest."
+            API_TAGS="${API_TAGS},ghcr.io/${{ github.repository }}/api:latest"
+            WEB_TAGS="${WEB_TAGS},ghcr.io/${{ github.repository }}/web:latest"
+          else
+            echo "Đang trên nhánh tính năng (${{ github.ref }}): KHÔNG gắn tag latest để tránh ghi đè image sản xuất."
+          fi
+          echo "api_tags=${API_TAGS}" >> $GITHUB_OUTPUT
+          echo "web_tags=${WEB_TAGS}" >> $GITHUB_OUTPUT
+
       - name: Build & Push API Docker Image
         uses: docker/build-push-action@v5
         with:
           context: ./apps/api
           file: ./apps/api/Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/api:latest
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.api_tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -118,9 +134,8 @@ jobs:
           push: true
           build-args: |
             NEXT_PUBLIC_API_URL=http://localhost:4000/api
-          tags: |
-            ghcr.io/${{ github.repository }}/web:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/web:latest
+            GIT_COMMIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.web_tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

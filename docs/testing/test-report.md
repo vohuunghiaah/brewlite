@@ -4,7 +4,7 @@
 **Phiên bản kiểm thử:** Sprint 2 MVP Delivery  
 **Ngày thực hiện:** 08/11/2026  
 **Môi trường:** Node.js v20+, TypeScript 5.6+, PostgreSQL 16+ (WSL2/Docker), Next.js 14, NestJS 10  
-**Tình trạng:** **TẤT CẢ 68/68 TESTS ĐẠT CHUẨN (100% PASS)**
+**Tình trạng:** **TẤT CẢ 77/77 TESTS ĐẠT CHUẨN (100% PASS)**
 
 ---
 
@@ -14,11 +14,11 @@ Hệ thống BrewLite được xây dựng với chiến lược bảo đảm ch
 
 ```
           / \
-         / E2E \        -> Playwright Flow (Menu -> Cart -> Auth -> Payment -> History)
+         / E2E \        -> 2 Playwright Tests (Menu -> Cart -> Auth -> Payment -> History)
         /-------\
        /  Integ  \      -> 20 Supertest E2E Tests (Real PostgreSQL, JWT, OCC, Idempotency, IDOR)
       /-----------\
-     /    Unit     \    -> 48 Unit Tests (NestJS Services, State Machine, Zustand Store, UI Cards)
+     /    Unit     \    -> 55 Unit Tests (CORS Security, NestJS Services, State Machine, Zustand Store, UI Cards)
     /---------------\
 ```
 
@@ -27,19 +27,20 @@ Hệ thống BrewLite được xây dựng với chiến lược bảo đảm ch
 ## 2. Kết Quả Kiểm Thử Chi Tiết
 
 ### 2.1. Backend Unit Tests (`apps/api`)
-- **Bộ kiểm thử (Test Suites):** 7 suites
-- **Số ca kiểm thử (Tests):** 34 passed, 0 failed
-- **Thời gian chạy:** ~26s
+- **Bộ kiểm thử (Test Suites):** 8 suites
+- **Số ca kiểm thử (Tests):** 41 passed, 0 failed
+- **Thời gian chạy:** ~34s
 
 | Suite | File | Số test | Mục tiêu kiểm thử | Trạng thái |
 |---|---|:---:|---|:---:|
+| **CORS Security** | `cors.util.spec.ts` | 7 | Chặn wildcard (*), chặn origin không an toàn HTTP, bắt buộc HTTPS trong production | **PASS** |
+| **Health Check** | `health.controller.spec.ts` | 3 | Kiểm tra endpoint giám sát sống còn `/health`, trả về DB status, commit SHA và phiên bản | **PASS** |
 | **State Machine** | `order-state-machine.spec.ts` | 6 | Xác thực ma trận chuyển trạng thái hợp lệ và chặn đứng các bước nhảy trái phép | **PASS** |
-| **Health Check** | `health.controller.spec.ts` | 2 | Kiểm tra endpoint giám sát sống còn `/health` | **PASS** |
 | **Products Controller**| `products.controller.spec.ts`| 4 | Kiểm tra định tuyến lấy danh sách và chi tiết món | **PASS** |
 | **Products Service** | `products.service.spec.ts` | 4 | Xử lý filter danh mục, tìm kiếm từ khóa, stock count | **PASS** |
 | **Auth Service** | `auth.service.spec.ts` | 5 | Mã hóa bcrypt, JWT payload (sub, email, role), chống trùng email | **PASS** |
 | **Orders Service** | `orders.service.spec.ts` | 6 | Tính toán lại giá server-side, áp mã giảm giá, kiểm tra tồn kho | **PASS** |
-| **Payments Service** | `payments.service.spec.ts` | 7 | Xử lý Idempotency-Key chống thanh toán trùng, Optimistic Concurrency Control (OCC) trừ kho, tích điểm thưởng | **PASS** |
+| **Payments Service** | `payments.service.spec.ts` | 6 | Xử lý Idempotency-Key chống thanh toán trùng, Optimistic Concurrency Control (OCC) trừ kho, tích điểm thưởng | **PASS** |
 
 ### 2.2. Frontend Unit & Component Tests (`apps/web`)
 - **Bộ kiểm thử (Test Suites):** 3 suites
@@ -107,12 +108,12 @@ Hệ thống BrewLite được xây dựng với chiến lược bảo đảm ch
 ========================================================================
  Phân loại                 Số Suite        Số Test        Kết quả
 ------------------------------------------------------------------------
- Backend Unit Tests            7              34           100% PASS
+ Backend Unit Tests            8              41           100% PASS
  Frontend Unit Tests           3              14           100% PASS
  API & DB Integration Tests    1              20           100% PASS
  Playwright E2E UI Tests       1               2           100% PASS
 ------------------------------------------------------------------------
- TỔNG CỘNG                    12              70           ALL PASSED
+ TỔNG CỘNG                    13              77           ALL PASSED
 ========================================================================
 ```
 

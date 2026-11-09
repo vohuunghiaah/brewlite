@@ -2,7 +2,7 @@
 
 [![CI Quality Gate](https://github.com/vohuunghiaah/brewlite/actions/workflows/ci.yml/badge.svg)](https://github.com/vohuunghiaah/brewlite/actions/workflows/ci.yml)
 [![CD Production Delivery](https://github.com/vohuunghiaah/brewlite/actions/workflows/cd.yml/badge.svg)](https://github.com/vohuunghiaah/brewlite/actions/workflows/cd.yml)
-[![Tests Status](https://img.shields.io/badge/Tests-68%2F68%20Passed-success)](docs/testing/test-report.md)
+[![Tests Status](https://img.shields.io/badge/Tests-77%2F77%20Passed-success)](docs/testing/test-report.md)
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript%205.6-blue)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -89,7 +89,7 @@ c:\dev\brewlite\
 │   ├── requirements/              # SRS, Use-cases, Bối cảnh & Phạm vi
 │   ├── architecture/              # Thiết kế kiến trúc tổng thể & 5 quyết định ADR
 │   ├── diagrams/                  # Activity, Class Domain, Sequence, Deployment Diagrams
-│   ├── testing/                   # test-report.md (Báo cáo 68 tests đạt chuẩn)
+│   ├── testing/                   # test-report.md (Báo cáo 77 tests đạt chuẩn)
 │   ├── releases/                  # release-notes.md (Ghi chú phát hành v1.0.0)
 │   ├── sprints/                   # Biên bản Review & Retrospective Sprint 1 & 2
 │   ├── delivery/                  # demo-script.md (Kịch bản 11 bước), final-report.md
@@ -163,19 +163,22 @@ Hệ thống đã chuẩn bị sẵn các tài khoản thử nghiệm với quy�
 
 ## 5. Kiểm Thử Hệ Thống (Testing & Quality Assurance)
 
-Toàn bộ hệ thống sở hữu **68 ca kiểm thử tự động đạt tỷ lệ thành công 100%**:
+Toàn bộ hệ thống sở hữu **77 ca kiểm thử tự động đạt tỷ lệ thành công 100%** (13 test suites):
 
 ```bash
-# 1. Chạy 48 Unit Tests Monorepo (Web + API)
+# 1. Chạy 55 Unit Tests Monorepo (Web + API)
 npm test
 
 # 2. Chạy 20 Integration Tests kết nối Database thực tế
 npm --workspace=@brewlite/api run test:e2e
 
-# 3. Chạy Linting kiểm tra cú pháp & chuẩn format (0 errors, 0 warnings)
+# 3. Chạy 2 Playwright Frontend E2E UI Tests
+npm run test:e2e:ui
+
+# 4. Chạy Linting kiểm tra cú pháp & chuẩn format (0 errors, 0 warnings)
 npm run lint
 
-# 4. Kiểm tra biên dịch bản phát hành Production
+# 5. Kiểm tra biên dịch bản phát hành Production
 npm run build
 ```
 

@@ -45,6 +45,26 @@ services:
       - brewlite-internal
 
   # ==========================================
+  # Database Migration: Prisma (Private Network Execution)
+  # Blocks API from starting if migrations fail
+  # ==========================================
+  migration:
+    image: ghcr.io/vohuunghiaah/brewlite/api:${IMAGE_TAG:-latest}
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: brewlite-prod-migration
+    command: ["npx", "prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - brewlite-internal
+
+  # ==========================================
   # Backend API: NestJS (Production)
   # ==========================================
   api:
@@ -62,10 +82,12 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       JWT_SECRET: ${JWT_SECRET:?Error: JWT_SECRET must be set and secure (min 32 chars)}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Error: CORS_ORIGIN must be explicitly set with trusted HTTPS origins in production}
     depends_on:
       postgres:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
       interval: 15s
@@ -106,7 +128,8 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Error: NEXT_PUBLIC_API_URL must be configured}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Error: NEXT_PUBLIC_API_URL must be configured with HTTPS in production}
+      API_INTERNAL_URL: http://api:4000/api
     depends_on:
       api:
         condition: service_healthy
@@ -131,6 +154,7 @@ services:
         max-file: "5"
     networks:
       - brewlite-public
+      - brewlite-internal
 
 volumes:
   postgres_prod_data:

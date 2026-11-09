@@ -1,5 +1,18 @@
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+export function getApiBaseUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== 'undefined') {
+    // When loaded in a browser over HTTPS
+    if (window.location.protocol === 'https:') {
+      // If no env is set or if env was set to insecure http://localhost (accidental dev bake), fallback to relative '/api'
+      if (!envUrl || envUrl.startsWith('http://localhost') || envUrl.startsWith('http://127.0.0.1')) {
+        return '/api';
+      }
+    }
+  }
+  return envUrl || 'http://localhost:4000/api';
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export interface Product {
   id: string;
