@@ -37,7 +37,7 @@ feature/sprint2-full-flow (Nhánh hiện tại đang hoàn thiện & hardening)
 | PR | Nhánh Head | Nhánh Base | Tác giả | Số tệp | Số dòng (+/-) | Trạng thái CI | Đánh giá & Rủi ro |
 | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
 | **#6** | `chore/setup-repository` | `main` | `vohuunghiaah` | 17 | +657 / -1 | PASS | Hợp lệ. Khởi tạo cấu trúc monorepo, tài liệu Task 4.1. Sẵn sàng merge đầu tiên. |
-| **#7** | `feature/sprint1-mvp-foundation` | `chore/setup-repository` | `vohuunghiaah` | 42 | +3,485 / -20 | PASS | Hợp lệ. Nền tảng Task 1–3 (SRS, ADR, sơ đồ PlantUML) và Sprint 1 MVP backend/frontend. |
+| **#7** | `feature/sprint1-mvp-foundation` | `chore/setup-repository` | `vohuunghiaah` | 42 | +3,485 / -20 | PASS | **MERGEABLE: TRUE** (Đã giải quyết triệt để xung đột `.env.example`, thống nhất các biến môi trường từ cả 2 nhánh mà không làm mất thông tin). Nền tảng Task 1–3 (SRS, ADR, sơ đồ PlantUML) và Sprint 1 MVP. |
 | **#8** | `feat/devops-config` | `chore/setup-repository` | `kenn4334-crypto` | **27,684** | **+2,862,624** | Unstable | **CỰC KỲ NGUY HIỂM.** Chứa toàn bộ binary và `node_modules` chưa qua sàng lọc. Nếu merge sẽ làm phình dung lượng repository vĩnh viễn và xung đột cấu trúc. **Khuyến nghị reject / close.** |
 | **#9** | `feature/sprint2-full-flow` | `feature/sprint1-mvp-foundation` | `vohuunghiaah` | 86 | +5,417 / -63 | **PASSED** | Toàn bộ Task 5: Luồng đầy đủ từ Menu đến Thanh toán và Lịch sử đơn hàng, kiểm thử Playwright, migration phiên bản, Docker production, CD workflow. |
 
