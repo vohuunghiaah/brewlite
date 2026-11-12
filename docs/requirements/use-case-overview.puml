@@ -1,0 +1,54 @@
+@startuml BrewLite_UseCase
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+left to right direction
+
+' Actor bên trái
+actor "Khách hàng" as Customer
+
+rectangle "Hệ thống BrewLite" {
+  usecase "Thanh toán không tiền mặt" as UC_Payment
+  usecase "Xem danh sách đồ uống" as UC_ViewMenu
+  usecase "Chọn size & topping" as UC_SelectSize
+  usecase "Đặt đồ uống (Tạo đơn)" as UC_Order
+  usecase "Quản lý giỏ hàng" as UC_Cart
+  usecase "Theo dõi trạng thái đơn" as UC_Track
+  usecase "Xem lịch sử đơn" as UC_History
+  usecase "Tiếp nhận đơn hàng" as UC_Receive
+  usecase "Cập nhật trạng thái pha chế" as UC_UpdateStatus
+  usecase "Quản lý danh mục menu" as UC_ManageMenu
+  usecase "Xem báo cáo doanh thu & đơn hàng" as UC_Report
+}
+
+' Các actor bên phải
+actor "Đơn vị thanh toán\n«Hệ thống»" as PaymentSystem
+actor "Quản lý / Product Owner" as Manager
+actor "Nhân viên quầy / Barista" as Barista
+
+' ===== Associations từ Khách hàng (trái) =====
+Customer --> UC_Payment
+Customer --> UC_ViewMenu
+Customer --> UC_SelectSize
+Customer --> UC_Order
+Customer --> UC_Cart
+Customer --> UC_Track
+Customer --> UC_History
+
+' Include / Extend
+UC_Order ..> UC_Payment : «include»
+UC_Order ..> UC_Cart : «include»
+UC_SelectSize ..> UC_ViewMenu : «extend»
+
+' ===== Associations từ các actor bên phải =====
+PaymentSystem --> UC_Payment
+
+Manager --> UC_UpdateStatus
+Manager --> UC_ManageMenu
+Manager --> UC_Report
+
+Barista --> UC_Receive
+Barista --> UC_UpdateStatus
+Barista --> UC_Report
+
+@enduml
