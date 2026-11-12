@@ -93,3 +93,4 @@ export function ProductCard({ product, onSelect }: ProductCardProps) {
     </div>
   );
 }
+

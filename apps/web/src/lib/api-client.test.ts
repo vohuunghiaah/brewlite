@@ -45,3 +45,4 @@ describe('API Client', () => {
     expect(detail).toEqual(mockDetail);
   });
 });
+

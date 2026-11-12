@@ -34,6 +34,8 @@ describe('HealthController', () => {
     expect(health.status).toBe('ok');
     expect(health.database).toBe('connected');
     expect(health.service).toBe('brewlite-api');
+    expect(health.version).toBeDefined();
+    expect(health.commit).toBeDefined();
   });
 
   it('should return degraded when database query fails', async () => {

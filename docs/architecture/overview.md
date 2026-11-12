@@ -71,3 +71,4 @@ BrewLite áp dụng kiến trúc **Modular Monolith (Đơn khối theo mô-đun)
 ### 2.3 Health Check & Giám sát (Observability)
 - Cung cấp endpoint `GET /health` trả về trạng thái liveness của HTTP server và readiness của kết nối PostgreSQL.
 - Structured JSON logging ghi nhận mã lỗi HTTP, stack trace trong môi trường phát triển và bảo vệ thông tin cá nhân (PII) người dùng.
+

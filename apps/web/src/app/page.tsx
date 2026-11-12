@@ -41,7 +41,7 @@ export default function MenuPage() {
 
   return (
     <div className="min-h-screen bg-stone-50">
-      <Header cartItemCount={0} />
+      <Header />
 
       <main className="max-w-md mx-auto px-4 py-4 space-y-4">
         {/* Banner Chào Mừng */}

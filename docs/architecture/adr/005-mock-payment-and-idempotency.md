@@ -17,3 +17,4 @@ BrewLite là hệ thống đặt cà phê không dùng tiền mặt (Cashless). 
 ## Hệ quả (Consequences)
 - **Tích cực:** Ngăn ngừa hoàn toàn lỗi thanh toán trùng lặp (Double Spending / Duplicate Charges); đáp ứng hoàn hảo tiêu chí kiểm thử tự động của bài tập mà không tốn chi phí.
 - **Tiêu cực:** Client chịu trách nhiệm sinh và quản lý UUID `Idempotency-Key` trước mỗi lượt thanh toán.
+
