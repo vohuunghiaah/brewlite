@@ -1,0 +1,228 @@
+@startuml class-domain
+skinparam DefaultFontSize 12
+skinparam DefaultFontName "Segoe UI", Arial, sans-serif
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2C3E50
+skinparam ClassHeaderBackgroundColor #EAECEE
+skinparam EnumBackgroundColor #FEF9E7
+skinparam EnumBorderColor #B7950B
+skinparam RoundCorner 6
+skinparam Shadowing false
+skinparam StereotypeCBackgroundColor #AED6F1
+skinparam StereotypeEBackgroundColor #F9E79F
+
+title **LƯỢC ĐỒ LỚP MIỀN NGHIỆP VỤ (DOMAIN CLASS DIAGRAM) — BREWLITE**\n//Mô hình hóa cấu trúc hướng đối tượng: 7 Domain Classes, 7 Enums, Kiểu dữ liệu, Phương thức & Quan hệ//
+
+package "Enums & Types" #F4F6F7 {
+  enum UserRole {
+    CUSTOMER
+    STAFF
+    ADMIN
+  }
+
+  enum OrderStatus {
+    PENDING
+    PAID
+    PREPARING
+    READY
+    COMPLETED
+    PAYMENT_FAILED
+    CANCELLED
+  }
+
+  enum PaymentStatus {
+    PENDING
+    SUCCESS
+    FAILED
+  }
+
+  enum PaymentMethod {
+    E_WALLET
+    BANK_CARD
+  }
+
+  enum ProductSize {
+    SMALL
+    MEDIUM
+    LARGE
+  }
+
+  enum DiscountType {
+    PERCENTAGE
+    FIXED_AMOUNT
+  }
+
+  enum LoyaltyTransactionType {
+    EARN
+    REDEEM
+  }
+}
+
+package "Domain Entities" #EBF5FB {
+
+  class User {
+    - id: String {PK, UUID}
+    - email: String {Unique}
+    - passwordHash: String
+    - fullName: String
+    - role: UserRole
+    - loyaltyPoints: Int
+    - createdAt: DateTime
+    - updatedAt: DateTime
+    __
+    + validatePassword(plainPassword: String): Boolean
+    + addLoyaltyPoints(earnedPoints: Int): Int
+    + deductLoyaltyPoints(usedPoints: Int): Boolean
+    + getOrderHistory(): List<Order>
+    + isStaff(): Boolean
+  }
+
+  class Product {
+    - id: String {PK, UUID}
+    - name: String
+    - description: String?
+    - category: String
+    - basePrice: Decimal
+    - imageUrl: String
+    - stock: Int
+    - version: Int {Optimistic Lock}
+    - isAvailable: Boolean
+    - createdAt: DateTime
+    - updatedAt: DateTime
+    __
+    + calculateLinePrice(size: ProductSize, toppings: List<String>): Decimal
+    + hasSufficientStock(requestedQty: Int): Boolean
+    + deductStockOptimistic(quantity: Int, currentVersion: Int): Boolean
+    + restoreStock(quantity: Int): void
+  }
+
+  class Order {
+    - id: String {PK, UUID}
+    - orderCode: String {Unique, #xxxx}
+    - userId: String {FK}
+    - status: OrderStatus
+    - subtotal: Decimal
+    - discountAmount: Decimal
+    - totalAmount: Decimal
+    - note: String?
+    - promoCode: String?
+    - createdAt: DateTime
+    - updatedAt: DateTime
+    __
+    + assertTransition(nextStatus: OrderStatus): void
+    + addOrderItem(item: OrderItem): void
+    + applyVoucher(promotion: Promotion): Decimal
+    + calculateTotals(): void
+    + calculateLoyaltyPoints(): Int
+    + isTerminal(): Boolean
+    + canBeCancelled(): Boolean
+  }
+
+  class OrderItem {
+    - id: String {PK, UUID}
+    - orderId: String {FK}
+    - productId: String {FK}
+    - size: ProductSize
+    - toppings: List<String> {JSON}
+    - quantity: Int
+    - unitPrice: Decimal
+    - lineTotal: Decimal
+    __
+    + computeLineTotal(): Decimal
+    + getSummary(): String
+  }
+
+  class Payment {
+    - id: String {PK, UUID}
+    - orderId: String {FK}
+    - idempotencyKey: String {Unique, UUID-v4}
+    - method: PaymentMethod
+    - amount: Decimal
+    - status: PaymentStatus
+    - transactionRef: String?
+    - failureReason: String?
+    - createdAt: DateTime
+    __
+    + process(): Boolean
+    + markAsSuccess(reference: String): void
+    + markAsFailed(reason: String): void
+    + issueRefund(refundRef: String): Boolean
+  }
+
+  class Promotion {
+    - id: String {PK, UUID}
+    - code: String {Unique, BREW20}
+    - description: String?
+    - discountType: DiscountType
+    - discountValue: Decimal
+    - minOrderValue: Decimal
+    - validFrom: DateTime
+    - validUntil: DateTime
+    - usageLimit: Int?
+    - usedCount: Int
+    - isActive: Boolean
+    __
+    + isApplicable(orderTotal: Decimal): Boolean
+    + calculateDiscount(orderTotal: Decimal): Decimal
+    + recordUsage(): void
+  }
+
+  class LoyaltyTransaction {
+    - id: String {PK, UUID}
+    - userId: String {FK}
+    - orderId: String? {FK}
+    - points: Int
+    - type: LoyaltyTransactionType
+    - description: String
+    - createdAt: DateTime
+    __
+    + createEarnRecord(user: User, order: Order, pts: Int): LoyaltyTransaction
+    + createRedeemRecord(user: User, pts: Int, desc: String): LoyaltyTransaction
+  }
+}
+
+' Entity Relationships
+User "1" *-- "0..*" Order : places >
+User "1" *-- "0..*" LoyaltyTransaction : owns >
+Order "1" *-- "1..*" OrderItem : contains >
+Order "1" *-- "0..*" Payment : receives >
+Product "1" <-- "0..*" OrderItem : references <
+Order "0..*" o-- "0..1" Promotion : applies >
+Order "0..1" <-- "0..*" LoyaltyTransaction : generates <
+
+' Enum Usages
+User ..> UserRole : typed by
+Order ..> OrderStatus : lifecycle managed by
+OrderItem ..> ProductSize : customized by
+Payment ..> PaymentStatus : status tracked by
+Payment ..> PaymentMethod : processed via
+Promotion ..> DiscountType : categorized by
+LoyaltyTransaction ..> LoyaltyTransactionType : categorized by
+
+note right of Order::assertTransition
+  **Hàm kiểm soát máy trạng thái (Order State Machine):**
+  Ngăn chặn chuyển đổi trạng thái bất hợp lệ.
+  Hợp lệ:
+  - PENDING -> PAID | PAYMENT_FAILED | CANCELLED
+  - PAYMENT_FAILED -> PAID | CANCELLED
+  - PAID -> PREPARING | CANCELLED (auto-refund)
+  - PREPARING -> READY | CANCELLED (auto-refund)
+  - READY -> COMPLETED
+  - Terminal: COMPLETED, CANCELLED
+end note
+
+note bottom of Product
+  **Khóa lạc quan (Optimistic Concurrency Control):**
+  Trường `version` tăng thêm 1 ở mỗi lần trừ kho thành công:
+  UPDATE "Product" SET stock = stock - qty, version = version + 1
+  WHERE id = :id AND stock >= qty AND version = :version;
+end note
+
+note bottom of Payment
+  **Bảo vệ Idempotency (Anti-Duplicate):**
+  Cột `idempotencyKey` có ràng buộc UNIQUE trong CSDL.
+  Nếu request gửi lại trùng key, hệ thống trả về ngay
+  kết quả Payment đã thành công trước đó mà không trừ tiền lại.
+end note
+
+@enduml

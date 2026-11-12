@@ -1,0 +1,250 @@
+@startuml activity-order-flow
+skinparam DefaultFontSize 12
+skinparam DefaultFontName "Segoe UI", Arial, sans-serif
+skinparam ActivityDiamondBackgroundColor #FEFECE
+skinparam ActivityDiamondBorderColor #A80036
+skinparam ActivityBackgroundColor #FDFDFD
+skinparam ActivityBorderColor #333333
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #DAA520
+
+title **SƠ ĐỒ HOẠT ĐỘNG: QUY TRÌNH ĐẶT VÀ THANH TOÁN ĐỒ UỐNG TOÀN TRÌNH (BREWLITE ORDER FLOW)**\n//Phạm vi: Từ duyệt Menu đến Nhận đồ uống tại quầy — Tích hợp 5 Swimlanes & Toàn bộ Nhánh ngoại lệ//
+
+|#LightYellow|Customer\n(Khách hàng)|
+|#LightSkyBlue|Next.js Frontend\n(Giao diện PWA)|
+|#LightGreen|NestJS API\n(Máy chủ xử lý)|
+|#Wheat|Payment Gateway\n(Cổng thanh toán Mock)|
+|#Lavender|PostgreSQL DB\n(Cơ sở dữ liệu)|
+
+|Customer|
+start
+:Mở ứng dụng BrewLite PWA trên điện thoại;
+
+|Next.js Frontend|
+:Khởi tạo giao diện trang chủ;
+:Gửi yêu cầu GET /api/products;
+
+|NestJS API|
+:Tiếp nhận yêu cầu lấy danh mục đồ uống;
+
+|PostgreSQL DB|
+:Truy vấn danh sách sản phẩm còn hoạt động (isAvailable = true);
+:Trả về dữ liệu danh mục & sản phẩm;
+
+|NestJS API|
+:Phản hồi HTTP 200 OK kèm danh sách Product[];
+
+|Next.js Frontend|
+:Tắt hiệu ứng Skeleton Loading;
+:Hiển thị Menu đồ uống trực quan kèm hình ảnh và đơn giá;
+
+|Customer|
+:Duyệt danh mục và chọn sản phẩm yêu thích (VD: Cappuccino);
+
+|Next.js Frontend|
+:Mở màn hình Chi tiết sản phẩm (/products/:id);
+
+|Customer|
+:Tùy chọn kích cỡ (Size S/M/L) và Topping (Kem cheese, Trân châu);
+
+|Next.js Frontend|
+:Tính toán lại đơn giá thời gian thực;
+
+|Customer|
+:Nhấn nút "Thêm vào giỏ hàng";
+
+|Next.js Frontend|
+:Lưu sản phẩm tùy biến vào Zustand Cart Store;
+:Cập nhật huy hiệu số lượng trên biểu tượng giỏ hàng;
+
+|Customer|
+:Mở màn hình Giỏ hàng (/cart), kiểm tra danh sách món & tổng tiền;
+:Nhấn nút "Thanh toán";
+
+|Next.js Frontend|
+:Kiểm tra trạng thái xác thực người dùng (Auth Token);
+
+if (Đã có Bearer JWT Token hợp lệ?) then (Chưa đăng nhập / Token hết hạn)
+  |#LightPink|Next.js Frontend|
+  note right
+    **Ngoại lệ 401: Unauthenticated**
+    Bảo toàn giỏ hàng trong Local Storage
+  end note
+  :Lưu trạng thái giỏ hàng hiện tại;
+  :Điều hướng sang trang Đăng nhập / Đăng ký (/login);
+  |Customer|
+  :Nhập thông tin xác thực (Email, Password);
+  :Nhấn nút Đăng nhập / Đăng ký;
+  |Next.js Frontend|
+  :Gửi POST /api/auth/login hoặc /register;
+  |NestJS API|
+  :Xác thực mật khẩu (Bcrypt compare);
+  :Sinh JWT Bearer Token mới;
+  |Next.js Frontend|
+  :Lưu accessToken vào bộ nhớ client;
+  :Tự động điều hướng quay lại luồng Thanh toán;
+else (Đã xác thực JWT)
+endif
+
+|Next.js Frontend|
+:Gửi yêu cầu tạo đơn hàng POST /api/orders\nkèm Bearer JWT, danh sách items, note, promoCode;
+
+|NestJS API|
+:JwtAuthGuard kiểm tra token hợp lệ;
+:DTO validation (CreateOrderDto);
+:Mở Prisma Interactive Transaction;
+
+|PostgreSQL DB|
+:Truy vấn kiểm tra tồn kho (stock >= quantity);
+
+if (Tồn kho của tất cả sản phẩm hợp lệ?) then (Không đủ tồn kho)
+  |#Salmon|NestJS API|
+  note right
+    **Ngoại lệ 409: Out-of-Stock**
+    (Kiểm tra tại bước tạo đơn)
+  end note
+  :Rollback Database Transaction;
+  :Trả về mã lỗi HTTP 409 Conflict\n{"message": "Sản phẩm đã hết hàng"};
+  |Next.js Frontend|
+  :Hiển thị thông báo "Món vừa hết hàng, vui lòng chọn món khác";
+  :Giữ nguyên các món còn lại trong giỏ hàng;
+  |Customer|
+  stop
+else (Đủ tồn kho)
+  |PostgreSQL DB|
+  :Chèn bản ghi Order mới (status = 'PENDING', orderCode = '#xxxx');
+  :Chèn các bản ghi con OrderItem;
+  :Commit Database Transaction;
+  |NestJS API|
+  :Trả về HTTP 201 Created\nkèm orderId, orderCode, totalAmount;
+endif
+
+|Next.js Frontend|
+:Hiển thị màn hình Chọn phương thức thanh toán;
+
+|Customer|
+:Chọn phương thức: Ví điện tử (E-Wallet) hoặc Thẻ (Bank Card);
+:Nhấn nút "Xác nhận trả";
+
+|Next.js Frontend|
+:Truy xuất hoặc tạo mới Idempotency-Key (UUID-v4);\nLưu sessionStorage: 'idemp_' + orderId;
+:Gửi request POST /api/payments\nkèm Header Idempotency-Key, body { orderId, method, amount };
+
+|NestJS API|
+:Kiểm tra DTO và đối chiếu an ninh:\n(payload.amount === order.totalAmount);
+
+|PostgreSQL DB|
+:Kiểm tra tồn tại Idempotency-Key trong bảng Payment;
+
+if (Idempotency-Key đã tồn tại và thành công?) then (Phát hiện Retry trùng lặp)
+  |#LightCyan|NestJS API|
+  note right
+    **Nhánh Idempotent Retry**
+    Tránh trừ tiền trùng lặp khi mạng chập chờn
+  end note
+  :Lấy bản ghi Payment đã thành công trước đó;
+  :Trả về kết quả thành công ngay lập tức\nmà không trừ tiền hay trừ kho lần hai;
+else (Giao dịch thanh toán mới)
+  |NestJS API|
+  :Kiểm tra máy trạng thái: assertTransition(order.status, PAID);
+  if (Chuyển trạng thái từ PENDING sang PAID hợp lệ?) then (Bất hợp lệ)
+    |#Salmon|NestJS API|
+    note right
+      **Ngoại lệ 400: Invalid State Transition**
+    end note
+    :Ném InvalidStateTransitionException;
+    :Trả về HTTP 400 Bad Request;
+    |Next.js Frontend|
+    :Hiển thị thông báo "Trạng thái đơn hàng không hợp lệ để thanh toán";
+    |Customer|
+    stop
+  else (Chuyển trạng thái hợp lệ)
+    |NestJS API|
+    :Gọi Cổng thanh toán mô phỏng Mock Payment;
+    |Payment Gateway|
+    :Xác thực phương thức và tài khoản thanh toán;
+    if (Kết quả thanh toán tại cổng Mock?) then (Từ chối / Thiếu số dư)
+      |#Salmon|Payment Gateway|
+      :Phản hồi Giao dịch thất bại (status = FAILED);
+      |NestJS API|
+      note right
+        **Ngoại lệ 422: Payment Failed**
+      end note
+      :assertTransition(order.status, PAYMENT_FAILED);
+      |PostgreSQL DB|
+      :Cập nhật trạng thái đơn sang PAYMENT_FAILED;
+      :Lưu bản ghi Payment thất bại;
+      |NestJS API|
+      :Trả về HTTP 422 Unprocessable Entity\n{"message": "Giao dịch thanh toán bị từ chối"};
+      |Next.js Frontend|
+      :Hiển thị thông báo "Thanh toán thất bại";
+      :Hiển thị nút "Thử lại" hoặc đổi phương thức;
+      |Customer|
+      stop
+    else (Chấp thuận / Giao dịch thành công)
+      |Payment Gateway|
+      :Phản hồi Giao dịch thành công (status = SUCCESS);
+      |NestJS API|
+      :Mở Prisma Interactive Database Transaction;
+      :assertTransition(order.status, PAID);
+      |PostgreSQL DB|
+      :Thực thi trừ kho với Optimistic Locking:\nUPDATE "Product" SET stock = stock - qty, version = version + 1\nWHERE id = :id AND stock >= qty AND version = :version;
+      if (Trừ kho Optimistic Lock thành công?) then (Xung đột phiên bản / Hết kho đồng thời)
+        |#Salmon|NestJS API|
+        note right
+          **Ngoại lệ 409: Concurrency Conflict**
+          Kích hoạt Bồi hoàn tiền tự động (Auto-Refund)
+        end note
+        :Rollback Database Transaction;
+        |Payment Gateway|
+        :Gọi mockPayment.refund(transactionRef, amount);
+        :Hoàn tiền 100% về tài khoản khách;
+        |PostgreSQL DB|
+        :Cập nhật Order sang CANCELLED (Hoàn tiền);
+        |NestJS API|
+        :Trả về HTTP 409 Conflict\n{"message": "Món hết hàng lúc trừ kho, đã hoàn tiền"};
+        |Next.js Frontend|
+        :Hiển thị cảnh báo hết hàng và xác nhận tiền đã hoàn;
+        |Customer|
+        stop
+      else (Trừ kho thành công)
+        |PostgreSQL DB|
+        :Cập nhật trạng thái Order = 'PAID';
+        :Chèn bản ghi Payment thành công (idempotencyKey);
+        :Tính điểm Loyalty: Math.floor(amount / 10000);\nChèn bản ghi LoyaltyTransaction và cộng điểm User;
+        :Commit Database Transaction;
+        |NestJS API|
+        :Trả về HTTP 200 OK kèm mã đơn và điểm tích lũy;
+      endif
+    endif
+  endif
+endif
+
+|Next.js Frontend|
+:Xóa sạch giỏ hàng trong Zustand Store;
+:Xóa Idempotency-Key tạm trong sessionStorage;
+:Điều hướng sang trang Xác nhận đơn hàng (/order/confirmation);
+:Hiển thị màn hình thành công: Mã đơn #xxxx, huy hiệu PAID,\nthông báo "Mời tới quầy lấy nước";
+
+|Customer|
+:Xem mã đơn và tiến tới quầy nhận đồ uống;
+
+|NestJS API|
+note right
+  **Vòng đời pha chế tại cửa hàng**
+  (Barista Operations)
+end note
+
+|PostgreSQL DB|
+:Barista cập nhật trạng thái: PAID -> PREPARING -> READY;
+
+|Customer|
+:Nhận đồ uống hoàn chỉnh từ Barista;
+
+|PostgreSQL DB|
+:Barista chuyển trạng thái sang COMPLETED (Terminal State);
+
+|Customer|
+stop
+
+@enduml

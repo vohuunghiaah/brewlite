@@ -1,0 +1,224 @@
+@startuml sequence-checkout
+skinparam DefaultFontSize 12
+skinparam DefaultFontName "Segoe UI", Arial, sans-serif
+skinparam Shadowing false
+skinparam RoundCorner 8
+
+skinparam sequence {
+  ArrowColor #2C3E50
+  LifeLineBorderColor #2C3E50
+  LifeLineBackgroundColor #ECF0F1
+  ParticipantBorderColor #34495E
+  ParticipantBackgroundColor #EAEDED
+  ParticipantFontColor #2C3E50
+  ActorBorderColor #2980B9
+  ActorBackgroundColor #EBF5FB
+  GroupBorderColor #BDC3C7
+  GroupBackgroundColor #F8F9F9
+  GroupHeaderFontColor #2C3E50
+  DividerBackgroundColor #EAECEE
+  DividerBorderColor #BDC3C7
+}
+
+title **SƠ ĐỒ TUẦN TỰ: ĐẶT VÀ THANH TOÁN ĐƠN HÀNG (UC-CORE-01: PLACE & PAY FOR ORDER)**\n//Quy trình tích hợp: JWT Guard, DTO Validation, Prisma Transaction, Optimistic Lock, Idempotency-Key & Anti-IDOR//
+
+actor "Khách hàng\n(Customer)" as Customer #D4E6F1
+participant "Giao diện PWA\n(Next.js App Router)" as WebUI #D5F5E3
+participant "Máy chủ API\n(NestJS Backend)" as API #FCF3CF
+participant "Bộ điều phối CSDL\n(Prisma / PostgreSQL)" as DB #E8DAEF
+participant "Cổng thanh toán Mock\n(Mock Payment Service)" as Payment #FADBD8
+
+== GIAI ĐOẠN 1: TẠO ĐƠN HÀNG MỚI (ORDER CREATION) ==
+
+Customer -> WebUI: 1. Tại Giỏ hàng, bấm nút "Thanh toán"
+activate WebUI
+
+note over WebUI
+  Client kiểm tra Zustand Auth Store:
+  Người dùng đã đăng nhập, có JWT Token hợp lệ
+end note
+
+WebUI -> API: 2. POST /api/orders\nHeaders: Authorization: Bearer <accessToken>\nBody: { items: [{ productId, size, toppings, quantity }], note, promoCode }
+activate API
+
+API -> API: 3. JwtAuthGuard: Giải mã & xác thực accessToken (HS256)
+API -> API: 4. ValidationPipe: Kiểm tra CreateOrderDto (whitelist: true, items.length > 0)
+
+alt Xác thực JWT thất bại / Token hết hạn
+  API --> WebUI: HTTP 401 Unauthorized { message: "Phiên làm việc hết hạn" }
+  deactivate API
+  WebUI -> WebUI: Lưu trạng thái giỏ hàng vào LocalStorage
+  WebUI --> Customer: Điều hướng sang trang /login
+else Xác thực JWT và DTO thành công
+  API -> DB: 5. Khởi tạo Prisma Interactive Transaction (prisma.$transaction)
+  activate DB
+  
+  DB -> DB: 6. Truy vấn kiểm tra tồn kho từng Product (stock >= quantity)
+  
+  alt Có sản phẩm hết hàng (stock < quantity)
+    DB --> API: Lỗi hết hàng (Insufficient Stock)
+    API -> DB: Rollback Interactive Transaction
+    deactivate DB
+    API --> WebUI: HTTP 409 Conflict { message: "Sản phẩm tạm thời hết hàng" }
+    deactivate API
+    WebUI --> Customer: Cảnh báo hết hàng, giữ nguyên giỏ hàng
+  else Tất cả sản phẩm còn đủ tồn kho
+    DB -> DB: 7. Tính tổng tiền: subtotal - discount = totalAmount
+    DB -> DB: 8. INSERT INTO "Order" (id, orderCode, userId, status='PENDING', totalAmount, ...)
+    DB -> DB: 9. INSERT INTO "OrderItem" (danh sách từng món, size, toppings)
+    DB --> API: 10. Commit Transaction: Trả về Order PENDING { id, orderCode, totalAmount }
+    deactivate DB
+    
+    API --> WebUI: 11. HTTP 201 Created { orderId: "ord-1042", orderCode: "#1042", status: "PENDING", totalAmount: 60000 }
+    deactivate API
+    
+    WebUI -> WebUI: 12. Điều hướng sang màn hình Thanh toán (/checkout)\nHiển thị tổng tiền 60.000đ và các phương thức thanh toán
+    deactivate WebUI
+  end
+end
+
+== GIAI ĐOẠN 2: XỬ LÝ THANH TOÁN KHÔNG TIỀN MẶT & IDEMPOTENCY ==
+
+Customer -> WebUI: 13. Chọn phương thức "Ví điện tử (E-Wallet)" & bấm "Xác nhận trả"
+activate WebUI
+
+note over WebUI
+  Persistence Idempotency-Key tại Client:
+  Key = sessionStorage.getItem('idemp_' + orderId)
+  Nếu chưa có: Key = crypto.randomUUID()
+  sessionStorage.setItem('idemp_' + orderId, Key)
+end note
+
+WebUI -> API: 14. POST /api/payments\nHeaders:\n  Authorization: Bearer <accessToken>\n  Idempotency-Key: c73a21b4-921a-4d7a-b5a8-2081f2df9841\nBody: { orderId: "ord-1042", method: "E_WALLET", amount: 60000 }
+activate API
+
+API -> API: 15. JwtAuthGuard & ValidationPipe (CreatePaymentDto)
+API -> DB: 16. SELECT * FROM "Order" WHERE id = 'ord-1042'
+activate DB
+DB --> API: 17. Trả về thông tin Order { id, totalAmount: 60000, status: 'PENDING', userId }
+deactivate DB
+
+API -> API: 18. Backend Security Anti-Tampering Check:\nVerify (payload.amount === order.totalAmount)\nVerify (order.userId === currentUser.id)
+
+alt Phát hiện can thiệp giá (Amount Mismatch)
+  API --> WebUI: HTTP 400 Bad Request { message: "Số tiền thanh toán không khớp với tổng tiền đơn hàng" }
+  deactivate API
+  WebUI --> Customer: Báo lỗi gian lận giá
+end
+
+API -> DB: 19. SELECT * FROM "Payment" WHERE idempotencyKey = 'c73a21b4-...'
+activate DB
+DB --> API: 20. Trả về kết quả kiểm tra khóa Idempotency
+deactivate DB
+
+alt IDEMPOTENT RETRY: Khóa Idempotency đã tồn tại và status = 'SUCCESS'
+  note over API, DB
+    Xử lý Retry do ngắt kết nối mạng phía Client:
+    Trả về ngay kết quả đã ghi nhận trước đó, tuyệt đối không trừ kho lần hai
+  end note
+  API --> WebUI: HTTP 200 OK { paymentId, status: "SUCCESS", orderStatus: "PAID", idempotentReplay: true }
+  deactivate API
+  WebUI -> WebUI: Xóa giỏ hàng (Zustand Store) & sessionStorage
+  WebUI --> Customer: Điều hướng sang trang Xác nhận thành công
+else GIAO DỊCH THANH TOÁN MỚI (Lần đầu tiên)
+
+  API -> API: 21. Kiểm tra State Machine: assertTransition(order.status, OrderStatus.PAID)
+  
+  API -> Payment: 22. processPayment({ orderCode: "#1042", amount: 60000, method: "E_WALLET" })
+  activate Payment
+  
+  alt TRƯỜNG HỢP A: THANH TOÁN THẤT BẠI (Payment Failed - Thẻ lỗi/Ví thiếu tiền)
+    Payment --> API: 23. Transaction Declined { success: false, reason: "Insufficient balance" }
+    deactivate Payment
+    
+    API -> DB: 24. assertTransition(order.status, PAYMENT_FAILED)\nUPDATE "Order" SET status = 'PAYMENT_FAILED' WHERE id = 'ord-1042'
+    activate DB
+    DB -> DB: 25. INSERT INTO "Payment" (orderId, idempotencyKey, status='FAILED', amount=60000, ...)
+    DB --> API: 26. Ghi nhận trạng thái thất bại
+    deactivate DB
+    
+    API --> WebUI: 27. HTTP 422 Unprocessable Entity { message: "Giao dịch thanh toán bị từ chối", orderStatus: "PAYMENT_FAILED" }
+    deactivate API
+    WebUI --> Customer: 28. Hiển thị thông báo "Thanh toán thất bại, vui lòng thử lại hoặc đổi phương thức" (Giữ giỏ hàng)
+
+  else TRƯỜNG HỢP B: THANH TOÁN THÀNH CÔNG (Payment Success)
+    activate Payment
+    Payment --> API: 29. Transaction Approved { success: true, transactionRef: "MOCK-TXN-987654" }
+    deactivate Payment
+    
+    API -> DB: 30. Mở Prisma Interactive Transaction (Atomic Commit)
+    activate DB
+    
+    note over API, DB
+      Optimistic Locking Query trừ tồn kho:
+      UPDATE "Product"
+      SET stock = stock - :qty, version = version + 1
+      WHERE id = :id AND stock >= :qty AND version = :version;
+    end note
+    
+    DB -> DB: 31. Thực thi UPDATE Optimistic Locking trừ kho từng sản phẩm
+    
+    alt Xung đột phiên bản / Concurrency Conflict (0 dòng bị ảnh hưởng)
+      DB --> API: 32. OptimisticLockException (Sản phẩm bị mua đồng thời)
+      API -> DB: 33. Rollback Interactive Transaction
+      
+      note over API, Payment
+        Cơ chế Bồi hoàn Tự động (Compensating Refund):
+        Do đã trừ tiền ở Bước 29, hệ thống lập tức hoàn lại 100% tiền
+      end note
+      
+      API -> Payment: 34. refund({ transactionRef: "MOCK-TXN-987654", amount: 60000 })
+      activate Payment
+      Payment --> API: 35. Refund Approved
+      deactivate Payment
+      
+      API -> DB: 36. UPDATE "Order" SET status = 'CANCELLED' (Ghi chú: Đã hoàn tiền do hết kho)
+      deactivate DB
+      API --> WebUI: 37. HTTP 409 Conflict { message: "Sản phẩm vừa hết hàng. Tiền đã được tự động hoàn lại 100%." }
+      deactivate API
+      WebUI --> Customer: 38. Cảnh báo hết hàng & xác nhận tiền đã hoàn
+    else Trừ kho Optimistic Lock thành công (version tăng +1)
+      DB -> DB: 39. assertTransition(order.status, PAID)\nUPDATE "Order" SET status = 'PAID' WHERE id = 'ord-1042'
+      DB -> DB: 40. INSERT INTO "Payment" (id, orderId, idempotencyKey, method='E_WALLET', amount=60000, status='SUCCESS', transactionRef='MOCK-TXN-987654')
+      DB -> DB: 41. Tính Loyalty Points: Math.floor(60000 / 10000) = 6 điểm\nINSERT INTO "LoyaltyTransaction" (userId, orderId, points=6, type='EARN')\nUPDATE "User" SET loyaltyPoints = loyaltyPoints + 6 WHERE id = userId
+      DB --> API: 42. Commit Transaction thành công
+      deactivate DB
+      
+      API --> WebUI: 43. HTTP 200 OK {\n  paymentId: "pay-5566",\n  orderId: "ord-1042",\n  orderCode: "#1042",\n  status: "SUCCESS",\n  orderStatus: "PAID",\n  earnedLoyaltyPoints: 6\n}
+      deactivate API
+      
+      WebUI -> WebUI: 44. Clear Zustand Cart Store & sessionStorage Idempotency-Key
+      WebUI -> WebUI: 45. Điều hướng sang trang /order/confirmation
+      WebUI --> Customer: 46. Hiển thị Trang Xác Nhận Đơn Hàng:\n- Biểu tượng thành công\n- Mã đơn duy nhất: #1042\n- Huy hiệu trạng thái: [PAID]\n- Lời dặn: "Mời tới quầy lấy nước"
+      deactivate WebUI
+    end
+  end
+end
+
+== GIAI ĐOẠN 3: TRA CỨU ĐƠN HÀNG & BẢO VỆ CHỐNG IDOR ==
+
+Customer -> WebUI: 47. Khách hàng mở trang "Lịch sử đơn hàng" hoặc xem chi tiết đơn #1042
+activate WebUI
+WebUI -> API: 48. GET /api/orders/ord-1042\nHeaders: Authorization: Bearer <accessToken>
+activate API
+
+API -> API: 49. JwtAuthGuard xác thực token, lấy currentUser.id
+API -> DB: 50. SELECT * FROM "Order" WHERE id = 'ord-1042'
+activate DB
+DB --> API: 51. Trả về Order { id: 'ord-1042', userId: 'usr-customer-1', status: 'PAID', ... }
+deactivate DB
+
+API -> API: 52. Anti-IDOR Authorization Check:\nAssert (order.userId === currentUser.id || currentUser.role === 'STAFF')
+
+alt Truy cập trái phép đơn hàng của người khác (IDOR Attempt)
+  API --> WebUI: 53. HTTP 403 Forbidden { message: "Bạn không có quyền truy cập đơn hàng này" }
+  deactivate API
+  WebUI --> Customer: Cảnh báo từ chối quyền truy cập
+else Người dùng chính chủ sở hữu đơn hàng
+  API --> WebUI: 54. HTTP 200 OK { orderId: "ord-1042", orderCode: "#1042", status: "PAID", items: [...], totalAmount: 60000 }
+  deactivate API
+  WebUI --> Customer: 55. Hiển thị chi tiết đơn hàng cá nhân an toàn
+  deactivate WebUI
+end
+
+@enduml
