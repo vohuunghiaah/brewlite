@@ -1,102 +1,244 @@
-﻿# Bối cảnh, Stakeholder và Phạm vi Dự án BrewLite
+# Bối Cảnh, Các Bên Liên Quan và Phạm Vi Dự Án BrewLite
+## (Context, Stakeholders & Scope Definition)
 
-## 1. Mục đích của tài liệu
+- **Tên dự án:** BrewLite – Nền tảng đặt cà phê không dùng tiền mặt (Cashless Coffee Ordering Platform)
+- **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
+- **Mã tài liệu:** `REQ-CTX-01`
+- **Phiên bản:** 1.1.0 (Chuẩn hóa theo Assignment 2 Task 1)
+- **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
-Tài liệu mô tả bối cảnh kinh doanh, đối tượng liên quan, phạm vi triển khai và những điều kiện cần xem xét trước khi xây dựng hệ thống BrewLite. Nội dung được lập ra nhằm tạo một nền tảng thống nhất giữa các yêu cầu bài tập, thiết kế hệ thống và kế hoạch phát triển trong các giai đoạn tiếp theo.
+---
 
-Trong phạm vi đồ án, tài liệu này làm cơ sở cho việc phân tích yêu cầu ở Task 1, xây dựng mô hình nghiệp vụ ở Task 2, đề xuất kiến trúc ở Task 3, sau đó chuyển thành sản phẩm và kế hoạch thực hiện ở Task 4 với Task 5. Một số nội dung hiện vẫn mang tính giả định hoặc cần xác nhận với giảng viên hoặc bên đặt hàng. Những nội dung này chưa được xem là quyết định cuối cùng và sẽ được hoàn thiện trong tài liệu đặc tả yêu cầu phần mềm (SRS).
+## 1. Bối Cảnh Vấn Đề và Tuyên Bố Tầm Nhìn (Problem Context & Vision)
 
-## 2. Bối cảnh và Vấn đề nghiệp vụ
+### 1.1 Bối cảnh thực tế và Vấn đề cần giải quyết
+Tại các cửa hàng cà phê và chuỗi đồ uống hiện đại, khung giờ cao điểm (sáng từ 7:30 - 9:00 và trưa từ 11:30 - 13:30) luôn đối mặt với tình trạng quá tải nghiêm trọng tại quầy thu ngân:
+1. **Ùn tắc và xếp hàng kéo dài (Giả định bối cảnh - Business Assumption):** Trong các khung giờ cao điểm, ước tính khách hàng mất từ 10 đến 15 phút chỉ để đứng xếp hàng gọi món và thanh toán tiền mặt/quẹt thẻ truyền thống.
+2. **Sai sót trong tiếp nhận yêu cầu:** Nhân viên thu ngân phải ghi nhận thủ công các tùy chọn phức tạp của khách (size ly, mức đá, độ ngọt, loại topping), dẫn đến tỷ lệ nhầm lẫn trong quá trình pha chế.
+3. **Chi phí và rủi ro quản lý tiền mặt:** Thao tác thối tiền lẻ, kiểm đếm tiền mặt cuối ca làm việc tốn thời gian, tiềm ẩn nguy cơ sai lệch sổ sách và thất thoát tài chính.
+4. **Thiếu minh bạch trong khâu nhận đồ uống:** Khách hàng sau khi thanh toán phải đứng chờ tập trung trước quầy nhận đồ uống mà không biết chính xác đơn hàng của mình đang ở giai đoạn nào (đang pha chế hay đã sẵn sàng), gây hỗn loạn không gian quán.
 
-BrewLite là ứng dụng đặt thức uống trực tuyến dành cho một cửa hàng cà phê hoặc trà. Quy trình đặt món của hệ thống được dự kiến diễn ra theo chuỗi: xem thực đơn, lựa chọn tùy chọn, thêm vào giỏ hàng, xác nhận đơn, thanh toán mô phỏng và theo dõi trạng thái đơn hàng.
+### 1.2 Tuyên bố tầm nhìn sản phẩm (Product Vision Statement)
+> *"BrewLite giúp khách hàng đặt và thanh toán đồ uống không dùng tiền mặt chỉ trong vài chạm, giảm thời gian xếp hàng và nhận đơn nhanh tại quầy."*
 
-Ở mô hình truyền thống, việc đặt món chủ yếu diễn ra trực tiếp tại quầy hoặc qua nhiều kênh trao đổi khác nhau. Cách làm này có thể khiến khách hàng khó kiểm tra đầy đủ thông tin món, tùy chọn và tổng tiền trước khi xác nhận. Nhân viên cũng có thể nhận thiếu thông tin hoặc ghi nhận nhầm đơn, nhất là trong giờ cao điểm. Đồng thời, khách hàng không có một kênh thuận tiện để biết đơn vừa được tiếp nhận, đang được pha chế hay đã sẵn sàng.
+BrewLite được định hướng là ứng dụng web hiện đại theo chuẩn **Mobile-First / PWA (Progressive Web App)**, cho phép khách hàng tự phục vụ (Self-service):
+- Xem menu đồ uống trực quan kèm hình ảnh và giá niêm yết rõ ràng.
+- Tự do tùy biến đồ uống (kích cỡ Size S/M/L, thêm Topping) với cơ chế tính giá tự động tức thì.
+- Thực hiện thanh toán không tiền mặt (Cashless Payment) mô phỏng an toàn, có cơ chế chống trừ tiền trùng lặp (Idempotency).
+- Nhận mã số đơn hàng điện tử độc nhất (`#xxxx`) và theo dõi trạng thái đơn hàng theo thời gian thực để chủ động tới quầy nhận nước (*"Mời tới quầy lấy nước"*).
 
-Hệ thống BrewLite nhằm tập trung quy trình đặt món trên một ứng dụng web, chuẩn hóa dữ liệu đơn hàng và hỗ trợ nhân viên tiếp nhận, xử lý cũng như cập nhật trạng thái. Khách hàng có thể xem menu, chọn size và topping, quản lý giỏ hàng, thanh toán bằng phương thức mô phỏng và theo dõi tiến trình đơn hàng. Nhân viên được hỗ trợ trong việc xem thông tin đơn và cập nhật trạng thái theo quyền truy cập của mình. Mức độ phổ biến của những khó khăn trên tại một cửa hàng cụ thể cần được xác nhận khi nhóm trao đổi với bên đặt hàng hoặc giảng viên.
+---
 
-## 3. Stakeholder
+## 2. Bảng Phân Tích Các Bên Liên Quan (Stakeholder Analysis)
 
-| Stakeholder | Vai trò và mối quan tâm | Mục tiêu, kỳ vọng | Mức độ ảnh hưởng |
-|---|---|---|---|
-| Khách hàng | Người sử dụng chính để xem thực đơn, tùy chỉnh đồ uống, đặt hàng và thanh toán. | Muốn tìm món nhanh, lựa chọn size hoặc topping rõ ràng, kiểm tra giá và tổng tiền chính xác trước khi thanh toán, đồng thời theo dõi đơn thuận tiện trên thiết bị di động. | Cao, khách hàng trực tiếp tham gia luồng đặt hàng. |
-| Nhân viên quầy | Người tiếp nhận và xử lý đơn hàng, chuẩn bị thức uống theo yêu cầu khách hàng. | Cần nhận đầy đủ thông tin món và tùy chọn, cập nhật trạng thái xử lý thông qua API phù hợp để khách hàng có thể theo dõi. Giao diện quản lý dành cho nhân viên nằm ngoài MVP và sẽ xem xét sau. | Cao, nhân viên trực tiếp vận hành quy trình. |
-| Quản lý cửa hàng | Người giám sát hoạt động, thực đơn và danh mục sản phẩm của cửa hàng. | Mong muốn tình hình đơn hàng và thông tin menu được cập nhật đúng, nhất quán. Chức năng quản trị menu và báo cáo doanh thu thuộc phạm vi phát triển mở rộng. | Cao, đại diện cho yêu cầu nghiệp vụ và vận hành. |
-| Giảng viên và khách hàng nghiệm thu | Người đánh giá chất lượng sản phẩm cùng các tạo phẩm của đồ án. | Cần kiểm tra luồng nghiệp vụ đầu-cuối và đối chiếu sản phẩm với yêu cầu, SRS, use case, mô hình thiết kế, kết quả kiểm thử và tiêu chí chấm điểm. | Cao, có vai trò định hướng và đánh giá mức hoàn thành. |
-| Nhóm phát triển | Nhóm phân tích, thiết kế, lập trình, kiểm thử và triển khai hệ thống. | Cần yêu cầu rõ ràng, kiến trúc phù hợp với Next.js, NestJS, PostgreSQL và Docker, đồng thời xây dựng mã nguồn có thể kiểm thử, bảo trì và trình diễn được. | Cao, chịu trách nhiệm thực hiện và bàn giao sản phẩm. |
-| Dịch vụ thanh toán mô phỏng | Thành phần mô phỏng thanh toán ví hoặc thẻ trong hệ thống. | Cần trả về trạng thái giao dịch thành công, thất bại hoặc đang xử lý để backend lưu kết quả và cập nhật đơn hàng mà không phát sinh giao dịch tài chính thật. Việc tích hợp Sandbox của nhà cung cấp sẽ được xem xét riêng sau này. | Cao, cần thiết để thực hiện và kiểm thử luồng đặt hàng đầu-cuối. |
+Hệ thống BrewLite được thiết kế để phục vụ và thỏa mãn yêu cầu của 6 nhóm bên liên quan chủ chốt:
 
-## 4. Phạm vi MVP
+| Nhóm Stakeholder | Mô tả vai trò | Trách nhiệm chính | Mục tiêu & Kỳ vọng giá trị | Mức độ ảnh hưởng / Mối quan tâm |
+| :--- | :--- | :--- | :--- | :--- |
+| **Khách hàng (Customer)** | Người dùng cuối trực tiếp thao tác trên ứng dụng di động / web PWA. | - Duyệt danh mục đồ uống.<br>- Tùy chỉnh chi tiết món.<br>- Xác thực tài khoản (JWT).<br>- Đặt hàng và thực hiện thanh toán không tiền mặt.<br>- Nhận nước tại quầy theo mã đơn. | - Giao diện trực quan, mượt mà, phản hồi nhanh (mục tiêu kỹ thuật: độ trễ API < 500ms).<br>- Không phải xếp hàng chờ đợi tại quầy thu ngân.<br>- Thông tin giá, khuyến mãi minh bạch.<br>- Thanh toán an toàn, không bị trừ tiền lặp lại.<br>- Lịch sử đơn hàng và tích lũy điểm thưởng rõ ràng. | **Tối cao (High Power / High Interest)** |
+| **Nhân viên quầy / Barista (Counter Staff)** | Nhân viên tiếp nhận đơn hàng và thực hiện pha chế tại cửa hàng. | - Theo dõi danh sách đơn hàng đã thanh toán (`PAID`).<br>- Chuyển trạng thái đơn sang Đang pha chế (`PREPARING`).<br>- Chuyển trạng thái đơn sang Sẵn sàng (`READY`).<br>- Bàn giao thức uống cho khách và đóng đơn (`COMPLETED`). | - Nhận thông tin chi tiết từng món chính xác (size, topping, ghi chú).<br>- Giảm áp lực giao tiếp và thu tiền mặt trong giờ cao điểm.<br>- Quy trình chuyển trạng thái đơn hàng đơn giản, không thao tác thừa. | **Trung bình (Medium Power / High Interest)** *(Phạm vi mở rộng ngoài core MVP)* |
+| **Quản lý cửa hàng / Product Owner (Store Manager)** | Người chịu trách nhiệm vận hành kinh doanh và định hướng sản phẩm. | - Quản lý danh mục sản phẩm, đơn giá và số lượng tồn kho.<br>- Cấu hình các chương trình khuyến mãi (voucher giảm giá).<br>- Quản lý tỷ lệ tích điểm khách hàng thân thiết (loyalty).<br>- Giám sát doanh thu và hiệu suất xử lý đơn hàng. | - Hệ thống vận hành ổn định, không thất thoát đơn hàng.<br>- Kiểm soát tồn kho chính xác, tuyệt đối không bị bán âm kho khi cao điểm.<br>- Tăng năng suất phục vụ và mức độ hài lòng của khách hàng. | **Cao (High Power / High Interest)** *(Giám sát & Đánh giá nghiệp vụ)* |
+| **Giảng viên / Khách hàng nghiệm thu (Academic Evaluator)** | Giảng viên đánh giá học phần Công nghệ Phần mềm (Trường Đại học Sài Gòn - SGU). | - Đánh giá tính chuẩn mực của quy trình kỹ nghệ phần mềm.<br>- Kiểm tra sự tuân thủ Definition of Done (DoD).<br>- Xác minh bằng chứng thực thi tự động (CI/CD, Unit/Integration/E2E test).<br>- Thẩm định phiên bản triển khai trực tiếp trên URL Production HTTPS. | - Bàn giao phần mềm chạy thật, không chỉ là bản mẫu giao diện tĩnh.<br>- Tính truy vết (Traceability) xuyên suốt: Yêu cầu $\rightarrow$ Thiết kế $\rightarrow$ Mã nguồn $\rightarrow$ Kiểm thử.<br>- Toàn bộ quyết định kỹ thuật (ADRs) được chứng minh và giải trình minh bạch. | **Quyết định (High Power / High Interest)** |
+| **Đội ngũ phát triển (Dev Team)** | Nhóm kỹ sư phần mềm phụ trách thiết kế, lập trình, kiểm thử và vận hành. | - Xây dựng kiến trúc phân lớp sạch (Clean Architecture).<br>- Hiện thực hóa frontend Next.js và backend NestJS.<br>- Thiết kế cơ sở dữ liệu PostgreSQL qua Prisma ORM.<br>- Xây dựng bộ kiểm thử tự động đa tầng.<br>- Thiết lập tự động hóa CI/CD với GitHub Actions và Docker. | - Mã nguồn dễ đọc, có cấu trúc module hóa rõ ràng.<br>- Không có nợ kỹ thuật tiềm ẩn hoặc mã kiểm thử giả lập kết quả.<br>- Môi trường local và CI đồng nhất thông qua container hóa.<br>- Tài liệu kỹ thuật đầy đủ và bám sát thực tế triển khai. | **Cao (High Power / High Interest)** |
+| **Đơn vị thanh toán (Payment Provider - Mock)** | Cổng thanh toán ví điện tử / thẻ ngân hàng (được mô phỏng trong hệ thống). | - Tiếp nhận yêu cầu thanh toán từ backend.<br>- Xử lý khóa Idempotency để chặn giao dịch trùng lặp.<br>- Trả về kết quả giao dịch (Thành công / Thất bại). | - Bảo đảm an toàn giao dịch, tính toàn vẹn tài chính.<br>- Chuẩn hóa giao thức kết nối qua REST API và HTTP Headers. | **Trung bình (Low Power / Medium Interest)** |
 
-Phiên bản MVP tập trung vào một luồng đặt thức uống tối thiểu nhưng hoàn chỉnh, từ lúc khách hàng đăng nhập cho đến khi đơn được hoàn tất theo các chức năng sau.
+### Phân định Stakeholder so với Actor trong Use Case
+- **Stakeholder (Bên liên quan):** Là tất cả cá nhân hoặc nhóm có lợi ích, quyền hạn hoặc bị tác động bởi sự thành bại của dự án (bao gồm cả Quản lý cửa hàng, Giảng viên đánh giá và Đội ngũ phát triển).
+- **Actor (Tác nhân hệ thống):** Là thực thể (người dùng hoặc hệ thống ngoài) trực tiếp tương tác vật lý/logic với phần mềm qua giao diện UI hoặc API. Trong hệ thống BrewLite, các Actor trực tiếp tham gia tương tác gồm:
+  1. *Khách hàng (Customer)* — Primary Actor tương tác qua ứng dụng web/PWA.
+  2. *Nhân viên quầy (Barista)* — Secondary Actor tương tác qua API cập nhật trạng thái đơn.
+  3. *Cổng thanh toán mô phỏng (Mock Payment Service)* — Secondary System Actor tương tác qua giao thức HTTP mock.
+  4. *Hệ thống giám sát (Monitoring System)* — System Actor gọi endpoint kiểm tra sức khỏe `/health`.
 
-Về tài khoản và xác thực, khách hàng có thể đăng ký, đăng nhập và sử dụng tài khoản để đặt hàng, theo dõi đơn thuộc về mình. Nhân viên cần được xác thực để gọi API có phân quyền. Backend sử dụng JWT cho các API cần bảo vệ, trong khi giao diện quản lý dành riêng cho nhân viên chưa nằm trong MVP.
+---
 
-Về menu, hệ thống hiển thị danh sách thức uống, danh mục và giá cơ bản theo giao diện ưu tiên thiết bị di động. Người dùng có thể xem chi tiết từng món, lựa chọn size, topping, lượng đường hoặc lượng đá phù hợp với từng sản phẩm. Trước khi thêm món vào giỏ, giao diện cần thể hiện rõ phần giá phát sinh từ các tùy chọn đã chọn.
+## 3. Ma Trận Phạm Vi Dự Án (Scope Matrix)
 
-Giỏ hàng cho phép khách hàng xem lại món đã chọn, thêm hoặc xóa sản phẩm, điều chỉnh số lượng và kiểm tra tạm tính cùng tổng thanh toán. Sau khi xác nhận, khách hàng sẽ tạo một đơn hàng gắn với tài khoản của mình và nhận mã hoặc thông tin xác nhận đơn.
+### 3.1 Phân định các tầng phạm vi (Scope Hierarchy)
 
-Thanh toán được thực hiện thông qua dịch vụ mô phỏng ví hoặc thẻ điện tử do nhóm xây dựng. Hệ thống phải ghi nhận ba trạng thái chính: thành công, thất bại và đang chờ xử lý. Mức độ mô phỏng này chỉ nhằm hỗ trợ trình diễn và kiểm thử, không phát sinh giao dịch tài chính thật.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        TỔNG THỂ DỰ ÁN BREWLITE                         │
+│                                                                        │
+│   ┌────────────────────────────────────────────────────────────────┐   │
+│   │                 MVP BẮT BUỘC (ASSIGNMENT 2 CORE)               │   │
+│   │                 Nghiệp vụ: ĐẶT ĐỒ UỐNG (Order Flow)            │   │
+│   │                                                                │   │
+│   │   ┌───────────────────────────┐    ┌───────────────────────┐   │   │
+│   │   │     SPRINT 1 (FOUNDATION) │    │  SPRINT 2 (DELIVERY)  │   │   │
+│   │   │  • Menu Products API      │ ──►│  • Cart & Checkout    │   │   │
+│   │   │  • UI Menu Mobile-First   │    │  • Mock Payment       │   │   │
+│   │   │  • Seed Data & CI Basic   │    │  • State Machine      │   │   │
+│   │   │                           │    │  • Idempotency & OCC  │   │   │
+│   │   │                           │    │  • Docker & CD Deploy │   │   │
+│   │   └───────────────────────────┘    └───────────────────────┘   │   │
+│   └────────────────────────────────────────────────────────────────┘   │
+│                                                                        │
+│   ┌────────────────────────────────────────────────────────────────┐   │
+│   │        PHẠM VI MỞ RỘNG (EXTENSIONS / SHOULD & COULD HAVE)      │   │
+│   │  • FR-10: Voucher giảm giá & Tích điểm Loyalty                 │   │
+│   │  • FR-12: Giao diện nhân viên Barista cập nhật pha chế        │   │
+│   └────────────────────────────────────────────────────────────────┘   │
+│                                                                        │
+│   ┌────────────────────────────────────────────────────────────────┐   │
+│   │        NGOÀI PHẠM VI (OUT-OF-SCOPE) & TƯƠNG LAI                │   │
+│   │  • Thanh toán tiền mặt / COD    • Cổng thanh toán thật VNPAY   │   │
+│   │  • Máy POS / Máy in nhiệt       • Giao hàng tận nơi (Shipper)  │   │
+│   │  • Quản lý chuỗi đa chi nhánh   • Quản trị lương / Chấm công   │   │
+│   └────────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
-Backend chịu trách nhiệm tạo và lưu trạng thái đơn. Nhân viên đã xác thực có thể cập nhật đơn theo luồng tối thiểu Received → Preparing → Ready → Completed. Khách hàng đăng nhập có thể xem trạng thái hiện tại của đơn gắn với tài khoản mình. MVP không cung cấp giao diện riêng cho nhân viên; phần giao diện này có thể được xem xét trong phạm vi phát triển tiếp theo.
+### 3.2 Trong phạm vi MVP (In-Scope — Nghiệp vụ Đặt đồ uống)
+1. **Giao diện người dùng Mobile-First / PWA:**
+   - Xây dựng bằng Next.js (TypeScript, App Router, CSS Modules / TailwindCSS).
+   - Thiết kế tối ưu hiển thị trên màn hình di động, hỗ trợ Responsive đầy đủ trên tablet/desktop.
+   - Thể hiện trọn vẹn các màn hình cốt lõi: Menu danh mục, Chi tiết tùy chọn món, Giỏ hàng, Thanh toán, và Xác nhận đặt hàng thành công.
+2. **Hệ thống Backend REST API:**
+   - Xây dựng bằng NestJS (TypeScript, kiến trúc module hóa).
+   - Validation dữ liệu đầu vào tự động qua `ValidationPipe` (`class-validator`, `class-transformer`).
+   - Cơ chế bảo mật và xác thực người dùng bằng JWT Bearer Token, băm mật khẩu bằng `bcrypt`.
+3. **Cơ sở dữ liệu quan hệ PostgreSQL:**
+   - Lược đồ dữ liệu chuẩn hóa gồm các thực thể cốt lõi: `User`, `Product`, `Order`, `OrderItem`, `Payment`, `Promotion`, `LoyaltyTransaction`.
+   - Quản lý phiên bản CSDL qua Migrations và seeder dữ liệu menu phong phú ban đầu.
+4. **Luồng nghiệp vụ Đặt hàng & Thanh toán toàn trình:**
+   - Duyệt menu $\rightarrow$ Xem chi tiết và tùy chỉnh size/topping $\rightarrow$ Giỏ hàng $\rightarrow$ Đăng nhập/Đăng ký $\rightarrow$ Tạo đơn (`PENDING`) $\rightarrow$ Thanh toán mô phỏng $\rightarrow$ Xác nhận (`PAID`) $\rightarrow$ Xem lịch sử đơn.
+5. **Các giải pháp kỹ thuật bắt buộc:**
+   - **Order State Machine:** Máy trạng thái hữu hạn kiểm soát chuyển đổi trạng thái đơn hàng thông qua hàm tập trung `assertTransition()`, chặn đứng các chuyển tiếp bất hợp lệ.
+   - **Idempotent Payment:** Cơ chế chống trùng lặp thanh toán thông qua HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL.
+   - **Concurrency Control & Optimistic Locking:** Kiểm soát tồn kho đồng thời bằng cơ chế khóa lạc quan (cột `version` trong bảng `Product`) kết hợp Transaction CSDL, đảm bảo không bao giờ xảy ra tình trạng bán âm kho (Overselling).
+6. **Kiểm thử tự động đa tầng (Automated Testing):**
+   - Unit tests: Kiểm thử State Machine, thuật toán tính giá, logic giỏ hàng, xác thực JWT.
+   - Integration tests: Kiểm thử luồng tạo đơn hàng, thanh toán và trừ kho.
+   - End-to-End (E2E) tests: Kịch bản kiểm thử tự động toàn diện từ bước mở menu đến khi hoàn tất đơn hàng.
+7. **Container hóa & DevOps:**
+   - `docker-compose.yml` khởi chạy trọn gói hệ thống tại local gồm 3 dịch vụ: Frontend (`web`), Backend API (`api`), và Cơ sở dữ liệu (`db`).
+   - Endpoint kiểm tra tình trạng dịch vụ `GET /health`.
+   - CI Pipeline (GitHub Actions) kích hoạt tự động trên Pull Request: `Install -> Lint -> Unit Test -> Build`.
+   - CD Pipeline hỗ trợ đóng gói Docker image, gắn tag phiên bản, smoke test và triển khai lên môi trường Production với URL HTTPS thật.
 
-MVP hướng tới một cửa hàng duy nhất. Phương thức nhận hàng mặc định là nhận tại quầy. Các chính sách xác minh tài khoản, hủy đơn, hết món, chốt giá, thời hạn lưu dữ liệu và quy tắc thanh toán lỗi cần được hoàn thiện trong SRS trước khi triển khai.
+### 3.3 Phạm vi mở rộng (Extensions / Should Have & Could Have)
+1. **FR-10: Khuyến mãi Voucher & Tích lũy điểm Loyalty:**
+   - Áp dụng mã giảm giá hợp lệ (`BREW20`) tại bước checkout.
+   - Tự động tích lũy điểm thưởng thành viên khi đơn hàng chuyển sang trạng thái `PAID`.
+   > [!NOTE]
+   > Voucher và Loyalty là tính năng giá trị gia tăng, xếp loại **Should Have / Could Have**. Nếu người dùng không áp voucher hoặc không tích điểm, luồng cốt lõi Đặt đồ uống vẫn thực thi hoàn tất.
+2. **FR-12: Quản lý trạng thái pha chế cho Barista:**
+   - Cung cấp API nội bộ cho nhân viên quầy chuyển trạng thái đơn hàng: `PAID -> PREPARING -> READY -> COMPLETED`. Giao diện chuyên biệt Barista Portal là tính năng nâng cao.
 
-## 5. Phạm vi mở rộng
+### 3.4 Ngoài phạm vi (Out-of-Scope)
+1. **Thiết bị phần cứng tại cửa hàng:**
+   - Không tích hợp máy bán hàng POS vật lý chuyên dụng.
+   - Không tích hợp máy in bill nhiệt hoặc máy quét mã vạch chuyên dụng tại quầy.
+2. **Phương thức thanh toán tiền mặt:**
+   - Không hỗ trợ thanh toán tiền mặt tại quầy hoặc hình thức giao hàng thu tiền tận nơi (COD). BrewLite là nền tảng 100% không dùng tiền mặt (Cashless).
+3. **Cổng thanh toán thực tế:**
+   - Không ký kết hợp đồng thương mại với các tổ chức trung gian thanh toán thực tế (VNPAY, MoMo, ZaloPay, Stripe). Hệ thống sử dụng dịch vụ thanh toán mô phỏng (Mock Payment Service) tuân thủ đúng chuẩn giao thức nghiệp vụ.
+4. **Ứng dụng Native di động chuyên biệt:**
+   - Không phát hành app native riêng biệt trên Apple App Store hoặc Google Play Store. Trải nghiệm di động được giải quyết triệt để thông qua chuẩn Mobile-First / PWA.
+5. **Dịch vụ giao nhận hàng tận nhà (Home Delivery):**
+   - Không xây dựng phân hệ điều phối tài xế (shipper). Khách hàng nhận đồ uống trực tiếp tại quầy theo thông điệp *"Mời tới quầy lấy nước"*.
+6. **Quản lý chuỗi đa chi nhánh (Multi-branch / Franchise):**
+   - Không hỗ trợ điều phối đa cửa hàng; phiên bản hiện tại phục vụ mô hình một cửa hàng duy nhất.
 
-Các chức năng sau đây là định hướng phát triển sau MVP. Nhóm sẽ xem xét chúng khi còn thời gian và nguồn lực, đồng thời phải có sự thống nhất với giảng viên hoặc stakeholder. Danh sách này không được coi là cam kết triển khai trong đồ án hiện tại.
+### 3.5 Chức năng mở rộng tương lai (Future Enhancements)
+1. **Hệ thống thông báo đẩy (Web Push Notifications / WebSocket):** Cập nhật trạng thái đơn hàng theo thời gian thực tới màn hình khách hàng mà không cần polling.
+2. **Gợi ý món thông minh (AI Recommendation Engine):** Đề xuất đồ uống dựa trên lịch sử mua sắm và thời tiết.
+3. **Phân hệ quản trị nâng cao cho Quản lý cửa hàng (Store Manager Dashboard):** Quản lý ca làm việc, chấm công nhân viên, quản lý nhà cung cấp nguyên vật liệu và báo cáo tài chính kế toán chuyên sâu.
 
-Hệ thống có thể được bổ sung các chức năng quản lý hồ sơ khách hàng nâng cao, xác minh email, quên mật khẩu hoặc khôi phục tài khoản. Lịch sử đơn hàng cũng có thể có thêm bộ lọc thời gian, công cụ xuất PDF/Excel và giao diện dành riêng cho nhân viên quầy. Một trang quản trị có thể hỗ trợ cập nhật menu, giá, topping và tình trạng hết hàng.
+---
 
-Ở mức phát triển rộng hơn, hệ thống có thể quản lý tồn kho nguyên liệu, thống kê doanh thu, hỗ trợ nhiều chi nhánh và phân quyền tài khoản chi tiết. Việc tích hợp dịch vụ giao hàng, chương trình khách hàng thân thiết, điểm thưởng, mã giảm giá hoặc thông báo qua email, SMS và Web Push cũng là các hướng có thể xem xét sau khi MVP hoạt động ổn định. Tuy nhiên, trước khi đưa những nội dung này vào kế hoạch, nhóm cần đánh giá thời gian, nguồn lực và yêu cầu thực tế của người đặt hàng.
+## 4. Chuẩn Hóa Thuật Ngữ và Giải Quyết Mâu Thuẫn Nghiệp Vụ
 
-## 6. Ngoài phạm vi MVP
+### 4.1 Thống nhất thuật ngữ cốt lõi
+Để tránh mâu thuẫn giữa tài liệu phân tích và mã nguồn, các thuật ngữ sau được định nghĩa chuẩn xác:
+- **Product (Sản phẩm):** Đồ uống hoặc món ăn được niêm yết trong thực đơn của quán. Mỗi sản phẩm có tên, mô tả, giá gốc (base price), hình ảnh đại diện và số lượng tồn kho khả dụng (`stock`).
+- **Cart / CartItem (Giỏ hàng / Món giỏ hàng):** Cấu trúc dữ liệu lưu trữ tạm thời phía client (Zustand store hoặc localStorage) chứa danh sách các món khách đã chọn kèm tùy chọn kích cỡ, topping, số lượng và tổng tiền tạm tính.
+- **Order / OrderItem (Đơn hàng / Dòng đơn hàng):** Thực thể nghiệp vụ được lưu trữ bền vững trong cơ sở dữ liệu sau khi khách hàng xác nhận đặt đơn. `Order` có mã định danh duy nhất (`orderCode`), trạng thái (`status`), tổng tiền (`totalAmount`); `OrderItem` lưu snapshot tên món, đơn giá niêm yết tại thời điểm mua, kích cỡ, topping và số lượng.
+- **Payment (Giao dịch thanh toán):** Bản ghi lưu trữ kết quả xử lý thanh toán điện tử cho một đơn hàng, liên kết chặt chẽ với phương thức thanh toán (`method`), số tiền (`amount`), trạng thái (`status`) và khóa chống trùng lặp (`idempotencyKey`).
 
-Một số nội dung sẽ không được thực hiện trong đồ án hiện tại. Khác với phạm vi mở rộng, đây là các yêu cầu hiện không thuộc định hướng hoặc luồng nghiệp vụ chính của BrewLite trong thời gian tiếp theo.
+### 4.2 Chuẩn hóa Vòng đời Đơn hàng & Máy trạng thái (Order State Machine)
+Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời đơn hàng trong toàn bộ hệ thống được kiểm soát nghiêm ngặt theo các trạng thái chính thức sau:
 
-Hệ thống không nhằm vận hành chuỗi nhiều chi nhánh, quản lý nhượng quyền hoặc tích hợp ERP, CRM, kế toán doanh nghiệp và thiết bị POS tại quầy. BrewLite cũng không tự động điều khiển máy pha chế hoặc kiểm soát định lượng nguyên liệu.
+```
+                  ┌────────────────────────┐
+                  │        PENDING         │ (Đơn vừa tạo, chờ thanh toán)
+                  └───────────┬────────────┘
+                              │
+          ┌───────────────────┼────────────────────┐
+          │ (Thanh toán lỗi)  │ (Thanh toán OK)   │ (Hủy trước trả tiền)
+          ▼                   ▼                    ▼
+┌──────────────────┐ ┌─────────────────┐ ┌──────────────────┐
+│  PAYMENT_FAILED  │ │      PAID       │ │    CANCELLED     │
+└────────┬─────────┘ └────────┬────────┘ └──────────────────┘
+         │ (Thử lại)          │
+         └────────────────────┼────────────────────┐
+                              ▼                    │ (Hủy sự cố / Hoàn tiền)
+                     ┌─────────────────┐           │
+                     │    PREPARING    │           │
+                     └────────┬────────┘           │
+                              │ (Pha chế xong)     │
+                              ▼                    ▼
+                     ┌─────────────────┐ ┌──────────────────┐
+                     │      READY      │ │    CANCELLED     │
+                     └────────┬────────┘ └──────────────────┘
+                              │ (Khách nhận nước tại quầy)
+                              ▼
+                     ┌─────────────────┐
+                     │    COMPLETED    │ (Đơn hoàn tất)
+                     └─────────────────┘
+```
 
-MVP không xử lý giao dịch tài chính thật và không lưu trữ trực tiếp thông tin thẻ hoặc dữ liệu tài chính nhạy cảm. Các quyết định về xử lý thanh toán sẽ tuân thủ nguyên tắc mô phỏng, không yêu cầu tuân thủ PCI-DSS trong môi trường đồ án. Những tính năng nằm ngoài luồng đặt thức uống tối thiểu chỉ có thể được xem xét lại nếu bên đặt hàng đưa ra yêu cầu mới hoặc đề xuất một dự án riêng.
+- **`PENDING`:** Đơn hàng được tạo thành công từ giỏ hàng, đang chờ thực hiện giao dịch thanh toán.
+- **`PAID`:** Giao dịch thanh toán mô phỏng thành công, hệ thống đã trừ tồn kho an toàn và cấp mã nhận nước.
+- **`PREPARING`:** Nhân viên quầy/Barista tiếp nhận đơn và bắt đầu pha chế.
+- **`READY`:** Đồ uống đã hoàn tất, sẵn sàng tại quầy đón khách.
+- **`COMPLETED`:** Khách hàng đã nhận đồ uống tại quầy, chu trình đơn hàng kết thúc viên mãn.
+- **`PAYMENT_FAILED`:** Cổng thanh toán từ chối giao dịch; giỏ hàng được giữ nguyên để khách hàng chọn lại hoặc thử lại.
+- **`CANCELLED`:** Đơn hàng bị hủy (do khách chủ động hủy khi còn `PENDING`, hoặc do sự cố kỹ thuật/hết nguyên liệu kèm giao dịch hoàn tiền bồi hoàn).
 
-## 7. Giả định ban đầu
+### 4.3 Chuẩn hóa tùy chỉnh Size/Topping so với Mức đường/đá
+- **Size (S/M/L) và Topping:** Là **thuộc tính có cấu trúc (Structured Attributes)**. Các tùy chọn này can thiệp trực tiếp vào thuật toán tính giá (`lineTotal`) và định mức trừ kho nguyên liệu (`stock`). Bắt buộc được mô hình hóa thành trường dữ liệu cụ thể trong DTO và thực thể CSDL.
+- **Mức đường (0%, 30%, 50%, 70%, 100%) và Mức đá (Không đá, Ít đá, Đá riêng):** Là **ghi chú pha chế định tính (Customization Notes)**. Các tùy chọn này không làm thay đổi giá tiền của sản phẩm, được lưu trữ tập trung vào trường ghi chú (`note`) của dòng đơn hàng hoặc đơn hàng để phục vụ Barista khi pha chế.
 
-Trong giai đoạn MVP, hệ thống được giả định phục vụ một cửa hàng duy nhất. Menu, giá, size và topping được thiết lập trước bằng dữ liệu seed hoặc dữ liệu mẫu. Việc chỉnh sửa thông tin này qua trang quản trị không nằm trong phạm vi hiện tại.
+### 4.4 Quy tắc nghiệp vụ về tỷ lệ tích điểm Loyalty (BR-LOYALTY-01)
+> [!NOTE]
+> **Business Rule cần nhóm & Product Owner xác nhận (BR-LOYALTY-01):**
+> - *Tài liệu đề xuất ban đầu (Context & Scope v1.0):* 10.000 VNĐ chi tiêu = 1 điểm thưởng khách hàng thân thiết.
+> - *Mã nguồn triển khai thực tế (`apps/api/src/payments/payments.service.ts`):* `Math.floor(amount / 1000)` (tương đương 1.000 VNĐ chi tiêu = 1 điểm thưởng).
+> - **Nguyên tắc kỹ nghệ:** Đây là tham số cấu hình kinh doanh (Business Configuration Parameter) chưa có biên bản chốt cứng từ Product Owner. Do đó, tài liệu ghi nhận tỷ lệ chính thức là tham số có thể cấu hình. Trong giai đoạn kiểm thử hiện tại, hệ thống tuân theo cài đặt của mã nguồn (1.000 VNĐ = 1 điểm) để đảm bảo toàn bộ kiểm thử tự động (Unit/Integration Test) đạt kết quả nhất quán.
 
-Khách hàng cần đăng ký hoặc đăng nhập để đặt hàng và theo dõi các đơn gắn với tài khoản. Nhân viên phải được xác thực và có quyền phù hợp để gọi API cập nhật trạng thái đơn, dù giao diện dành cho nhân viên chưa được triển khai trong MVP. Phương thức nhận mặc định là nhận tại quầy.
+---
 
-Để mô phỏng thanh toán, hệ thống dự kiến xây dựng dịch vụ ví hoặc thẻ trong NestJS backend. Dịch vụ này chỉ ghi nhận kết quả giao dịch và không thực hiện thanh toán thật. Việc kết nối Sandbox của nhà cung cấp thanh toán chưa được chốt và chỉ được xem xét nếu phát sinh yêu cầu cụ thể.
+## 5. Giả Định, Ràng Buộc và Danh Mục Rủi Ro Ban Đầu
 
-Khách hàng được giả định truy cập bằng trình duyệt web hiện đại và có kết nối Internet. Các quy tắc về hủy đơn, hết món, chốt giá, trường hợp thanh toán lỗi và thời gian lưu dữ liệu sẽ được xác định trước khi triển khai những chức năng liên quan.
+### 5.1 Các giả định (Assumptions)
+1. **[Assumption-01]** Khách hàng sử dụng thiết bị thông minh (smartphone, tablet, laptop) có trình duyệt hiện đại (Chrome, Safari, Firefox, Edge) hỗ trợ JavaScript ES6+ và có kết nối Internet ổn định.
+2. **[Assumption-02]** Dịch vụ thanh toán mô phỏng (Mock Payment Service) phản hồi ổn định trong khoảng thời gian chấp nhận được (< 500ms) và hỗ trợ giả lập cả kịch bản thành công lẫn thất bại.
+3. **[Assumption-03]** Cửa hàng chỉ quản lý một chi nhánh đơn lẻ trong giai đoạn MVP, chưa mở rộng quản lý chuỗi đa chi nhánh.
+4. **[Assumption-04]** Số liệu về thời gian chờ xếp hàng (10-15 phút) tại mục 1.1 là giả định bối cảnh nghiên cứu ban đầu của dự án, làm cơ sở định hướng xây dựng ứng dụng không tiền mặt.
 
-## 8. Ràng buộc
+### 5.2 Các ràng buộc kỹ thuật (Constraints)
+1. **Ràng buộc công nghệ (Technology Constraints):** Bắt buộc tuân thủ bộ công nghệ theo Assignment 2: Frontend Next.js (TypeScript), Backend NestJS (TypeScript), Database PostgreSQL với cơ chế migration an toàn, đóng gói và triển khai qua Docker.
+2. **Ràng buộc hiệu năng (Performance Constraints):** Thời gian phản hồi trung bình của các API nghiệp vụ chính (Menu, Chi tiết, Đặt đơn) phải đạt mục tiêu dưới 500ms trong điều kiện tải cơ bản.
+3. **Ràng buộc an ninh (Security Constraints):**
+   - Mật khẩu người dùng bắt buộc phải được mã hóa một chiều qua thuật toán bcrypt với salt factor $\ge 10$.
+   - Tuyệt đối không để lộ thông tin nhạy cảm, JWT Secret hoặc mật khẩu kết nối cơ sở dữ liệu trên mã nguồn Git hoặc log CI/CD.
+   - Cơ sở dữ liệu trên môi trường Production phải được cô lập trong mạng riêng ảo (Private Network/VPC), không mở cổng kết nối công khai ra ngoài Internet.
+4. **Ràng buộc quy trình (Process Constraints):** Toàn bộ mã nguồn đưa vào nhánh chính (`main`) bắt buộc phải thông qua Pull Request, đáp ứng 100% tiêu chí Definition of Done (DoD) và vượt qua toàn bộ các bước kiểm tra tự động của CI pipeline.
 
-Theo yêu cầu của assignment, frontend sử dụng Next.js theo hướng mobile-first và có thể phát triển theo kiểu PWA. Backend sử dụng NestJS với kiến trúc module, PostgreSQL làm cơ sở dữ liệu quan hệ và schema phải được quản lý bằng migration. Nhóm có thể bổ sung công nghệ hỗ trợ, nhưng không được thay thế các thành phần bắt buộc này.
+### 5.3 Danh mục nhận diện rủi ro ban đầu (Initial Risk Catalog)
 
-Dự án cần cung cấp Docker và Docker Compose để khởi chạy môi trường phát triển thống nhất. Repository được tổ chức theo dạng monorepo với các thư mục ứng dụng mục tiêu apps/web, apps/api và thư mục docs, phù hợp cấu trúc đã nêu trong yêu cầu triển khai của nhóm.
+| Mã Rủi Ro | Mô tả rủi ro | Xác suất (P) | Mức độ tác động (I) | Điểm rủi ro (P x I) | Biện pháp phòng ngừa & Giảm thiểu cụ thể | Kế hoạch dự phòng (Contingency Plan) |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- |
+| **RSK-01** | **Bán vượt tồn kho khi đặt hàng đồng thời (Concurrency Overselling)**<br>Nhiều khách hàng cùng đặt ly cà phê cuối cùng trong kho tại cùng một thời điểm, dẫn đến số lượng tồn kho bị âm. | Cao (High) | Nghiêm trọng (Critical) | **Rất cao (P0)** | Áp dụng cơ chế **Optimistic Locking** thông qua cột `version` trong bảng `Product` kết hợp mệnh đề `UPDATE ... WHERE version = :v AND stock >= :qty` bên trong một Transaction CSDL tương tác. | Khi giao dịch phát hiện xung đột phiên bản (`InsufficientStockException`), hệ thống tự động rollback, báo lỗi HTTP 409 Conflict và cập nhật giao diện thông báo món đã hết hàng. |
+| **RSK-02** | **Thanh toán trùng lặp do bấm nhiều lần hoặc retry mạng (Duplicate Payments)**<br>Khách hàng nhấn nút thanh toán nhiều lần do mạng chập chờn, dẫn đến việc bị trừ tiền hai lần cho cùng một đơn hàng. | Cao (High) | Nghiêm trọng (Critical) | **Rất cao (P0)** | Bắt buộc client gửi header `Idempotency-Key` (UUID-v4). Backend lưu key vào bảng `Payment` với ràng buộc duy nhất (`UNIQUE`), nếu nhận cùng key thì trả về ngay kết quả giao dịch trước đó. | Khóa bản ghi (Locking) trong quá trình xử lý; từ chối xử lý song song các request có cùng `Idempotency-Key` đang ở trạng thái `IN_PROGRESS`. |
+| **RSK-03** | **Sai lệch vòng đời đơn hàng (Invalid State Transition)**<br>Đơn hàng nhảy cóc trạng thái (ví dụ từ `PENDING` sang thẳng `COMPLETED` mà chưa qua `PAID`, hoặc đơn đã hủy vẫn được thanh toán). | Trung bình (Med) | Nghiêm trọng (Critical) | **Cao (P1)** | Xây dựng máy trạng thái hữu hạn tập trung trong code (`OrderStateMachine`) với hàm bảo vệ `assertTransition(currentStatus, nextStatus)` kiểm tra danh sách chuyển tiếp hợp lệ. | Bất kỳ yêu cầu chuyển đổi trạng thái nào vi phạm quy tắc đều bị chặn đứng ngay lập tức và ném lỗi HTTP 400 `InvalidStateTransitionException`. |
+| **RSK-04** | **Lỗ hổng kiểm soát truy cập đối tượng trực tiếp (IDOR Vulnerability)**<br>Người dùng thay đổi tham số `orderId` trên URL để xem hoặc can thiệp vào đơn hàng của khách hàng khác. | Trung bình (Med) | Cao (High) | **Cao (P1)** | Tại service xử lý `GET /orders/:id`, luôn kiểm tra `order.userId === requestUser.id`. Chỉ cho phép tài khoản có quyền `STAFF` hoặc `ADMIN` truy cập đơn hàng của người khác. | Trả về HTTP 403 Forbidden nếu phát hiện truy cập trái quyền, đồng thời ghi log cảnh báo an ninh. |
+| **RSK-05** | **Môi trường máy trạm dừng Docker Daemon cục bộ**<br>Docker Desktop trên máy phát triển Windows không chạy, khiến không thể khởi động PostgreSQL và chạy integration tests. | Cao (High) | Trung bình (Med) | **Trung bình (P2)** | Cung cấp tài liệu hướng dẫn khởi động Docker Desktop, cấu hình fallback sang dịch vụ PostgreSQL cục bộ hoặc in-memory/testcontainers khi chạy test đơn vị. | Sử dụng script kiểm tra kết nối `docker ps` trước khi chạy các lệnh kiểm thử yêu cầu database thật. |
+| **RSK-06** | **Suy giảm hiệu năng hệ thống khi lượng dữ liệu tăng (Performance Degradation)**<br>Thời gian phản hồi của API vượt quá ngưỡng 500ms do câu truy vấn chậm hoặc thiếu chỉ mục (index). | Thấp (Low) | Trung bình (Med) | **Trung bình (P2)** | Đánh chỉ mục (Index) đầy đủ trên các trường khóa ngoại (`userId`, `orderId`, `productId`) và trường tìm kiếm (`orderCode`, `idempotencyKey`). Tối ưu câu lệnh truy xuất dữ liệu tinh gọn. | Giám sát thời gian phản hồi thông qua log và bộ kiểm thử hiệu năng tự động. |
 
-Quản lý mã nguồn thực hiện bằng Git. Mỗi thay đổi cần được rà soát thông qua Pull Request, trong khi quy trình CI phải tự động kiểm tra lint, test và build. Việc triển khai production theo yêu cầu assignment cần sử dụng HTTPS.
+---
 
-Việc thanh toán chỉ được thực hiện bằng dịch vụ ví hoặc thẻ mô phỏng. Mã nguồn tuyệt đối không được thực hiện giao dịch tiền thật hoặc lưu trữ thông tin thẻ, tài khoản ngân hàng và dữ liệu nhạy cảm tương tự trong cơ sở dữ liệu. Chuỗi kết nối, khóa API và thông tin xác thực cũng phải được đặt ngoài mã nguồn, còn dữ liệu demo cần được phân biệt với dữ liệu production.
-
-Ưu tiên hàng đầu là hoàn thành và kiểm thử luồng nghiệp vụ MVP trước khi phát triển các tính năng mở rộng.
-
-## 9. Rủi ro ban đầu
-
-Thiết kế mô hình dữ liệu PostgreSQL chưa chắc đã đáp ứng đầy đủ nghiệp vụ. Nếu dữ liệu món, đơn hàng hoặc thanh toán không nhất quán, người dùng có thể gặp sai lệch trong luồng đặt và theo dõi đơn. Rủi ro này được giảm thiểu bằng cách xác định mô hình quan hệ từ yêu cầu và kiểm thử các thao tác đọc, ghi cùng các luồng chính trong môi trường phát triển và CI.
-
-Mock Payment Service có thể không mô phỏng đủ các trạng thái giao dịch. Khi đó, nhóm khó kiểm thử hoặc trình diễn các nhánh thành công, thất bại và đang xử lý trong luồng đầu-cuối. Dịch vụ mô phỏng vì thế cần hỗ trợ đầy đủ ba trạng thái Success, Failed và Pending, đồng thời có kiểm thử cho từng nhánh mà không phụ thuộc vào giao dịch tiền thật.
-
-Các quy tắc chuyển trạng thái đơn hoặc xử lý thanh toán lỗi chưa được chốt cũng có thể dẫn đến dữ liệu không nhất quán. Việc xác định rõ trạng thái, điều kiện chuyển tiếp và quyền thực hiện trong SRS, kết hợp với kiểm thử các trường hợp hợp lệ và không hợp lệ, sẽ giúp giảm nguy cơ này.
-
-Nếu API backend cho đăng nhập, đặt đơn và theo dõi trạng thái chưa được hoàn thiện, đơn hàng có thể không gắn đúng người dùng hoặc trạng thái không được lưu và trả về nhất quán. Nhóm cần đặc tả rõ vai trò khách hàng, cơ chế xác thực và vòng đời đơn, đồng thời kiểm thử tích hợp từ đăng nhập đến truy vấn trạng thái của chính khách hàng.
-
-Dữ liệu menu mẫu cũng có thể khác dữ liệu hoặc quy tắc thực tế, làm giá, tùy chọn hoặc tình trạng món hiển thị không chính xác. Nguồn dữ liệu và quy tắc hiển thị cần được xác nhận, đồng thời demo cần ghi rõ những dữ liệu minh họa được sử dụng.
-
-Cuối cùng, lỗi mạng hoặc việc gửi lại yêu cầu đặt hàng có thể làm khách hàng không biết kết quả hoặc tạo ra đơn thanh toán trùng lặp. Cơ chế idempotency cho tạo đơn và thanh toán, thông báo lỗi rõ ràng cùng kiểm thử retry an toàn là các biện pháp cần được áp dụng để xử lý rủi ro này.
-
-## 10. Các điểm cần xác nhận trước khi chốt SRS
-
-Trước khi chốt tài liệu SRS, nhóm cần xác nhận chính sách tài khoản ngoài đăng ký và đăng nhập cơ bản, cụ thể là việc xác minh email hay hỗ trợ quên và đặt lại mật khẩu có thực sự cần thiết hay không. Các quy tắc chuyển trạng thái đơn cũng cần được làm rõ về điều kiện chuyển tiếp, người có quyền cập nhật và trường hợp thay đổi trái quy trình.
-
-Ngoài ra, nhóm cần thống nhất các kịch bản thất bại của dịch vụ thanh toán mô phỏng để phục vụ kiểm thử và trình diễn, cùng quy tắc hủy đơn và cách xử lý khi món hết hàng. Đối với tùy chọn món, size và topping áp dụng cho từng loại đồ uống cần được xác định, bao gồm cách cộng giá cho từng lựa chọn.
-
-Cuối cùng, danh sách chức năng mở rộng cần được ưu tiên lại nếu dự án còn thời gian và nguồn lực, tránh tình trạng phạm vi phát triển lan rộng ngoài yêu cầu thực tế của đồ án.
+## 6. Kết Luận & Định Hướng Giai Đoạn Tiếp Theo
+Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-and-scope.md`) phiên bản 1.1.0 đã xác lập chuẩn xác ranh giới nghiệp vụ của MVP Đặt đồ uống, phân định minh bạch giữa MVP cốt lõi và các phần mở rộng, giải quyết triệt để các mâu thuẫn thuật ngữ và vòng đời đơn hàng. Toàn bộ các yêu cầu chức năng (FR) và phi chức năng (NFR) trong `docs/requirements/srs.md` cũng như kịch bản Use Case trọng tâm `docs/requirements/use-cases.md` sẽ bám sát tuyệt đối vào các ranh giới đã chuẩn hóa tại văn bản này.
