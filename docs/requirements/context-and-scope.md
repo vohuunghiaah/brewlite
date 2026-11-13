@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite – Nền tảng đặt cà phê không dùng tiền mặt (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
 - **Mã tài liệu:** `REQ-CTX-01`
-- **Phiên bản:** 1.1.0 (Chuẩn hóa theo Assignment 2 Task 1)
+- **Phiên bản:** 1.3.0 (Post-Merge Audit & GAP Synchronization)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -44,9 +44,9 @@ Hệ thống BrewLite được thiết kế để phục vụ và thỏa mãn y�
 
 ### Phân định Stakeholder so với Actor trong Use Case
 - **Stakeholder (Bên liên quan):** Là tất cả cá nhân hoặc nhóm có lợi ích, quyền hạn hoặc bị tác động bởi sự thành bại của dự án (bao gồm cả Quản lý cửa hàng, Giảng viên đánh giá và Đội ngũ phát triển).
-- **Actor (Tác nhân hệ thống):** Là thực thể (người dùng hoặc hệ thống ngoài) trực tiếp tương tác vật lý/logic với phần mềm qua giao diện UI hoặc API. Trong hệ thống BrewLite, các Actor trực tiếp tham gia tương tác gồm:
+- **Actor (Tác nhân hệ thống):** Là thực thể (người dùng hoặc hệ thống ngoài) trực tiếp tương tác vật lý/logic với phần mềm qua giao diện UI hoặc API:
   1. *Khách hàng (Customer)* — Primary Actor tương tác qua ứng dụng web/PWA.
-  2. *Nhân viên quầy (Barista)* — Secondary Actor tương tác qua API cập nhật trạng thái đơn.
+  2. *Nhân viên quầy (Barista)* — Secondary Actor tương tác qua API cập nhật trạng thái đơn hàng.
   3. *Cổng thanh toán mô phỏng (Mock Payment Service)* — Secondary System Actor tương tác qua giao thức HTTP mock.
   4. *Hệ thống giám sát (Monitoring System)* — System Actor gọi endpoint kiểm tra sức khỏe `/health`.
 
@@ -84,45 +84,47 @@ Hệ thống BrewLite được thiết kế để phục vụ và thỏa mãn y�
 │   │        NGOÀI PHẠM VI (OUT-OF-SCOPE) & TƯƠNG LAI                │   │
 │   │  • Thanh toán tiền mặt / COD    • Cổng thanh toán thật VNPAY   │   │
 │   │  • Máy POS / Máy in nhiệt       • Giao hàng tận nơi (Shipper)  │   │
-│   │  • Quản lý chuỗi đa chi nhánh   • Quản trị lương / Chấm công   │   │
+│   │  • Quản lý chuỗi đa chi nhánh   • Quản lý tồn kho nguyên liệu  │   │
 │   └────────────────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3.2 Trong phạm vi MVP (In-Scope — Nghiệp vụ Đặt đồ uống)
 1. **Giao diện người dùng Mobile-First / PWA:**
-   - Xây dựng bằng Next.js (TypeScript, App Router, CSS Modules / TailwindCSS).
+   - Xây dựng bằng Next.js (TypeScript, App Router, TailwindCSS / CSS Modules).
    - Thiết kế tối ưu hiển thị trên màn hình di động, hỗ trợ Responsive đầy đủ trên tablet/desktop.
-   - Thể hiện trọn vẹn các màn hình cốt lõi: Menu danh mục, Chi tiết tùy chọn món, Giỏ hàng, Thanh toán, và Xác nhận đặt hàng thành công.
+   - Thể hiện các màn hình cốt lõi: Menu danh mục, Chi tiết tùy chọn món, Giỏ hàng, Thanh toán, và Xác nhận đặt hàng thành công.
 2. **Hệ thống Backend REST API:**
    - Xây dựng bằng NestJS (TypeScript, kiến trúc module hóa).
    - Validation dữ liệu đầu vào tự động qua `ValidationPipe` (`class-validator`, `class-transformer`).
    - Cơ chế bảo mật và xác thực người dùng bằng JWT Bearer Token, băm mật khẩu bằng `bcrypt`.
 3. **Cơ sở dữ liệu quan hệ PostgreSQL:**
    - Lược đồ dữ liệu chuẩn hóa gồm các thực thể cốt lõi: `User`, `Product`, `Order`, `OrderItem`, `Payment`, `Promotion`, `LoyaltyTransaction`.
-   - Quản lý phiên bản CSDL qua Migrations và seeder dữ liệu menu phong phú ban đầu.
+   - Quản lý phiên bản CSDL qua Migrations và seeder dữ liệu menu ban đầu.
 4. **Luồng nghiệp vụ Đặt hàng & Thanh toán toàn trình:**
    - Duyệt menu $\rightarrow$ Xem chi tiết và tùy chỉnh size/topping $\rightarrow$ Giỏ hàng $\rightarrow$ Đăng nhập/Đăng ký $\rightarrow$ Tạo đơn (`PENDING`) $\rightarrow$ Thanh toán mô phỏng $\rightarrow$ Xác nhận (`PAID`) $\rightarrow$ Xem lịch sử đơn.
-5. **Các giải pháp kỹ thuật bắt buộc:**
+5. **Kiểm soát tồn kho thành phẩm (Product Stock Control):**
+   - Tồn kho được quản lý ở cấp **Sản phẩm hoàn chỉnh (Product Stock)**: Lưu trong cột `Product.stock`.
+   - Khi đơn hàng thanh toán thành công, hệ thống khấu trừ số lượng sản phẩm khả dụng theo số lượng đặt mua bằng cơ chế Optimistic Concurrency Control (OCC) với cột `version`, đảm bảo `stock >= 0`.
+6. **Các giải pháp kỹ thuật bắt buộc:**
    - **Order State Machine:** Máy trạng thái hữu hạn kiểm soát chuyển đổi trạng thái đơn hàng thông qua hàm tập trung `assertTransition()`, chặn đứng các chuyển tiếp bất hợp lệ.
-   - **Idempotent Payment:** Cơ chế chống trùng lặp thanh toán thông qua HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL.
-   - **Concurrency Control & Optimistic Locking:** Kiểm soát tồn kho đồng thời bằng cơ chế khóa lạc quan (cột `version` trong bảng `Product`) kết hợp Transaction CSDL, đảm bảo không bao giờ xảy ra tình trạng bán âm kho (Overselling).
-6. **Kiểm thử tự động đa tầng (Automated Testing):**
+   - **Idempotent Payment:** Cơ chế chống trùng lặp thanh toán thông qua HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL (Lưu ý: Khoảng trống lưu trữ key phía client được ghi nhận tại GAP-02).
+7. **Kiểm thử tự động đa tầng (Automated Testing):**
    - Unit tests: Kiểm thử State Machine, thuật toán tính giá, logic giỏ hàng, xác thực JWT.
    - Integration tests: Kiểm thử luồng tạo đơn hàng, thanh toán và trừ kho.
    - End-to-End (E2E) tests: Kịch bản kiểm thử tự động toàn diện từ bước mở menu đến khi hoàn tất đơn hàng.
-7. **Container hóa & DevOps:**
+8. **Container hóa & DevOps:**
    - `docker-compose.yml` khởi chạy trọn gói hệ thống tại local gồm 3 dịch vụ: Frontend (`web`), Backend API (`api`), và Cơ sở dữ liệu (`db`).
-   - Endpoint kiểm tra tình trạng dịch vụ `GET /health`.
+   - Endpoint kiểm tra tình trạng dịch vụ `GET /health` (Lưu ý: Endpoint này hiện diện trên nhánh feature Prisma nhưng chưa có trên baseline `main` TypeORM, được ghi nhận tại GAP-04).
    - CI Pipeline (GitHub Actions) kích hoạt tự động trên Pull Request: `Install -> Lint -> Unit Test -> Build`.
    - CD Pipeline hỗ trợ đóng gói Docker image, gắn tag phiên bản, smoke test và triển khai lên môi trường Production với URL HTTPS thật.
 
 ### 3.3 Phạm vi mở rộng (Extensions / Should Have & Could Have)
-1. **FR-10: Khuyến mãi Voucher & Tích lũy điểm Loyalty:**
-   - Áp dụng mã giảm giá hợp lệ (`BREW20`) tại bước checkout.
+1. **FR-10: Khuyến mãi (Promotion) & Tích lũy điểm Loyalty:**
+   - Áp dụng mã giảm giá hợp lệ (`BREW20`) tại bước checkout dựa trên model `Promotion`.
    - Tự động tích lũy điểm thưởng thành viên khi đơn hàng chuyển sang trạng thái `PAID`.
    > [!NOTE]
-   > Voucher và Loyalty là tính năng giá trị gia tăng, xếp loại **Should Have / Could Have**. Nếu người dùng không áp voucher hoặc không tích điểm, luồng cốt lõi Đặt đồ uống vẫn thực thi hoàn tất.
+   > Khuyến mãi (Promotion) và Loyalty là tính năng giá trị gia tăng, xếp loại **Should Have / Could Have**. Nếu người dùng không áp mã khuyến mãi hoặc không tích điểm, luồng cốt lõi Đặt đồ uống vẫn thực thi hoàn tất.
 2. **FR-12: Quản lý trạng thái pha chế cho Barista:**
    - Cung cấp API nội bộ cho nhân viên quầy chuyển trạng thái đơn hàng: `PAID -> PREPARING -> READY -> COMPLETED`. Giao diện chuyên biệt Barista Portal là tính năng nâng cao.
 
@@ -134,17 +136,20 @@ Hệ thống BrewLite được thiết kế để phục vụ và thỏa mãn y�
    - Không hỗ trợ thanh toán tiền mặt tại quầy hoặc hình thức giao hàng thu tiền tận nơi (COD). BrewLite là nền tảng 100% không dùng tiền mặt (Cashless).
 3. **Cổng thanh toán thực tế:**
    - Không ký kết hợp đồng thương mại với các tổ chức trung gian thanh toán thực tế (VNPAY, MoMo, ZaloPay, Stripe). Hệ thống sử dụng dịch vụ thanh toán mô phỏng (Mock Payment Service) tuân thủ đúng chuẩn giao thức nghiệp vụ.
-4. **Ứng dụng Native di động chuyên biệt:**
+4. **Quản lý tồn kho nguyên vật liệu chi tiết (Raw Material Inventory):**
+   - Hệ thống **KHÔNG** quản lý tồn kho nguyên liệu chi tiết (định lượng gam hạt cà phê, mililít sữa tươi, lượng đường, đá vụn, số lượng ly nhựa/ống hút). Size và Topping chỉ dùng để tính đơn giá và gửi ghi chú cho Barista pha chế.
+5. **Ứng dụng Native di động chuyên biệt:**
    - Không phát hành app native riêng biệt trên Apple App Store hoặc Google Play Store. Trải nghiệm di động được giải quyết triệt để thông qua chuẩn Mobile-First / PWA.
-5. **Dịch vụ giao nhận hàng tận nhà (Home Delivery):**
+6. **Dịch vụ giao nhận hàng tận nhà (Home Delivery):**
    - Không xây dựng phân hệ điều phối tài xế (shipper). Khách hàng nhận đồ uống trực tiếp tại quầy theo thông điệp *"Mời tới quầy lấy nước"*.
-6. **Quản lý chuỗi đa chi nhánh (Multi-branch / Franchise):**
+7. **Quản lý chuỗi đa chi nhánh (Multi-branch / Franchise):**
    - Không hỗ trợ điều phối đa cửa hàng; phiên bản hiện tại phục vụ mô hình một cửa hàng duy nhất.
 
 ### 3.5 Chức năng mở rộng tương lai (Future Enhancements)
-1. **Hệ thống thông báo đẩy (Web Push Notifications / WebSocket):** Cập nhật trạng thái đơn hàng theo thời gian thực tới màn hình khách hàng mà không cần polling.
-2. **Gợi ý món thông minh (AI Recommendation Engine):** Đề xuất đồ uống dựa trên lịch sử mua sắm và thời tiết.
-3. **Phân hệ quản trị nâng cao cho Quản lý cửa hàng (Store Manager Dashboard):** Quản lý ca làm việc, chấm công nhân viên, quản lý nhà cung cấp nguyên vật liệu và báo cáo tài chính kế toán chuyên sâu.
+1. **Quản lý định lượng nguyên vật liệu & tự động cảnh báo tồn kho (Inventory BOM):** Tự động trừ nguyên liệu theo công thức pha chế (Bill of Materials).
+2. **Hệ thống thông báo đẩy (Web Push Notifications / WebSocket):** Cập nhật trạng thái đơn hàng theo thời gian thực tới màn hình khách hàng mà không cần polling.
+3. **Gợi ý món thông minh (AI Recommendation Engine):** Đề xuất đồ uống dựa trên lịch sử mua sắm và thời tiết.
+4. **Phân hệ quản trị nâng cao cho Quản lý cửa hàng (Store Manager Dashboard):** Quản lý ca làm việc, chấm công nhân viên, quản lý nhà cung cấp nguyên vật liệu và báo cáo tài chính kế toán chuyên sâu.
 
 ---
 
@@ -152,9 +157,9 @@ Hệ thống BrewLite được thiết kế để phục vụ và thỏa mãn y�
 
 ### 4.1 Thống nhất thuật ngữ cốt lõi
 Để tránh mâu thuẫn giữa tài liệu phân tích và mã nguồn, các thuật ngữ sau được định nghĩa chuẩn xác:
-- **Product (Sản phẩm):** Đồ uống hoặc món ăn được niêm yết trong thực đơn của quán. Mỗi sản phẩm có tên, mô tả, giá gốc (base price), hình ảnh đại diện và số lượng tồn kho khả dụng (`stock`).
+- **Product (Sản phẩm):** Đồ uống hoặc món ăn được niêm yết trong thực đơn của quán. Mỗi sản phẩm có tên, mô tả, giá gốc (base price), hình ảnh đại diện và số lượng tồn kho thành phẩm khả dụng (`stock`).
 - **Cart / CartItem (Giỏ hàng / Món giỏ hàng):** Cấu trúc dữ liệu lưu trữ tạm thời phía client (Zustand store hoặc localStorage) chứa danh sách các món khách đã chọn kèm tùy chọn kích cỡ, topping, số lượng và tổng tiền tạm tính.
-- **Order / OrderItem (Đơn hàng / Dòng đơn hàng):** Thực thể nghiệp vụ được lưu trữ bền vững trong cơ sở dữ liệu sau khi khách hàng xác nhận đặt đơn. `Order` có mã định danh duy nhất (`orderCode`), trạng thái (`status`), tổng tiền (`totalAmount`); `OrderItem` lưu snapshot tên món, đơn giá niêm yết tại thời điểm mua, kích cỡ, topping và số lượng.
+- **Order / OrderItem (Đơn hàng / Dòng đơn hàng):** Thực thể nghiệp vụ được lưu trữ bền vững trong cơ sở dữ liệu sau khi khách hàng xác nhận đặt đơn. `Order` có mã định danh duy nhất (`id`), mã hiển thị (`orderCode`), trạng thái (`status`), tổng tiền (`totalAmount`); `OrderItem` lưu snapshot tên món, đơn giá niêm yết tại thời điểm mua, kích cỡ, topping và số lượng.
 - **Payment (Giao dịch thanh toán):** Bản ghi lưu trữ kết quả xử lý thanh toán điện tử cho một đơn hàng, liên kết chặt chẽ với phương thức thanh toán (`method`), số tiền (`amount`), trạng thái (`status`) và khóa chống trùng lặp (`idempotencyKey`).
 
 ### 4.2 Chuẩn hóa Vòng đời Đơn hàng & Máy trạng thái (Order State Machine)
@@ -173,7 +178,7 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
 └────────┬─────────┘ └────────┬────────┘ └──────────────────┘
          │ (Thử lại)          │
          └────────────────────┼────────────────────┐
-                              ▼                    │ (Hủy sự cố / Hoàn tiền)
+                              ▼                    │ (Hủy sự cố / Hoàn tiền*)
                      ┌─────────────────┐           │
                      │    PREPARING    │           │
                      └────────┬────────┘           │
@@ -195,18 +200,34 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
 - **`READY`:** Đồ uống đã hoàn tất, sẵn sàng tại quầy đón khách.
 - **`COMPLETED`:** Khách hàng đã nhận đồ uống tại quầy, chu trình đơn hàng kết thúc viên mãn.
 - **`PAYMENT_FAILED`:** Cổng thanh toán từ chối giao dịch; giỏ hàng được giữ nguyên để khách hàng chọn lại hoặc thử lại.
-- **`CANCELLED`:** Đơn hàng bị hủy (do khách chủ động hủy khi còn `PENDING`, hoặc do sự cố kỹ thuật/hết nguyên liệu kèm giao dịch hoàn tiền bồi hoàn).
+- **`CANCELLED`:** Đơn hàng bị hủy.
+  - *Lưu ý về quy tắc hoàn tiền (`BR-REFUND-01`):* Xem chi tiết tại Mục 4.5.
 
 ### 4.3 Chuẩn hóa tùy chỉnh Size/Topping so với Mức đường/đá
-- **Size (S/M/L) và Topping:** Là **thuộc tính có cấu trúc (Structured Attributes)**. Các tùy chọn này can thiệp trực tiếp vào thuật toán tính giá (`lineTotal`) và định mức trừ kho nguyên liệu (`stock`). Bắt buộc được mô hình hóa thành trường dữ liệu cụ thể trong DTO và thực thể CSDL.
-- **Mức đường (0%, 30%, 50%, 70%, 100%) và Mức đá (Không đá, Ít đá, Đá riêng):** Là **ghi chú pha chế định tính (Customization Notes)**. Các tùy chọn này không làm thay đổi giá tiền của sản phẩm, được lưu trữ tập trung vào trường ghi chú (`note`) của dòng đơn hàng hoặc đơn hàng để phục vụ Barista khi pha chế.
+- **Size (SMALL, MEDIUM, LARGE) và Topping:** Là **thuộc tính cấu hình đơn giá (Pricing Modifiers)**. Các tùy chọn này can thiệp trực tiếp vào thuật toán tính giá (`lineTotal`), làm thay đổi đơn giá bán ra, nhưng **KHÔNG** can thiệp vào trừ tồn kho nguyên vật liệu chi tiết trong CSDL (hệ thống chỉ trừ `Product.stock` theo số ly).
+- **Mức đường (0%, 30%, 50%, 70%, 100%) và Mức đá (Không đá, Ít đá, Đá riêng):** Là **ghi chú pha chế định tính (Customization Notes)**. Các tùy chọn này không làm thay đổi giá tiền của sản phẩm, được lưu trữ trong trường ghi chú (`note`) của đơn hàng để phục vụ Barista khi pha chế.
 
 ### 4.4 Quy tắc nghiệp vụ về tỷ lệ tích điểm Loyalty (BR-LOYALTY-01)
 > [!NOTE]
-> **Business Rule cần nhóm & Product Owner xác nhận (BR-LOYALTY-01):**
+> **Business Rule cần Product Owner phê duyệt (BR-LOYALTY-01):**
 > - *Tài liệu đề xuất ban đầu (Context & Scope v1.0):* 10.000 VNĐ chi tiêu = 1 điểm thưởng khách hàng thân thiết.
-> - *Mã nguồn triển khai thực tế (`apps/api/src/payments/payments.service.ts`):* `Math.floor(amount / 1000)` (tương đương 1.000 VNĐ chi tiêu = 1 điểm thưởng).
-> - **Nguyên tắc kỹ nghệ:** Đây là tham số cấu hình kinh doanh (Business Configuration Parameter) chưa có biên bản chốt cứng từ Product Owner. Do đó, tài liệu ghi nhận tỷ lệ chính thức là tham số có thể cấu hình. Trong giai đoạn kiểm thử hiện tại, hệ thống tuân theo cài đặt của mã nguồn (1.000 VNĐ = 1 điểm) để đảm bảo toàn bộ kiểm thử tự động (Unit/Integration Test) đạt kết quả nhất quán.
+> - *Mã nguồn triển khai thực tế trên nhánh Sprint 1 (`payments.service.ts`):* `Math.floor(amount / 1000)` (tương đương 1.000 VNĐ chi tiêu = 1 điểm thưởng).
+> - **Trạng thái:** `PROPOSED / PENDING APPROVAL from PO`.
+> - **Khoảng trống triển khai (GAP-03):** Công thức tích điểm có sự không nhất quán giữa đề bài và mã nguồn thử nghiệm, cần quyết định chính thức từ PO. Trong giai đoạn kiểm thử hiện tại, hệ thống tuân theo cài đặt của mã nguồn (1.000 VNĐ = 1 điểm) để đảm bảo toàn bộ kiểm thử tự động (Unit/Integration Test) đạt kết quả nhất quán.
+
+### 4.5 Quy tắc hoàn tiền khi hủy đơn (BR-REFUND-01)
+> [!NOTE]
+> **Business Rule đề xuất về Hoàn tiền (BR-REFUND-01):**
+> - **Hành vi nghiệp vụ mong muốn:** Nếu đơn hàng đã ở trạng thái `PAID` mà bị hủy do sự cố kỹ thuật hoặc hết nguyên liệu tại quầy, hệ thống cần thực hiện hoàn tiền tự động 100% cho khách hàng và hoàn lại số lượng tồn kho thành phẩm.
+> - **Trạng thái hiện tại:** `PROPOSED / PENDING APPROVAL` (Đề xuất nghiệp vụ, **CHƯA ĐƯỢC TRIỂN KHAI TRONG MÃ NGUỒN**).
+> - **Khoảng trống triển khai (GAP-01):** Cả trên nhánh `main` và nhánh `feature/sprint1-mvp-foundation`, phương thức `mockPaymentService.refund()` và endpoint `PATCH /orders/:id/cancel` chưa tồn tại trong mã nguồn backend; `PaymentStatus` enum chỉ gồm `PENDING`, `SUCCESS`, `FAILED` (chưa có `REFUNDED`). Do đó, tài liệu không khẳng định hoàn tiền tự động là tính năng đang hoạt động mà ghi nhận đây là yêu cầu cần triển khai bổ sung trong các Task tiếp theo.
+
+### 4.6 Danh mục Khoảng hở Triển khai Đồng bộ (Synchronized Implementation Gaps)
+Hệ thống tài liệu BrewLite thống nhất 4 mã định danh khoảng hở kỹ thuật (GAPs) xuyên suốt các văn bản:
+1. **`GAP-01` (Cơ chế Hoàn tiền - Refund):** Chưa có API `POST /payments/:id/refund` hay `PATCH /orders/:id/cancel`; quy tắc `BR-REFUND-01` ở trạng thái đề xuất, việc hủy đơn hợp lệ xử lý thủ công ngoại tuyến.
+2. **`GAP-02` (Lưu trữ Idempotency Key phía Client):** Backend đã có cơ chế Unique Index chống thanh toán trùng, nhưng giao diện Client Next.js chưa lưu key vào `sessionStorage` để tái sử dụng khi reload hoặc thử lại.
+3. **`GAP-03` (Công thức tích điểm thành viên - Loyalty Formula):** Mâu thuẫn giữa đề bài Assignment 2 (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ PO phê duyệt.
+4. **`GAP-04` (Endpoint Health Check trên baseline `main`):** Nhánh `main` (TypeORM) chưa có endpoint `GET /health` (chỉ có `AppController` trả về 'Hello World!'). Endpoint `/health` đầy đủ chỉ mới hiện diện trên nhánh feature Prisma.
 
 ---
 
@@ -241,4 +262,4 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
 ---
 
 ## 6. Kết Luận & Định Hướng Giai Đoạn Tiếp Theo
-Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-and-scope.md`) phiên bản 1.1.0 đã xác lập chuẩn xác ranh giới nghiệp vụ của MVP Đặt đồ uống, phân định minh bạch giữa MVP cốt lõi và các phần mở rộng, giải quyết triệt để các mâu thuẫn thuật ngữ và vòng đời đơn hàng. Toàn bộ các yêu cầu chức năng (FR) và phi chức năng (NFR) trong `docs/requirements/srs.md` cũng như kịch bản Use Case trọng tâm `docs/requirements/use-cases.md` sẽ bám sát tuyệt đối vào các ranh giới đã chuẩn hóa tại văn bản này.
+Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-and-scope.md`) phiên bản 1.2.0 đã chuẩn hóa ranh giới quản lý tồn kho thành phẩm (loại bỏ nhầm lẫn tồn kho nguyên liệu), phân định minh bạch các Business Rules đề xuất và các khoảng trống triển khai (Implementation Gaps). Toàn bộ các yêu cầu chức năng (FR) và phi chức năng (NFR) trong `docs/requirements/srs.md` cũng như kịch bản Use Case trọng tâm `docs/requirements/use-cases.md` sẽ bám sát tuyệt đối vào các ranh giới đã chuẩn hóa tại văn bản này.
