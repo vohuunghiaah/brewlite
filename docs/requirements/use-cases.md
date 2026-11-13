@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-01`
-- **Phiên bản:** 1.4.0 (Final Verification Evidence & Use-Case Calibration)
+- **Phiên bản:** 1.4.1 (Loyalty Transaction Coupling & Guard Alignment)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -54,8 +54,8 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 6. Màn hình điều hướng hiển thị Trang Xác nhận thành công kèm mã đơn, huy hiệu `PAID`, và thông điệp: *"Mời tới quầy lấy nước"*.
 
 #### Hậu điều kiện có điều kiện / Chức năng mở rộng (Conditional / Extension Postcondition — FR-10 Should Have):
-- **Tích lũy điểm thưởng Loyalty:** Nếu chức năng Loyalty được kích hoạt và khách hàng đã đăng nhập tài khoản, hệ thống sẽ tự động tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03`.
-- **Nguyên tắc kỹ nghệ về tính độc lập:** Chức năng Loyalty là yêu cầu **Should Have** (FR-10). Việc tích điểm thành công hay thất bại không phải là điều kiện tiên quyết và không làm ảnh hưởng đến tính hợp lệ của đơn hàng cốt lõi đã thanh toán thành công.
+- **Tích lũy điểm thưởng Loyalty:** Hệ thống thực hiện tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03`.
+- **Định hướng thiết kế mong muốn & Giới hạn triển khai hiện tại:** Về mặt nghiệp vụ, tính độc lập của Loyalty (lỗi tích điểm không làm gián đoạn thanh toán) là **yêu cầu thiết kế mong muốn** cho chức năng Should Have. Tuy nhiên, trong mã nguồn backend hiện tại trên nhánh Prisma, thao tác ghi nhận `Payment` và `LoyaltyTransaction` đang nằm chung trong cùng một `prisma.$transaction` nguyên khối; do đó nếu xảy ra lỗi chưa xử lý ở khâu tích điểm, toàn bộ transaction thanh toán có thể bị rollback. Giới hạn này được ghi nhận để đội ngũ kỹ thuật xử lý tách biệt transaction ở các Task triển khai tiếp theo nếu yêu cầu độc lập được xác định là bắt buộc.
 
 #### Hậu điều kiện thất bại / Hủy bỏ (Failure Postconditions):
 1. Số lượng tồn kho thành phẩm của các sản phẩm được hoàn nguyên nguyên vẹn (Transaction Rollback), tuyệt đối không bị trừ sai.
@@ -184,7 +184,7 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
      WHERE id = 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d' AND stock >= 1 AND version = :currentVersion;
      ```
   3. Tạo bản ghi thanh toán `Payment` với `status = 'SUCCESS'`, `idempotencyKey = 'e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b'`.
-  4. *Xử lý tích lũy điểm thưởng (Hành vi mở rộng - Extension Behavior / FR-10 Should Have):* Nếu người dùng có tài khoản, backend (trên nhánh Prisma hiện tại) đang tự động thực hiện ghi nhận giao dịch tích điểm vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Lưu ý kỹ nghệ: Đây là chức năng mở rộng, quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03` (10.000đ vs 1.000đ = 1 điểm); việc tích điểm không phải điều kiện bắt buộc để hoàn tất chu trình Đặt và Thanh toán đồ uống cốt lõi.
+  4. *Xử lý tích lũy điểm thưởng (Hành vi mở rộng - Extension Behavior / FR-10 Should Have):* Backend (trên nhánh Prisma hiện tại) tự động thực hiện ghi nhận giao dịch tích điểm vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01` ngay bên trong transaction thanh toán chung. Lưu ý kỹ nghệ: Đây là chức năng mở rộng; quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03` (10.000đ vs 1.000đ = 1 điểm). Việc tách biệt lỗi Loyalty khỏi giao dịch thanh toán là yêu cầu thiết kế mong muốn cần hoàn thiện tiếp theo.
 - **Bước 10:** Backend commit transaction thành công và trả về phản hồi HTTP 200 OK:
   ```json
   {
@@ -251,8 +251,8 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 
 #### Alt-6: Tích lũy điểm thưởng thành viên (Loyalty Points Accumulation — Should Have - FR-10)
 - **Bối cảnh:** Tích điểm thành viên là chức năng giá trị gia tăng được phân loại là **Should Have (FR-10)**, không thuộc điều kiện bắt buộc của Happy Path.
-- **Hành vi nghiệp vụ:** Khi khách hàng đã đăng nhập và thanh toán thành công, hệ thống thực hiện tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction`.
-- **Hiện trạng triển khai thực tế:** Trên nhánh tính năng Prisma, `PaymentsService` hiện đang tự động gọi hàm tạo `LoyaltyTransaction` bên trong transaction thanh toán. Tuy nhiên, quy tắc quy đổi chính thức giữa 10.000 VNĐ = 1 điểm (đề bài Assignment 2) và 1.000 VNĐ = 1 điểm (mã nguồn thử nghiệm) vẫn đang ở trạng thái `PROPOSED / PENDING APPROVAL from PO` (`GAP-03`). Nếu có lỗi xảy ra ở tầng tích điểm hoặc khách hàng thanh toán ở chế độ khách vãng lai, chu trình Đặt và Thanh toán cốt lõi vẫn hoàn tất thành công.
+- **Hành vi nghiệp vụ:** Khi khách hàng thanh toán thành công qua `POST /payments`, hệ thống thực hiện tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction`. (Toàn bộ luồng tạo đơn và thanh toán hiện tại đều bắt buộc xác thực người dùng qua `JwtAuthGuard` tại `OrdersController` và `PaymentsController`).
+- **Hiện trạng triển khai thực tế & Giới hạn kỹ thuật:** Trên nhánh tính năng Prisma, `PaymentsService` đang thực thi tạo `LoyaltyTransaction` cùng trong `prisma.$transaction` với bản ghi `Payment`. Quy tắc quy đổi chính thức giữa 10.000 VNĐ = 1 điểm (đề bài Assignment 2) và 1.000 VNĐ = 1 điểm (mã nguồn thử nghiệm) vẫn đang ở trạng thái `PROPOSED / PENDING APPROVAL from PO` (`GAP-03`). Về mặt thiết kế mong muốn, lỗi ở tầng tích điểm không nên làm gián đoạn thanh toán; tuy nhiên do đang chung transaction CSDL, nếu tích điểm gặp sự cố chưa được cô lập, giao dịch thanh toán sẽ bị rollback. Giới hạn này được ghi nhận để xử lý ở các Task triển khai tiếp theo nếu nhóm quyết định yêu cầu độc lập này là bắt buộc.
 
 ---
 
