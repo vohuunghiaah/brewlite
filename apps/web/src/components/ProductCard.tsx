@@ -64,7 +64,7 @@ export function ProductCard({ product, onSelect }: ProductCardProps) {
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 p-2">
             <span className="inline-flex items-center gap-1 rounded-full bg-rose-500 px-3 py-1.5 text-[10px] font-bold text-white sm:text-xs">
               <AlertCircle size={13} />
-              Hết hàng
+              Tạm hết hàng
             </span>
           </div>
         )}
