@@ -1,0 +1,168 @@
+version: '3.8'
+
+# ==============================================================================
+# BrewLite Production Docker Compose Specification
+# - Database port (5432) isolated within internal bridge network (no host exposure).
+# - Environment variables strictly required (no default insecure credentials).
+# - Resource constraints (CPU/Memory) and log rotation enforced.
+# ==============================================================================
+
+services:
+  # ==========================================
+  # Database: PostgreSQL 16 (Hardened & Isolated)
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: brewlite-prod-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Error: POSTGRES_USER must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Error: POSTGRES_DB must be set in .env}
+    # Security: No 'ports' mapped to host. Database is strictly private on brewlite-internal network.
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - brewlite-internal
+
+  # ==========================================
+  # Database Migration: Prisma (Private Network Execution)
+  # Blocks API from starting if migrations fail
+  # ==========================================
+  migration:
+    image: ghcr.io/vohuunghiaah/brewlite/api:${IMAGE_TAG:-latest}
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: brewlite-prod-migration
+    command: ["npx", "prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - brewlite-internal
+
+  # ==========================================
+  # Backend API: NestJS (Production)
+  # ==========================================
+  api:
+    image: ghcr.io/vohuunghiaah/brewlite/api:${IMAGE_TAG:-latest}
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: brewlite-prod-api
+    restart: always
+    ports:
+      - "${API_BIND_PORT:-4000}:4000"
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Error: JWT_SECRET must be set and secure (min 32 chars)}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Error: CORS_ORIGIN must be explicitly set with trusted HTTPS origins in production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - brewlite-internal
+      - brewlite-public
+
+  # ==========================================
+  # Frontend: Next.js Web App (Production)
+  # ==========================================
+  web:
+    image: ghcr.io/vohuunghiaah/brewlite/web:${IMAGE_TAG:-latest}
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Error: NEXT_PUBLIC_API_URL must be configured}
+    container_name: brewlite-prod-web
+    restart: always
+    ports:
+      - "${WEB_BIND_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Error: NEXT_PUBLIC_API_URL must be configured with HTTPS in production}
+      API_INTERNAL_URL: http://api:4000/api
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - brewlite-public
+      - brewlite-internal
+
+volumes:
+  postgres_prod_data:
+    driver: local
+
+networks:
+  brewlite-internal:
+    driver: bridge
+    internal: true # Cannot be routed externally
+  brewlite-public:
+    driver: bridge

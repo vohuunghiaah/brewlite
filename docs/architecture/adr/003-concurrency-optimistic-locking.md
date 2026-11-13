@@ -17,3 +17,4 @@ Vào các khung giờ cao điểm (sáng 7:30 - 9:00, trưa 11:30 - 13:30), nhi�
 ## Hệ quả (Consequences)
 - **Tích cực:** Không khóa cứng dòng dữ liệu (Pessimistic Lock), duy trì thông lượng cao và thời gian phản hồi thấp cho phần lớn trường hợp không có tranh chấp; ngăn chặn 100% tình trạng âm kho.
 - **Tiêu cực:** Yêu cầu client hoặc người dùng thử lại nếu xảy ra xung đột đồng thời cao.
+

@@ -147,3 +147,4 @@ model LoyaltyTransaction {
   description String
   createdAt   DateTime               @default(now())
 }
+

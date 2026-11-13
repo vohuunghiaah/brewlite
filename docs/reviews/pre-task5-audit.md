@@ -69,3 +69,4 @@ Báo cáo này rà soát toàn diện tình trạng hiện tại của repositor
    - Chạy lint, unit test, build cục bộ.
    - Commit theo Conventional Commits và đẩy lên nhánh `feature/sprint1-mvp-foundation`.
    - Tạo Pull Request cho Task 4 hoàn thiện để đảm bảo có bằng chứng nghiệm thu theo đúng yêu cầu bài tập.
+

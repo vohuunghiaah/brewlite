@@ -1,0 +1,301 @@
+name: CD Production Delivery
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_env:
+        description: 'Target Environment (production / staging)'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+permissions:
+  contents: read
+  packages: write
+  checks: read
+
+jobs:
+  # ==============================================================================
+  # Job 0: Quality Gate Verification on the Exact Commit
+  # Ensures CD never deploys an unverified commit
+  # ==============================================================================
+  verify-quality-gate:
+    name: Verify Quality Gate Passed on Commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Quality Gate Status on Commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=========================================================="
+          echo "Kiểm tra trạng thái Quality Gate cho commit: ${{ github.sha }}"
+          echo "=========================================================="
+          
+          # Lấy danh sách check runs cho commit
+          CHECK_RUNS=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs")
+          
+          # Tìm kết luận của job Quality Gate
+          QG_STATUS=$(echo "$CHECK_RUNS" | jq -r '.check_runs[] | select(.name | test("Playwright UI|Quality Gate")) | .conclusion' | head -n 1)
+          
+          echo "Trạng thái Quality Gate của commit ${{ github.sha }}: '$QG_STATUS'"
+          
+          if [ "$QG_STATUS" != "success" ]; then
+            echo "::error::CHẶN TRIỂN KHAI: Commit ${{ github.sha }} chưa hoàn thành hoặc chưa đạt 'success' tại Quality Gate."
+            echo "Mọi bản triển khai production bắt buộc phải có chứng chỉ kiểm thử tự động đạt 100% PASS trước đó."
+            exit 1
+          fi
+          
+          echo "XÁC NHẬN: Commit ${{ github.sha }} đã đạt chuẩn Quality Gate (status: success). Cho phép tiếp tục."
+
+  # ==============================================================================
+  # Job 1: Build & Publish Container Images with Immutable Tags
+  # ==============================================================================
+  build-and-push:
+    name: Build & Publish Docker Images to GHCR
+    needs: [verify-quality-gate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Docker Image Tags
+        id: meta
+        run: |
+          API_TAGS="ghcr.io/${{ github.repository }}/api:${{ github.sha }}"
+          WEB_TAGS="ghcr.io/${{ github.repository }}/web:${{ github.sha }}"
+          # CHỈ gắn tag 'latest' khi chạy trên nhánh chính 'main'
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Đang trên nhánh main: cho phép bổ sung tag latest."
+            API_TAGS="${API_TAGS},ghcr.io/${{ github.repository }}/api:latest"
+            WEB_TAGS="${WEB_TAGS},ghcr.io/${{ github.repository }}/web:latest"
+          else
+            echo "Đang trên nhánh tính năng (${{ github.ref }}): KHÔNG gắn tag latest."
+          fi
+          echo "api_tags=${API_TAGS}" >> $GITHUB_OUTPUT
+          echo "web_tags=${WEB_TAGS}" >> $GITHUB_OUTPUT
+
+      - name: Validate Production HTTPS API URL
+        run: |
+          API_URL="${{ vars.PRODUCTION_API_URL || secrets.PRODUCTION_API_URL }}"
+          if [ -z "$API_URL" ]; then
+            echo "::warning::Chưa thiết lập PRODUCTION_API_URL. Sử dụng URL placeholder chuẩn HTTPS."
+            API_URL="https://api.brewlite.vn/api"
+          fi
+          if [[ ! "$API_URL" =~ ^https:// ]]; then
+            echo "::error::BẢO MẬT: PRODUCTION_API_URL phải dùng giao thức HTTPS để tránh Mixed Content và chặn kết nối! (URL nhận được: $API_URL)"
+            exit 1
+          fi
+          echo "VALID_API_URL=$API_URL" >> $GITHUB_ENV
+
+      - name: Build & Push API Image (Immutable SHA Tag)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: true
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.api_tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Web Image (Immutable SHA Tag)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/web
+          file: ./apps/web/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ env.VALID_API_URL }}
+            GIT_COMMIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.web_tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify Image Retrievability from GHCR
+        run: |
+          echo "Kiểm tra tính truy xuất của image trên GHCR..."
+          docker pull ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+          docker pull ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+          echo "XÁC NHẬN: Cả 2 image API và Web đều có thể truy xuất thành công từ GHCR."
+
+  # ==============================================================================
+  # Job 2: Real Production Deployment & Verification
+  # ==============================================================================
+  deploy:
+    name: Deploy & Verify Health Smoke Test
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Validate Deployment Configuration
+        run: |
+          echo "=========================================================="
+          echo "Kiểm tra cấu hình triển khai Production (Commit: ${{ github.sha }})"
+          echo "Môi trường mục tiêu: ${{ inputs.deploy_env || 'production' }}"
+          echo "=========================================================="
+          
+          if [ -z "${{ secrets.DEPLOY_WEBHOOK_URL }}" ]; then
+            echo "::error::Bí mật DEPLOY_WEBHOOK_URL chưa được cấu hình trên GitHub Repository."
+            echo "Triển khai tự động dừng lại để bảo đảm an toàn. Không giả lập trạng thái thành công."
+            exit 1
+          fi
+
+      - name: Verify Required Database Migration Pre-requisite
+        id: migration_gate
+        run: |
+          echo "=========================================================="
+          echo "Kiểm tra điều kiện Database Migration trong mạng nội bộ..."
+          echo "=========================================================="
+          if [ -n "${{ secrets.PRODUCTION_DATABASE_URL }}" ]; then
+            echo "Chạy npx prisma migrate deploy trước khi kích hoạt bản dựng mới..."
+            DATABASE_URL="${{ secrets.PRODUCTION_DATABASE_URL }}" npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma || {
+              echo "::error::CRITICAL: Prisma migrate deploy thất bại! CHẶN TRIỂN KHAI PRODUCTION."
+              exit 1
+            }
+            echo "XÁC NHẬN: Database schema đã sẵn sàng và tương thích."
+          else
+            echo "Cơ sở dữ liệu được bảo vệ trong mạng riêng (Private Isolated Network)."
+            echo "Migration được ủy quyền thực thi cô lập thông qua compose service 'migration' với condition 'service_completed_successfully'."
+          fi
+
+      - name: Trigger Real Deployment with Immutable Tag
+        id: deploy_trigger
+        run: |
+          echo "Gửi tín hiệu triển khai tới Production Webhook với immutable tag: ${{ github.sha }}..."
+          HTTP_CODE=$(curl -s -o /tmp/deploy_res.txt -w "%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"image_tag\":\"${{ github.sha }}\",\"environment\":\"${{ inputs.deploy_env || 'production' }}\"}" \
+            "${{ secrets.DEPLOY_WEBHOOK_URL }}")
+          echo "HTTP Response Code: $HTTP_CODE"
+          cat /tmp/deploy_res.txt || true
+          
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            echo "::error::Gọi Webhook triển khai thất bại với HTTP code $HTTP_CODE"
+            exit 1
+          fi
+          echo "Tín hiệu triển khai đã được tiếp nhận thành công."
+
+      - name: Post-Deploy Health Check & Smoke Test
+        run: |
+          TARGET_URL="${{ vars.PRODUCTION_API_URL || secrets.PRODUCTION_API_URL }}"
+          if [ -z "$TARGET_URL" ]; then
+            echo "::error::PRODUCTION_API_URL chưa được cấu hình. Không thể xác minh dịch vụ thực tế."
+            exit 1
+          fi
+          
+          echo "Tiến hành Smoke Test kiểm tra endpoint thực tế tại: $TARGET_URL/api/health"
+          ATTEMPTS=0
+          MAX_ATTEMPTS=12
+          SLEEP_SECONDS=10
+          
+          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            ATTEMPTS=$((ATTEMPTS+1))
+            echo "[$ATTEMPTS/$MAX_ATTEMPTS] Đang gửi yêu cầu GET $TARGET_URL/api/health..."
+            
+            HTTP_STATUS=$(curl -s -o /tmp/health_res.json -w "%{http_code}" --max-time 10 "$TARGET_URL/api/health" || echo "000")
+            
+            if [ "$HTTP_STATUS" == "200" ]; then
+              echo "Nhận HTTP 200 từ dịch vụ Production."
+              cat /tmp/health_res.json
+              echo ""
+              
+              if grep -q '"status":"ok"' /tmp/health_res.json; then
+                echo "XÁC NHẬN: Health check phản hồi hợp lệ (status: ok)."
+                
+                # Kiểm tra tiếp endpoint catalog sản phẩm để xác minh CSDL
+                echo "Kiểm tra kết nối CSDL qua endpoint: $TARGET_URL/api/products"
+                PROD_STATUS=$(curl -s -o /tmp/products_res.json -w "%{http_code}" --max-time 10 "$TARGET_URL/api/products" || echo "000")
+                if [ "$PROD_STATUS" == "200" ]; then
+                  echo "XÁC NHẬN: Catalog API và CSDL hoạt động ổn định (HTTP 200). Smoke test PASS."
+                  exit 0
+                fi
+              fi
+            fi
+            
+            echo "Dịch vụ chưa sẵn sàng (HTTP: $HTTP_STATUS). Đợi $SLEEP_SECONDS giây..."
+            sleep $SLEEP_SECONDS
+          done
+          
+          echo "::error::Quá thời gian chờ (Timeout): Dịch vụ production không phản hồi HTTP 200 sau $MAX_ATTEMPTS lần thử."
+          cat /tmp/health_res.json 2>/dev/null || true
+          exit 1
+
+      # ==============================================================================
+      # Rollback: Tách biệt rõ ràng Rollback Tự Động và Phục Hồi Thủ Công
+      # ==============================================================================
+      - name: Execute Automated Rollback and Verify Active Running Version
+        if: failure()
+        run: |
+          echo "::error::CRITICAL: Quá trình triển khai hoặc kiểm thử Production thất bại!"
+          echo "Bắt đầu quy trình Rollback tự động và xác minh phiên bản thực tế..."
+          
+          if [ -n "${{ secrets.ROLLBACK_WEBHOOK_URL }}" ]; then
+            echo "Gửi yêu cầu hoàn tác tới ROLLBACK_WEBHOOK_URL..."
+            ROLLBACK_CODE=$(curl -s -o /tmp/rollback_res.txt -w "%{http_code}" -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"action\":\"rollback\",\"failed_commit\":\"${{ github.sha }}\"}" \
+              "${{ secrets.ROLLBACK_WEBHOOK_URL }}")
+            echo "Rollback Webhook HTTP Response Code: $ROLLBACK_CODE"
+            cat /tmp/rollback_res.txt || true
+            
+            # Kiểm tra HTTP response thật, KHÔNG bỏ qua lỗi bằng || true
+            if [[ "$ROLLBACK_CODE" -lt 200 || "$ROLLBACK_CODE" -ge 300 ]]; then
+              echo "::error::GỌI ROLLBACK WEBHOOK THẤT BẠI VỚI MÃ HTTP $ROLLBACK_CODE. Cần can thiệp thủ công khẩn cấp!"
+              exit 1
+            fi
+            
+            # XÁC MINH PHIÊN BẢN THỰC SỰ ĐANG HOẠT ĐỘNG SAU ROLLBACK (Không chỉ dựa vào HTTP 2xx)
+            TARGET_URL="${{ vars.PRODUCTION_API_URL || secrets.PRODUCTION_API_URL }}"
+            if [ -n "$TARGET_URL" ]; then
+              echo "Đang kiểm tra phiên bản hoạt động trên endpoint /api/health sau rollback..."
+              sleep 15
+              curl -s -o /tmp/rollback_health.json "$TARGET_URL/api/health" || true
+              cat /tmp/rollback_health.json || true
+              
+              ACTIVE_COMMIT=$(jq -r '.commit // empty' /tmp/rollback_health.json 2>/dev/null || echo "")
+              if [ -n "$ACTIVE_COMMIT" ] && [ "$ACTIVE_COMMIT" = "${{ github.sha }}" ]; then
+                echo "::error::ROLLBACK THẤT BẠI: Endpoint /api/health vẫn đang chạy commit bị lỗi (${{ github.sha }})!"
+                exit 1
+              fi
+              echo "XÁC NHẬN: Rollback thành công! Phiên bản đang chạy ($ACTIVE_COMMIT) đã được khôi phục khỏi commit lỗi (${{ github.sha }})."
+            fi
+          else
+            echo "::warning::ROLLBACK_WEBHOOK_URL chưa được cấu hình. Bắt buộc thực hiện quy trình phục hồi thủ công."
+          fi
+
+      - name: Manual Disaster Recovery Runbook
+        if: failure()
+        run: |
+          echo "=========================================================="
+          echo "HƯỚNG DẪN XỬ LÝ SỰ CỐ & PHỤC HỒI DỮ LIỆU THỦ CÔNG (RUNBOOK)"
+          echo "=========================================================="
+          echo "1. Không tự ý chạy 'prisma migrate resolve --rolled-back' bừa bãi!"
+          echo "   Lệnh này chỉ đánh dấu metadata và KHÔNG hoàn tác cấu trúc bảng hoặc dữ liệu."
+          echo "2. Để rollback an toàn khi migration gặp sự cố:"
+          echo "   a. Ngắt lưu lượng tới dịch vụ API: docker compose -f docker-compose.prod.yml stop api web"
+          echo "   b. Khôi phục cơ sở dữ liệu từ bản sao lưu gần nhất (WAL-G / pg_dump):"
+          echo "      pg_restore -U \$POSTGRES_USER -d \$POSTGRES_DB -c /backups/latest.dump"
+          echo "   c. Chuyển container tag về commit ổn định gần nhất:"
+          echo "      IMAGE_TAG=<LAST_STABLE_SHA> docker compose -f docker-compose.prod.yml up -d"
+          echo "   d. Xác minh trạng thái API: curl -f https://<DOMAIN>/api/health"
+          echo "Chi tiết xem tại docs/delivery/rollback-runbook.md"

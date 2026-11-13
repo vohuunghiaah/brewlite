@@ -17,3 +17,4 @@ Mọi hành động vi phạm quy tắc chuyển trạng thái đều lập tứ
 ## Hệ quả (Consequences)
 - **Tích cực:** Loại bỏ hoàn toàn các lỗi nghiệp vụ nhảy cóc trạng thái; đảm bảo tính toàn vẹn của dữ liệu đơn hàng; dễ dàng viết unit test kiểm thử ma trận trạng thái.
 - **Tiêu cực:** Yêu cầu mọi luồng cập nhật trạng thái đơn phải đi qua hàm kiểm tra tập trung, không được cập nhật trực tiếp trường `status` trong database.
+
