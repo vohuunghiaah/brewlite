@@ -1,46 +1,62 @@
 # Ma Trận Truy Vết Yêu Cầu (Requirements Traceability Matrix - RTM)
 
 **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
-**Phiên bản:** 2.1 (Chuẩn hóa toàn diện định danh FR-01 đến FR-13 theo SRS v1.1.0)
+**Phiên bản:** 2.2.0 (Post-Merge Audit & Dual-Baseline Verification)
 **Ngày cập nhật:** 14/11/2026
-**Mục đích:** Truy vết đa chiều từ Yêu cầu chức năng (FR) và Phi chức năng (NFR) đến Use Case, Sơ đồ thiết kế kiến trúc, Mã nguồn triển khai và Ca kiểm thử xác minh.
+**Mục đích:** Truy vết đa chiều từ Yêu cầu chức năng (FR-01 -> FR-13) và Phi chức năng (NFR-01 -> NFR-06) đến Use Case, Thiết kế kiến trúc, Mã nguồn triển khai và Ca kiểm thử xác minh.
+**Nguyên tắc đánh giá:** Phân định minh bạch giữa hiện trạng nhánh `main` (baseline TypeORM khởi tạo ban đầu) và các nhánh tính năng `feature/sprint1-mvp-foundation` / `feature/sprint2-full-flow` (baseline Prisma hoàn thiện Drink Ordering).
 
 ---
 
-## 1. Bảng Truy Vết Yêu Cầu Chức Năng (Functional Requirements Traceability)
+## 1. Định Nghĩa Trạng Thái Kiểm Chứng (Verification Status Criteria)
 
-| Mã YC | Tên yêu cầu nghiệp vụ | Use Case ánh xạ | Sơ đồ & Thiết kế liên quan | Mã nguồn Triển khai (Code) | Ca kiểm thử bảo chứng (Tests) | Trạng thái kiểm chứng |
-|:---:|---|:---:|---|---|---|:---:|
-| **FR-01** | Xem menu đồ uống, lọc theo danh mục | `UC-01` | - `docs/requirements/srs.md`<br>- `docs/diagram/ActivityDiagram.puml` | - `apps/api/src/products/`<br>- `apps/web/src/app/page.tsx`<br>- `apps/web/src/app/menu/page.tsx` | - `products.service.spec.ts`<br>- HTTP GET `/products` verification | **VERIFIED (PASS)** |
-| **FR-02** | Xem chi tiết, chọn size/topping | `UC-02` | - `docs/requirements/use-cases.md`<br>- `docs/diagram/ClassDiagram.puml` | - `apps/web/src/app/menu/page.tsx`<br>- `apps/api/src/products/` | - `products.controller.spec.ts`<br>- UI State recalculation test | **VERIFIED (PASS)** |
-| **FR-03** | Quản lý giỏ hàng và tính tổng tiền | `UC-03` | - `docs/requirements/srs.md`<br>- `docs/requirements/use-cases.md` | - `apps/web/src/app/menu/page.tsx`<br>- Client-side Cart State | - Frontend Component testing<br>- Cart Total Price recalculation | **VERIFIED (PASS)** |
-| **FR-04** | Đăng ký, đăng nhập và JWT | `UC-07`<br>`UC-08` | - ADR-004 (JWT Auth Flow)<br>- `docs/diagram/SequenceDiagram.puml` | - `apps/api/src/auth/`<br>- `apps/api/src/auth/guards/jwt-auth.guard.ts` | - `auth.service.spec.ts`<br>- JWT Guard unit tests | **PARTIAL**<br>*(Đã có specs/code trên nhánh Sprint 1/2)* |
-| **FR-05** | Tạo đơn hàng (Order Creation) | `UC-04` | - `docs/diagram/SequenceDiagram.puml`<br>- ADR-002 (Order Lifecycle) | - `apps/api/src/orders/orders.service.ts`<br>- `apps/web/src/app/menu/page.tsx` | - `orders.controller.spec.ts`<br>- Integration test `POST /orders` | **VERIFIED (PASS)** |
-| **FR-06** | Thanh toán không tiền mặt mô phỏng | `UC-10` | - ADR-003 / ADR-005 (Mock Payment)<br>- `docs/diagram/SequenceDiagram.puml` | - `apps/api/src/payments/payments.service.ts`<br>- `apps/web/src/app/menu/page.tsx` | - `payments.service.spec.ts`<br>- E2E payment scenario | **PARTIAL**<br>*(Đã tích hợp Mock Payment trên Sprint 2)* |
-| **FR-07** | Quản lý trạng thái đơn (State Machine) | `UC-04`<br>`UC-10`<br>`UC-12` | - `docs/requirements/use-cases.md`<br>- `docs/diagram/ActivityDiagram.puml` | - `apps/api/src/orders/state-machine/`<br>- Hàm `assertTransition` | - `order-state-machine.spec.ts`<br>- Invalid transition test | **VERIFIED (PASS)** |
-| **FR-08** | Idempotent Payment | `UC-10` | - ADR-005 (Mock Payment & Idempotency)<br>- `docs/diagram/SequenceDiagram.puml` | - `apps/api/src/payments/`<br>- Unique Index `idempotencyKey` | - `payments.service.spec.ts` (Duplicate key test) | **PARTIAL**<br>*(Đã có cơ chế bảo vệ trên Sprint 2)* |
-| **FR-09** | Kiểm soát tồn kho đồng thời (OCC) | `UC-04`<br>`UC-10` | - ADR-003 (Optimistic Locking)<br>- `docs/diagram/ClassDiagram.puml` | - `apps/api/src/products/`<br>- Transaction với cột `version` | - `payments.service.spec.ts` (OCC test)<br>- Concurrency stock test | **PARTIAL**<br>*(Đã cài đặt logic OCC trên Sprint 2)* |
-| **FR-10** | Voucher và Loyalty | `UC-09`<br>`UC-11` | - `docs/requirements/srs.md`<br>- `docs/diagram/ClassDiagram.puml` | - `apps/api/src/payments/`<br>- Bảng `LoyaltyTransaction` | - `payments.service.spec.ts` | **NOT VERIFIED**<br>*(Chờ xác nhận BR-LOYALTY-01)* |
-| **FR-11** | Xác nhận và lịch sử đơn | `UC-05`<br>`UC-06` | - `docs/requirements/srs.md`<br>- `docs/requirements/use-cases.md` | - `apps/web/src/app/menu/page.tsx`<br>- `apps/api/src/orders/` | - Order confirmation UI verification<br>- `GET /orders/:id` Anti-IDOR test | **VERIFIED (PASS)** |
-| **FR-12** | Cập nhật tiến độ pha chế | `UC-12` | - `docs/requirements/srs.md`<br>- `docs/diagram/ActivityDiagram.puml` | - `apps/api/src/orders/orders.controller.ts`<br>- Endpoint `PATCH /orders/:id/status` | - State machine transition test | **PARTIAL**<br>*(Đã có API nội bộ, chưa có Barista UI)* |
-| **FR-13** | Kiểm tra sức khỏe hệ thống (Health Check) | `UC-13` | - `docs/requirements/srs.md`<br>- Deployment Production Architecture | - `apps/api/src/app.controller.ts`<br>- Endpoint `GET /health` | - HTTP GET `/health` test | **VERIFIED (PASS)** |
+- **VERIFIED (PASS):** Đã có mã nguồn hoạt động, có ca kiểm thử (Unit / E2E / Integration) thực thi thành công và có bằng chứng xác minh cụ thể.
+- **PARTIAL:** Đã có thiết kế hoặc mã nguồn/giao diện một phần, nhưng chưa có kiểm thử hoàn chỉnh hoặc chỉ mới được triển khai đầy đủ trên nhánh tính năng (feature branch).
+- **NOT VERIFIED:** Mã nguồn đã có hoặc được đề xuất, nhưng chưa chạy bài kiểm thử chứng minh chính thức hoặc đang chờ Product Owner (PO) phê duyệt quy tắc nghiệp vụ.
+- **NOT IMPLEMENTED:** Chưa có mã nguồn triển khai trong phạm vi nhánh được đánh giá.
 
 ---
 
-## 2. Bảng Truy Vết Yêu Cầu Phi Chức Năng (Non-Functional Requirements Traceability)
+## 2. Bảng Truy Vết Yêu Cầu Chức Năng (Functional Requirements Traceability)
 
-| Mã NFR | Tiêu chí kỹ thuật | Giải pháp kiến trúc | Bằng chứng kiểm chứng | Trạng thái thực tế |
-|:---:|---|---|---|:---:|
-| **NFR-01** | Thời gian phản hồi API < 500ms | Thiết kế NestJS Modular tinh gọn, truy vấn cơ sở dữ liệu tối ưu | Supertest & Superbench thực tế phản hồi trung bình < 100ms | **VERIFIED (PASS)** |
-| **NFR-02** | An toàn xác thực & Bảo mật dữ liệu | - Mật khẩu băm Bcrypt Salt $\ge 10$<br>- JWT Guard cho private endpoints<br>- Kiểm tra quyền sở hữu đơn hàng chống IDOR | - Auth service unit tests<br>- ESLint 0 security warnings | **VERIFIED (PASS)** |
-| **NFR-03** | Trải nghiệm người dùng Mobile-first | Giao diện Next.js tối ưu viewport di động (360px - 430px), touch targets $\ge 44\text{px}$ | Kiểm tra trực quan đa thiết bị, Playwright mobile emulation profile | **VERIFIED (PASS)** |
-| **NFR-04** | Tính toàn vẹn dữ liệu & Đồng thời | - PostgreSQL ACID Transactions<br>- Optimistic Locking với cột `version` chống overselling | Concurrency unit tests và Database constraint check | **VERIFIED (PASS)** |
-| **NFR-05** | Khả năng triển khai & Container hóa | Khởi chạy trọn gói hệ thống (Web, API, DB) qua lệnh `docker compose up` | `docker-compose.yml` khởi chạy thành công 3 container sạch | **VERIFIED (PASS)** |
-| **NFR-06** | Tự động hóa CI/CD & Khả năng bảo trì | GitHub Actions CI Quality Gate (Install, Lint, Unit Test, Build) | Workflow CI xanh 100% trên commit pull request | **VERIFIED (PASS)** |
+| Mã YC | Tên yêu cầu nghiệp vụ | Use Case ánh xạ | Thiết kế & Tài liệu liên quan | Hiện trạng Nhánh `main`<br>*(TypeORM Baseline)* | Hiện trạng Nhánh Feature<br>*(Prisma Baseline: Sprint 1 & 2)* | Trạng thái `main` | Trạng thái Feature Branches |
+|:---:|---|:---:|---|---|---|:---:|:---:|
+| **FR-01** | Xem menu đồ uống, lọc danh mục | `UC-01` | - `docs/requirements/srs.md` §5.1<br>- `docs/diagram/ActivityDiagram.puml` | - Code: `GET /products`, Next.js Menu UI (`apps/web/src/app/menu/page.tsx`).<br>- Test: `products.service.spec.ts` (thất bại do thiếu mock TypeORM repository). | - Code: `GET /products`, UI filter category danh mục phong phú.<br>- Test: Jest unit test + E2E pass 100%. | **PARTIAL** | **VERIFIED (PASS)** |
+| **FR-02** | Xem chi tiết, chọn size/topping | `UC-02` | - `docs/requirements/use-cases.md` (UC-02)<br>- `docs/diagram/ClassDiagram.puml` | - Code: Modal UI cho phép chọn size S/M/L, ghi chú đơn.<br>- Backend: TypeORM `Product` chỉ có giá đơn, chưa có quan hệ size/topping.<br>- Test: Chưa có test backend. | - Code: Enum `ProductSize` (`SMALL`, `MEDIUM`, `LARGE`), model `Topping`.<br>- Test: DTO validation test pass. | **PARTIAL** | **VERIFIED (PASS)** |
+| **FR-03** | Quản lý giỏ hàng & Tính tổng tiền | `UC-03` | - `docs/requirements/srs.md` §5.1<br>- `docs/requirements/use-cases.md` (UC-03) | - Code: Client-side React state (`apps/web/src/app/menu/page.tsx`) tính tổng tiền real-time.<br>- Test: Xác minh thủ công trên trình duyệt. | - Code: Client cart state tích hợp giỏ hàng, voucher, checkout flow.<br>- Test: Playwright E2E test pass trên PR #9. | **VERIFIED (PASS)** | **VERIFIED (PASS)** |
+| **FR-04** | Đăng ký, đăng nhập & JWT | `UC-07`<br>`UC-08` | - ADR-004 (JWT Auth Flow)<br>- `docs/diagram/SequenceDiagram.puml` | - Code: **Chưa có module Auth** trên `main`.<br>- Test: Không có. | - Code: `apps/api/src/auth/` (`auth.controller.ts`, `jwt-auth.guard.ts`), `User` model.<br>- Test: `auth.service.spec.ts` pass 100%. | **NOT IMPLEMENTED** | **VERIFIED (PASS)** |
+| **FR-05** | Tạo đơn hàng (Order Creation) | `UC-04` | - ADR-002 (Order Lifecycle)<br>- `docs/diagram/SequenceDiagram.puml` | - Code: `POST /orders`, `orders.service.ts` dùng TypeORM Transaction lưu Order & OrderItems.<br>- Test: Manual E2E pass; chưa có `orders.service.spec.ts`. | - Code: `POST /orders`, hỗ trợ UUID, sinh `orderCode` (#BL-xxxx), trừ kho.<br>- Test: `orders.service.spec.ts` pass. | **VERIFIED (PASS)** | **VERIFIED (PASS)** |
+| **FR-06** | Thanh toán không tiền mặt mô phỏng | `UC-10` | - ADR-003 / ADR-005 (Mock Payment)<br>- `docs/diagram/SequenceDiagram.puml` | - Code: **Chưa có module Payments** trên `main`. Đơn tạo xong ở trạng thái `PENDING`.<br>- Test: Không có. | - Code: `POST /payments`, `payments.service.ts` mô phỏng success/failure, chuyển trạng thái `PAID`.<br>- Test: `payments.service.spec.ts` pass 100%. | **NOT IMPLEMENTED** | **VERIFIED (PASS)** |
+| **FR-07** | Quản lý trạng thái đơn (State Machine) | `UC-04`<br>`UC-10`<br>`UC-12` | - `docs/requirements/use-cases.md` §3.2<br>- `docs/diagram/ActivityDiagram.puml` | - Code: Cột `status` trong `Order` (string, default `'PENDING'`). Chưa có hàm kiểm tra hợp lệ.<br>- Test: Không có. | - Code: `order-state-machine.ts` kiểm soát nghiêm ngặt `PENDING -> PAID -> PREPARING -> READY -> COMPLETED` / `CANCELLED` / `PAYMENT_FAILED`.<br>- Test: `order-state-machine.spec.ts` pass. | **PARTIAL** | **VERIFIED (PASS)** |
+| **FR-08** | Thanh toán Idempotent (Chống trùng) | `UC-10` | - ADR-005 (Mock Payment & Idempotency)<br>- `docs/diagram/SequenceDiagram.puml` | - Code: **Chưa có** trên `main`.<br>- Test: Không có. | - Code: Unique constraint `idempotencyKey` trong bảng `Payment`.<br>- Ghi chú: Frontend chưa lưu key vào sessionStorage (GAP-02).<br>- Test: `payments.service.spec.ts` pass. | **NOT IMPLEMENTED** | **PARTIAL** |
+| **FR-09** | Kiểm soát tồn kho đồng thời (OCC) | `UC-04`<br>`UC-10` | - ADR-003 (Optimistic Concurrency Control)<br>- `docs/diagram/ClassDiagram.puml` | - Code: Cờ boolean `isAvailable` trên `Product`. Chưa có cột `stock` số lượng hay `version`.<br>- Test: Không có. | - Code: Cột `version` (Int) và `stock` (Int) trên `Product`, transaction kiểm tra version chống overselling.<br>- Test: Concurrency race condition test pass trên PR #9. | **PARTIAL** | **VERIFIED (PASS)** |
+| **FR-10** | Mã giảm giá & Tích điểm thành viên | `UC-09`<br>`UC-11` | - `docs/requirements/srs.md` §3.1<br>- `docs/diagram/ClassDiagram.puml` | - Code: **Chưa có** trên `main`.<br>- Test: Không có. | - Code: Model `Voucher`, `LoyaltyTransaction` trong Prisma.<br>- Test: Unit test voucher `BREW20` pass; Tích điểm `BR-LOYALTY-01` (10k vs 1k) đang chờ PO duyệt. | **NOT IMPLEMENTED** | **NOT VERIFIED** |
+| **FR-11** | Xác nhận & Lịch sử đơn hàng | `UC-05`<br>`UC-06` | - `docs/requirements/srs.md` §5.1<br>- `docs/requirements/use-cases.md` (UC-05, UC-06) | - Code: Modal Next.js hiển thị mã đơn xác nhận; API `GET /orders/:id`. Chưa có trang xem lịch sử đơn cá nhân.<br>- Test: Kiểm tra thủ công API. | - Code: `GET /orders/me` có JWT protection; giao diện Next.js hiển thị danh sách đơn đã đặt.<br>- Test: Anti-IDOR test pass. | **PARTIAL** | **VERIFIED (PASS)** |
+| **FR-12** | Cập nhật tiến độ pha chế đơn hàng | `UC-12` | - `docs/requirements/srs.md` §5.1<br>- `docs/diagram/ActivityDiagram.puml` | - Code: **Chưa có** trên `main`.<br>- Test: Không có. | - Code: API nội bộ `PATCH /orders/:id/status` với role Barista/Admin cho phép đổi trạng thái. Chưa có Barista Portal UI.<br>- Test: Transition test pass. | **NOT IMPLEMENTED** | **PARTIAL** |
+| **FR-13** | Kiểm tra sức khỏe hệ thống (Health Check) | `UC-13` | - `docs/requirements/srs.md` §5.1<br>- Deployment Architecture | - Code: `AppController` chỉ có `GET /` trả về `'Hello World!'`. **Chưa có `GET /health`**.<br>- Test: `app.e2e-spec.ts` kiểm tra `GET /` pass. | - Code: `HealthController` (`GET /health`) trả về status, timestamp, db health.<br>- Test: Smoke test HTTP GET `/health` pass trong CI pipeline. | **NOT IMPLEMENTED** | **VERIFIED (PASS)** |
 
 ---
 
-## 3. Ghi Chú Đánh Giá Nghiệm Thu
+## 3. Bảng Truy Vết Yêu Cầu Phi Chức Năng (Non-Functional Requirements Traceability)
 
-1. **Chuẩn hóa mã định danh:** Toàn bộ bảng ma trận đã được đối chiếu 1:1 với tài liệu `docs/requirements/srs.md` v1.1.0 và `docs/requirements/use-cases.md` v1.1.0, loại bỏ hoàn toàn hiện tượng tráo đổi mã FR.
-2. **Trạng thái thực tế:** Thay vì tuyên bố "100% ĐẠT (PASS)" thiếu căn cứ, các yêu cầu được phân định chính xác giữa những phần đã kiểm chứng thực tế (**VERIFIED**), những phần đã có thiết kế/mã nguồn ở các nhánh tính năng (**PARTIAL**), và những phần cần Product Owner phê duyệt nghiệp vụ (**NOT VERIFIED**).
+| Mã NFR | Tiêu chí kỹ thuật | Giải pháp kiến trúc | Bằng chứng kiểm chứng thực tế | Hiện trạng `main` | Hiện trạng Feature Branches | Trạng thái `main` | Trạng thái Feature Branches |
+|:---:|---|---|---|---|---|:---:|:---:|
+| **NFR-01** | Thời gian phản hồi API < 500ms | Thiết kế NestJS Modular tinh gọn, truy vấn cơ sở dữ liệu tối ưu | Supertest & Superbench thực tế phản hồi trung bình < 120ms | Truy vấn TypeORM cơ bản phản hồi nội bộ nhanh, nhưng chưa có báo cáo tải chính thức | Smoke test đo thời gian trung bình < 120ms; chưa chạy bài test 1000 VU | **NOT VERIFIED** | **PARTIAL** |
+| **NFR-02** | An toàn xác thực & Bảo mật dữ liệu | - Mật khẩu băm Bcrypt Salt $\ge 10$<br>- JWT Guard cho private endpoints<br>- Chống IDOR kiểm tra `userId` | - Unit tests bảo mật<br>- ESLint 0 warning bảo mật | Đã bật `ValidationPipe` toàn cục; chưa có module Auth, Bcrypt, hay JWT Guard | Đầy đủ Bcrypt salt = 10, JWT Guard, Anti-IDOR test pass | **PARTIAL** | **VERIFIED (PASS)** |
+| **NFR-03** | Trải nghiệm người dùng Mobile-first | Giao diện Next.js tối ưu viewport di động (360px - 430px), touch targets $\ge 44\text{px}$ | Kiểm tra trực quan, Playwright mobile emulation profile, Console 0 hydration error | Đã khắc phục triệt để lỗi React Hydration trên `layout.tsx`; giao diện responsive sạch sẽ | Playwright mobile emulation test pass trên PR #9 | **VERIFIED (PASS)** | **VERIFIED (PASS)** |
+| **NFR-04** | Tính toàn vẹn dữ liệu & Kiểm soát đồng thời | - PostgreSQL ACID Transactions<br>- Optimistic Concurrency Control (OCC) với cột `version` | Concurrency race condition test và Database transaction test | Đã có ACID Transaction (`dataSource.transaction`) tạo đơn; chưa có OCC version | PostgreSQL Transaction + Prisma OCC version chặn hoàn toàn overselling | **PARTIAL** | **VERIFIED (PASS)** |
+| **NFR-05** | Khả năng triển khai & Đóng gói Container | Khởi chạy trọn gói hệ thống (Web, API, DB) qua lệnh `docker compose up` | `docker-compose.yml` khởi chạy thành công 3 container sạch | Dockerfile API, Web và `docker-compose.yml` sẵn sàng tại root | Tách biệt cấu hình local/production, build và push image lên GHCR thành công | **VERIFIED (PASS)** | **VERIFIED (PASS)** |
+| **NFR-06** | Tự động hóa CI/CD & Khả năng bảo trì | GitHub Actions CI Quality Gate (Install, Lint, Unit Test, Build) | Workflow CI kiểm tra tự động trên mọi PR | Workflow `.github/workflows/ci.yml` tồn tại; tuy nhiên unit test `products` đang thiếu mock TypeORM | Quality Gate toàn diện (Lint, Test, Playwright, Docker GHCR) pass 100% trên commit `75e4ccd9` | **PARTIAL** | **VERIFIED (PASS)** |
+
+---
+
+## 4. Tổng Hợp & Đánh Giá Nghiệm Thu Kỹ Thuật
+
+1. **Minh bạch hóa hai nền tảng kiến trúc (Dual-Baseline Transparency):**
+   - **Nhánh `main` (Merge PR #12):** Đóng vai trò là baseline TypeORM đơn giản (Sprint 1 MVP ban đầu), triển khai danh mục sản phẩm và tạo đơn hàng cơ bản. Các tính năng nâng cao như Auth (FR-04), Payment (FR-06), State Machine (FR-07), OCC (FR-09), Health Endpoint (FR-13) chưa có trên `main`.
+   - **Nhánh `feature/sprint1-mvp-foundation` & `feature/sprint2-full-flow` (PR #7, PR #9):** Đã hiện thực hóa toàn diện nghiệp vụ Đặt đồ uống (Drink Ordering) với Prisma ORM, kiểm soát đồng thời OCC, thanh toán idempotent, quy trình chuyển đổi trạng thái đơn hàng nghiêm ngặt và pipeline CI/CD/Docker đạt chuẩn.
+
+2. **Các khoảng hở triển khai cần lưu ý (Implementation Gaps):**
+   - **GAP-01 (Hoàn tiền - Refund):** Chưa có API `POST /payments/:id/refund` hay `PATCH /orders/:id/cancel`; nghiệp vụ `BR-REFUND-01` được ghi nhận ở trạng thái Đề xuất (`PROPOSED / PENDING APPROVAL`).
+   - **GAP-02 (Lưu trữ Idempotency Key phía Client):** Backend đã có cơ chế Unique Index chống thanh toán trùng, nhưng giao diện Client Next.js chưa lưu key vào `sessionStorage` để tái sử dụng khi người dùng refresh hoặc ấn thanh toán lại.
+   - **GAP-03 (Công thức tích điểm thành viên):** Quy tắc `BR-LOYALTY-01` có sự không đồng nhất giữa đề bài Assignment 2 (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt cuối cùng từ Product Owner.

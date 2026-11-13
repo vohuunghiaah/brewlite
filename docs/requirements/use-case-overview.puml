@@ -48,11 +48,11 @@ Customer --> UC5
 Customer --> UC6
 Customer --> UC11
 
-' Quan hệ include / extend
-UC4 ..> UC3 : <<include>>
-UC4 ..> UC8 : <<include>>
+' Quan hệ include (Hành vi bắt buộc cấu thành)
 UC4 ..> UC10 : <<include>>
-UC4 <.. UC9 : <<extend>>
+
+' Quan hệ extend (Hành vi mở rộng tùy chọn)
+UC9 ..> UC4 : <<extend>>
 
 ' Quan hệ Cổng thanh toán mô phỏng (Secondary System Actor)
 UC10 --> PaymentGateway
