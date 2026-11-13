@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-01`
-- **Phiên bản:** 1.2.0 (Post-Merge Audit & Corrective Maintenance)
+- **Phiên bản:** 1.3.0 (Post-Merge Audit & GAP Synchronization)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -49,7 +49,7 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
 2. Mã định danh đơn hàng duy nhất (`id` - UUID) và mã hiển thị nhận nước (`orderCode`, ví dụ: `#BL-1042`) được cấp phát cho khách hàng.
 3. Số lượng tồn kho thành phẩm (`stock`) của tất cả sản phẩm trong đơn được trừ chính xác thông qua Database Transaction và cơ chế Optimistic Locking (cột `version` tăng thêm 1).
 4. Bản ghi giao dịch thanh toán (`Payment`) được lưu trữ thành công với trạng thái `SUCCESS` và liên kết với khóa duy nhất `idempotencyKey`.
-5. Điểm thưởng khách hàng thân thiết (Loyalty Points) được tính toán tự động và cộng dồn vào tài khoản khách hàng, đồng thời ghi nhận lịch sử vào bảng `LoyaltyTransaction`.
+5. Điểm thưởng khách hàng thân thiết (Loyalty Points) được tính toán tự động và cộng dồn vào tài khoản khách hàng, đồng thời ghi nhận lịch sử vào bảng `LoyaltyTransaction` (theo quy tắc `BR-LOYALTY-01`, công thức tích điểm đang chờ PO phê duyệt giữa tỷ lệ 10.000đ hoặc 1.000đ = 1 điểm theo khoảng hở `GAP-03`).
 6. Giỏ hàng trên thiết bị client được làm trống.
 7. Màn hình điều hướng hiển thị Trang Xác nhận thành công kèm mã đơn, huy hiệu `PAID`, và thông điệp: *"Mời tới quầy lấy nước"*.
 
@@ -90,17 +90,20 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
 > Trên nhánh `main` hiện tại (TypeORM), `id` sử dụng số nguyên (`number`), các trường dữ liệu có sự ánh xạ tương ứng. Xem chi tiết đối chiếu tại Bảng ma trận truy vết.
 
 ### 3.1 Luồng Chính Thành Công (Main Success Scenario / Happy Path)
+> [!NOTE]
+> Theo tiêu chuẩn kỹ nghệ yêu cầu, Luồng chính (Happy Path) chỉ bao gồm các chức năng cốt lõi **Bắt buộc (Must Have)** của nghiệp vụ Đặt và Thanh toán đồ uống. Tính năng Mã khuyến mãi (Promotion) là chức năng **Nên có (Should Have - FR-10)** được đặc tả chi tiết tại Luồng thay thế Alt-2. Các mã định danh UUID trong tài liệu là dữ liệu minh họa kỹ thuật chuẩn hóa.
+
 - **Bước 1:** Khách hàng duyệt Menu (`GET /products`), xem chi tiết món (`GET /products/:id`), chọn kích cỡ (Size: `MEDIUM`), chọn topping (`["Kem cheese"]`), và nhập mức đường/đá trong ghi chú đơn hàng (`"50% đường, ít đá, mang đi"`), sau đó nhấn "Thêm vào giỏ hàng".
-- **Bước 2:** Khách hàng mở Giỏ hàng kiểm tra danh sách món, tổng số tiền tạm tính (ví dụ: 60.000đ), nhập mã giảm giá `BREW20` (giảm 12.000đ, còn 48.000đ) và nhấn nút **"Thanh toán"**.
+- **Bước 2:** Khách hàng mở Giỏ hàng kiểm tra danh sách món, tổng số tiền tạm tính (ví dụ: 60.000đ) và nhấn nút **"Thanh toán"**.
 - **Bước 3:** Ứng dụng Next.js kiểm tra trạng thái xác thực. Do khách hàng đã đăng nhập, client gửi yêu cầu tạo đơn hàng:
   - `POST /orders`
   - Header: `Authorization: Bearer <accessToken>`
-  - Body (chuẩn `CreateOrderDto`):
+  - Body (chuẩn `CreateOrderDto`, lưu ý `note` ở cấp `Order`):
     ```json
     {
       "items": [
         {
-          "productId": "prod-cappuccino-uuid",
+          "productId": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
           "size": "MEDIUM",
           "toppings": [
             "Kem cheese"
@@ -108,34 +111,33 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
           "quantity": 1
         }
       ],
-      "note": "50% đường, ít đá, mang đi",
-      "promoCode": "BREW20"
+      "note": "50% đường, ít đá, mang đi"
     }
     ```
 - **Bước 4:** Backend NestJS tiếp nhận request qua `JwtAuthGuard`, DTO `CreateOrderDto` validate hợp lệ dữ liệu:
   - Khởi tạo Database Transaction.
   - Kiểm tra tính khả dụng và tồn kho thành phẩm (`isAvailable = true`, `stock >= quantity`).
-  - Kiểm tra giá niêm yết phía server và áp dụng mã giảm giá `BREW20` (Server-side Pricing & Promo Calculation).
-  - Tạo bản ghi `Order` với trạng thái ban đầu là **`PENDING`**, mã định danh `id` kiểu UUID và mã nhận món hiển thị `orderCode` (ví dụ: `#BL-1042`).
-  - Tạo các bản ghi con `OrderItem` tương ứng.
+  - Kiểm tra giá niêm yết phía server (Server-side Pricing).
+  - Tạo bản ghi `Order` với trạng thái ban đầu là **`PENDING`**, mã định danh `id` kiểu UUID (`b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e`), mã nhận món hiển thị `orderCode` (ví dụ: `#BL-1042`), `subtotal: "60000.00"`, `discountAmount: "0.00"`, `totalAmount: "60000.00"`.
+  - Tạo các bản ghi con `OrderItem` tương ứng với `unitPrice: "60000.00"`, `lineTotal: "60000.00"`.
   - Commit transaction và phản hồi HTTP 201 Created:
     ```json
     {
-      "id": "ord-8f7b2c1a-5d4e-4f3a-9b1c-2e3d4f5a6b7c",
+      "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
       "orderCode": "#BL-1042",
-      "userId": "usr-9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d",
+      "userId": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
       "status": "PENDING",
       "subtotal": "60000.00",
-      "discountAmount": "12000.00",
-      "totalAmount": "48000.00",
+      "discountAmount": "0.00",
+      "totalAmount": "60000.00",
       "note": "50% đường, ít đá, mang đi",
-      "promoCode": "BREW20",
+      "promoCode": null,
       "createdAt": "2026-11-14T00:00:00.000Z",
       "items": [
         {
-          "id": "item-1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-          "orderId": "ord-8f7b2c1a-5d4e-4f3a-9b1c-2e3d4f5a6b7c",
-          "productId": "prod-cappuccino-uuid",
+          "id": "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a",
+          "orderId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "productId": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
           "size": "MEDIUM",
           "toppings": [
             "Kem cheese"
@@ -148,25 +150,25 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
     }
     ```
 - **Bước 5:** Ứng dụng Next.js chuyển sang màn hình Thanh toán. Khách hàng chọn hình thức **"Ví điện tử (E_WALLET)"** và nhấn nút **"Xác nhận thanh toán"**.
-- **Bước 6:** Ứng dụng Next.js sinh mã duy nhất UUID-v4 làm `Idempotency-Key` (ví dụ: `c73a21b4-921a-4d7a-b5a8-2081f2df9841`):
+- **Bước 6:** Ứng dụng Next.js sinh mã duy nhất UUID-v4 làm `Idempotency-Key` (ví dụ minh họa: `e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b`):
   - Client gửi request thanh toán:
     - `POST /payments`
     - Headers:
       - `Authorization: Bearer <accessToken>`
-      - `Idempotency-Key: c73a21b4-921a-4d7a-b5a8-2081f2df9841`
+      - `Idempotency-Key: e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b`
     - Body (chuẩn `ProcessPaymentDto`):
       ```json
       {
-        "orderId": "ord-8f7b2c1a-5d4e-4f3a-9b1c-2e3d4f5a6b7c",
+        "orderId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
         "method": "E_WALLET",
-        "amount": 48000,
+        "amount": 60000,
         "mockOutcome": "SUCCESS"
       }
       ```
   - **Quy tắc bảo vệ giá phía Backend (Amount Verification):**
     - Backend truy vấn đơn hàng từ CSDL theo `orderId` và bắt buộc đối chiếu tính toàn vẹn: `payload.amount === order.totalAmount`. Nếu phát hiện sai lệch, lập tức từ chối với HTTP 400 Bad Request.
 - **Bước 7:** Backend NestJS kiểm tra khóa Idempotency trong cơ sở dữ liệu:
-  - Xác nhận khóa `c73a21b4-...` chưa từng được sử dụng.
+  - Xác nhận khóa `e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b` chưa từng được sử dụng.
 - **Bước 8:** Backend gọi dịch vụ thanh toán mô phỏng (Mock Payment Service):
   - Dịch vụ xác thực tính hợp lệ của số tiền và phương thức. Phản hồi giao dịch thành công.
 - **Bước 9:** Backend thực hiện chuỗi nghiệp vụ cập nhật cơ sở dữ liệu bên trong một Database Transaction:
@@ -175,10 +177,10 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
      ```sql
      UPDATE "Product"
      SET stock = stock - 1, version = version + 1
-     WHERE id = 'prod-cappuccino-uuid' AND stock >= 1 AND version = :currentVersion;
+     WHERE id = 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d' AND stock >= 1 AND version = :currentVersion;
      ```
-  3. Tạo bản ghi thanh toán `Payment` với `status = 'SUCCESS'`, `idempotencyKey = 'c73a21b4-...'`.
-  4. Tính toán điểm thưởng khách hàng thân thiết (theo BR-LOYALTY-01: 48 điểm), ghi nhận bản ghi vào bảng `LoyaltyTransaction` và cập nhật điểm tích lũy của người dùng.
+  3. Tạo bản ghi thanh toán `Payment` với `status = 'SUCCESS'`, `idempotencyKey = 'e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b'`.
+  4. Tính toán điểm thưởng khách hàng thân thiết theo quy tắc `BR-LOYALTY-01` (chưa chốt số điểm cụ thể do chờ PO phê duyệt công thức tích điểm giữa 10.000đ hoặc 1.000đ = 1 điểm theo khoảng hở `GAP-03`), ghi nhận bản ghi vào bảng `LoyaltyTransaction` và cập nhật điểm tích lũy của người dùng.
 - **Bước 10:** Backend commit transaction thành công và trả về phản hồi HTTP 200 OK:
   ```json
   {
@@ -187,20 +189,20 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
     "isDuplicate": false,
     "message": "Thanh toán thành công qua Mock Payment Service.",
     "payment": {
-      "id": "pay-12345678-abcd-ef01-2345-6789abcdef01",
-      "orderId": "ord-8f7b2c1a-5d4e-4f3a-9b1c-2e3d4f5a6b7c",
-      "idempotencyKey": "c73a21b4-921a-4d7a-b5a8-2081f2df9841",
+      "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+      "orderId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "idempotencyKey": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b",
       "method": "E_WALLET",
-      "amount": "48000.00",
+      "amount": "60000.00",
       "status": "SUCCESS",
       "transactionRef": "TXN-839201",
       "createdAt": "2026-11-14T00:00:05.000Z"
     },
     "order": {
-      "id": "ord-8f7b2c1a-5d4e-4f3a-9b1c-2e3d4f5a6b7c",
+      "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
       "orderCode": "#BL-1042",
       "status": "PAID",
-      "totalAmount": "48000.00"
+      "totalAmount": "60000.00"
     }
   }
   ```
@@ -216,12 +218,14 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
 - Tại **Bước 6**, request gửi `POST /payments` với trường `"method": "BANK_CARD"`.
 - Hệ thống Mock Payment Service xử lý qua cổng thẻ giả lập, luồng tiếp tục thành công như Bước 8 trở đi.
 
-#### Alt-2: Khách hàng áp dụng mã giảm giá (Promotion Voucher)
-- Tại **Bước 2**, tại giao diện Giỏ hàng hoặc Checkout, khách hàng nhập mã khuyến mãi `BREW20` (áp dụng cho đơn từ 50.000đ trở lên, giảm 20%).
-- Client gửi kiểm tra mã voucher. Hệ thống tính toán số tiền chiết khấu (ví dụ: giảm 12.000đ), cập nhật lại tổng tiền đơn hàng thành 48.000đ.
-- Tại **Bước 3**, payload `POST /orders` bổ sung trường `"promoCode": "BREW20"`.
-- Backend xác thực tính hợp lệ của voucher, ghi nhận `discountAmount = 12000` và `totalAmount = 48000`.
-- Số tiền thanh toán tại Bước 6 sẽ là 48.000đ. Các bước tiếp theo diễn ra bình thường.
+#### Alt-2: Khách hàng áp dụng mã khuyến mãi (Promotion - Should Have - FR-10)
+- **Bối cảnh:** FR-10 được phân loại là **Should Have (Nên có)**, do đó thao tác nhập mã khuyến mãi là một Luồng thay thế tùy chọn của khách hàng.
+- Tại **Bước 2**, tại giao diện Giỏ hàng hoặc Checkout, khách hàng có nhu cầu sử dụng mã khuyến mãi và nhập mã `BREW20` (áp dụng cho đơn từ 50.000đ trở lên, chiết khấu 20%).
+- Client gửi kiểm tra mã khuyến mãi. Hệ thống đối chiếu bảng `Promotion` trong CSDL theo quy tắc `BR-PROMO-01`, xác nhận đơn hàng đủ điều kiện (tổng tiền 60.000đ $\ge$ 50.000đ), tính toán số tiền chiết khấu (giảm 12.000đ), và cập nhật lại `discountAmount = 12000.00`, `totalAmount = 48000.00`.
+- Tại **Bước 3**, payload `POST /orders` gửi kèm trường `"promoCode": "BREW20"`.
+- Backend xác thực tính hợp lệ của model `Promotion`, lưu `promoCode: "BREW20"`, `discountAmount: "12000.00"`, `totalAmount: "48000.00"`.
+- Tại **Bước 6**, request thanh toán `POST /payments` gửi số tiền là `48000` (`"amount": 48000`).
+- Giao dịch được xử lý thành công với số tiền 48.000đ và đơn hàng chuyển sang `PAID`. Các bước tiếp theo diễn ra bình thường.
 
 #### Alt-3: Khách hàng tùy biến nhiều món và nhiều loại topping
 - Tại **Bước 1**, khách hàng chọn nhiều món khác nhau, mỗi món có các tùy chọn size riêng biệt (`SMALL`, `MEDIUM`, `LARGE`) và nhiều topping cùng lúc (Kem cheese, Trân châu trắng, Thạch đào).

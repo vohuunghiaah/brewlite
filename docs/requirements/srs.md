@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
 - **Mã tài liệu:** `REQ-SRS-01`
-- **Phiên bản:** 1.2.0 (Post-Merge Audit & Corrective Maintenance)
+- **Phiên bản:** 1.3.0 (Post-Merge Audit & GAP Synchronization)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -38,7 +38,7 @@ Toàn bộ các yêu cầu chức năng được đánh số định danh duy nh
 | **FR-07** | Quản lý trạng thái đơn | **Must Have** | Kiểm soát chặt chẽ vòng đời đơn hàng qua Máy trạng thái hữu hạn (`assertTransition`), ngăn chặn mọi chuyển tiếp trạng thái bất hợp lệ hoặc nhảy cóc. | Ass 1 §9.1, Ass 2 §4.3 |
 | **FR-08** | Idempotent Payment | **Must Have** | Sử dụng HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL để loại bỏ rủi ro trừ tiền hoặc tạo giao dịch trùng lặp khi retry. | Ass 1 §9.2, Ass 2 §4.2 |
 | **FR-09** | Kiểm soát tồn kho đồng thời | **Must Have** | Sử dụng Database Transaction và Optimistic Locking (cột `version`) để loại bỏ hoàn toàn rủi ro bán vượt tồn kho thành phẩm (Overselling) khi có nhiều yêu cầu đồng thời. | Ass 1 §9.3, Ass 2 §4.2 |
-| **FR-10** | Voucher và Loyalty | **Should Have** | Nhập mã voucher giảm giá hợp lệ (`BREW20`) tại bước checkout và tự động tích lũy điểm thưởng khách hàng thân thiết sau khi đơn hàng chuyển sang `PAID` (theo quy tắc BR-LOYALTY-01). | Ass 1 §9.4, Ass 2 §2.3 |
+| **FR-10** | Mã khuyến mãi (Promotion) & Loyalty | **Should Have** | Nhập mã khuyến mãi hợp lệ (`BREW20`) tại bước checkout dựa trên model `Promotion` và tự động tích lũy điểm thưởng khách hàng thân thiết sau khi đơn hàng chuyển sang `PAID` (theo quy tắc BR-LOYALTY-01, GAP-03). | Ass 1 §9.4, Ass 2 §2.3 |
 | **FR-11** | Xác nhận và lịch sử đơn | **Must Have** | Màn hình hiển thị mã đơn nhận món `#xxxx`, trạng thái `PAID`, dặn lấy nước tại quầy; cho phép xem danh sách lịch sử đơn của cá nhân (`GET /orders/me`). | Ass 1 §7 (S5), Ass 2 §7.1 |
 | **FR-12** | Cập nhật tiến độ pha chế | **Should Have** | Cung cấp endpoint cho nhân viên quầy/Barista cập nhật tiến độ chế biến đơn hàng: `PAID -> PREPARING -> READY -> COMPLETED`. | Ass 1 §9.1, Ass 2 §7.1 |
 | **FR-13** | Health Check | **Must Have** | Endpoint `GET /health` cung cấp trạng thái hoạt động của Backend API và tình trạng kết nối tới cơ sở dữ liệu PostgreSQL. | Ass 2 §5.1, §7.2 |
@@ -192,17 +192,17 @@ Scenario: Hai khách hàng cùng mua ly nước cuối cùng trong kho đồng t
   And số lượng tồn kho trong cơ sở dữ liệu không bao giờ bị âm
 ```
 
-### 4.10 Nghiệm thu FR-10: Voucher và Loyalty
+### 4.10 Nghiệm thu FR-10: Mã khuyến mãi (Promotion) & Loyalty
 ```gherkin
-Scenario: Áp dụng mã giảm giá hợp lệ
+Scenario: Áp dụng mã khuyến mãi hợp lệ
   Given đơn hàng có tổng tiền tạm tính từ 50.000đ trở lên
-  When khách hàng nhập mã khuyến mãi "BREW20" (giảm 20%)
+  When khách hàng nhập mã khuyến mãi "BREW20" (chiết khấu 20% theo model Promotion)
   Then hệ thống giảm trừ 20% và cập nhật totalAmount chính xác
 
 Scenario: Tích lũy điểm khách hàng thân thiết khi đơn hàng PAID
   Given đơn hàng thanh toán thành công số tiền 48.000đ
   When đơn hàng chuyển sang trạng thái PAID
-  Then hệ thống tính toán điểm thưởng (theo BR-LOYALTY-01)
+  Then hệ thống tính toán điểm thưởng (theo BR-LOYALTY-01, GAP-03)
   And ghi nhận giao dịch vào bảng LoyaltyTransaction và cộng vào tài khoản khách
 ```
 
@@ -259,7 +259,7 @@ Scenario: Kiểm tra tình trạng sức khỏe hệ thống
   - `UC-11`: Tra cứu điểm Loyalty (FR-10)
 - **Gói 3: Đơn hàng & Thanh toán (Orders & Payments - Core)**
   - `UC-04`: Đặt hàng (Place Order) (FR-05, FR-07, FR-09)
-  - `UC-09`: Áp dụng mã Voucher (FR-10)
+  - `UC-09`: Áp dụng mã khuyến mãi (Promotion) (FR-10)
   - `UC-10`: Thanh toán không tiền mặt (FR-06, FR-08)
   - `UC-05`: Theo dõi trạng thái đơn hàng (FR-11)
   - `UC-06`: Xem lịch sử đơn hàng cá nhân (FR-11)
@@ -298,7 +298,7 @@ rectangle "Hệ Thống BrewLite" {
 
   package "Đơn hàng & Thanh toán" {
     usecase "UC-04: Đặt hàng (Place Order)" as UC4
-    usecase "UC-09: Áp dụng mã Voucher" as UC9
+    usecase "UC-09: Áp dụng mã khuyến mãi" as UC9
     usecase "UC-10: Thanh toán không tiền mặt" as UC10
     usecase "UC-05: Theo dõi trạng thái đơn" as UC5
     usecase "UC-06: Xem lịch sử đơn hàng" as UC6
@@ -356,10 +356,10 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 | **FR-07** | Quản lý trạng thái đơn | `UC-04`, `UC-10`, `UC-12` | Nội bộ `order-state-machine` | `apps/api/src/orders/state-machine/` |
 | **FR-08** | Idempotent Payment | `UC-10` | Header `Idempotency-Key` trên `/payments` | `apps/api/src/payments/` |
 | **FR-09** | Kiểm soát tồn kho đồng thời | `UC-04`, `UC-10` | Transaction & OCC (`version`) | `apps/api/src/payments/`, `apps/api/src/products/` |
-| **FR-10** | Voucher và Loyalty | `UC-09`, `UC-11` | `PromotionsService`, `LoyaltyService` | `apps/api/src/payments/` |
+| **FR-10** | Mã khuyến mãi & Loyalty | `UC-09`, `UC-11` | `PromotionsService`, `LoyaltyService` | `apps/api/src/payments/`, model `Promotion` |
 | **FR-11** | Xác nhận và lịch sử đơn | `UC-05`, `UC-06` | `GET /orders/me`, `GET /orders/:id` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
 | **FR-12** | Cập nhật tiến độ pha chế | `UC-12` | `PATCH /orders/:id/status` | Staff Portal / API |
-| **FR-13** | Health Check | `UC-13` | `GET /health` | `apps/api/src/health/` (hoặc `app.controller.ts`) |
+| **FR-13** | Health Check | `UC-13` | `GET /health` | `apps/api/src/health/` (nhánh feature) / `AppController` (`main` baseline - GAP-04) |
 
 ---
 
@@ -369,14 +369,15 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 1. **BR-LOYALTY-01 (Tỷ lệ tích lũy điểm thưởng):**
    - *Tài liệu đề xuất:* 10.000 VNĐ chi tiêu = 1 điểm.
    - *Mã nguồn nhánh Sprint 1 (`payments.service.ts`):* `Math.floor(amount / 1000)` (1.000 VNĐ = 1 điểm).
-   - *Trạng thái:* `PROPOSED / PENDING APPROVAL from PO`. Trong giai đoạn kiểm thử, áp dụng tỷ lệ của mã nguồn để khớp với test tự động.
+   - *Trạng thái:* `PROPOSED / PENDING APPROVAL from PO` (Khoảng hở GAP-03). Trong giai đoạn kiểm thử, áp dụng tỷ lệ của mã nguồn để khớp với test tự động.
 2. **BR-PROMO-01 (Mã khuyến mãi mặc định):**
-   - Mã `BREW20` chiết khấu 20% cho đơn hàng có tổng tiền từ 50.000 VNĐ trở lên (`minOrderValue: 50000`, `discountType: PERCENTAGE`, `discountValue: 20`).
+   - Mã `BREW20` chiết khấu 20% cho đơn hàng có tổng tiền từ 50.000 VNĐ trở lên (`minOrderValue: 50000`, `discountType: PERCENTAGE`, `discountValue: 20`), quản lý qua model Prisma `Promotion`.
 3. **BR-REFUND-01 (Quy tắc hoàn tiền khi hủy đơn):**
    - *Hành vi nghiệp vụ mong muốn:* Nếu đơn hàng đã ở trạng thái `PAID` bị hủy do sự cố kỹ thuật hoặc hết nguyên liệu, hệ thống cần thực hiện hoàn tiền tự động 100% cho khách hàng.
-   - *Trạng thái:* `PROPOSED / PENDING APPROVAL`.
+   - *Trạng thái:* `PROPOSED / PENDING APPROVAL` (Khoảng hở GAP-01).
 
 ### 7.2 Khoảng trống triển khai (Implementation Gaps)
-- **GAP-01 (Chức năng Refund & Hủy đơn sau thanh toán):** Mã nguồn backend hiện tại chưa cài đặt phương thức `refund()` trong service thanh toán và chưa có endpoint `PATCH /orders/:id/cancel`. Cần triển khai bổ sung ở Task 4/5 nếu bài toán yêu cầu nghiệp vụ hoàn tiền.
+- **GAP-01 (Chức năng Refund & Hủy đơn sau thanh toán):** Mã nguồn backend hiện tại chưa cài đặt phương thức `refund()` trong service thanh toán và chưa có endpoint `PATCH /orders/:id/cancel`. Cần triển khai bổ sung ở Task 4/5 nếu bài toán yêu cầu nghiệp vụ hoàn tiền tự động.
 - **GAP-02 (Cơ chế lưu giữ Idempotency Key tại Client):** Frontend hiện tại tái tạo đơn mới và sinh key mới mỗi lần bấm; chưa lưu key vào `sessionStorage` gắn với `orderId` để chống trừ tiền trùng khi rớt mạng rồi bấm thử lại.
-- **GAP-03 (Endpoint Health Check trên main):** Nhánh `main` hiện chỉ có `AppController` trả về chuỗi chào mừng, chưa có endpoint `GET /health` trả về trạng thái database (đã có trên nhánh `feature/sprint1-mvp-foundation`).
+- **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa đề bài Assignment 2 (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ Product Owner.
+- **GAP-04 (Endpoint Health Check trên nhánh main):** Nhánh `main` (TypeORM) hiện chỉ có `AppController` trả về chuỗi chào mừng, chưa có endpoint `GET /health` trả về trạng thái database (đã có trên nhánh feature Prisma).

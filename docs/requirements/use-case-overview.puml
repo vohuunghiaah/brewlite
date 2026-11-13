@@ -25,7 +25,7 @@ rectangle "Hệ Thống BrewLite" {
 
   package "Đơn hàng & Thanh toán" {
     usecase "UC-04: Đặt hàng (Place Order)" as UC4
-    usecase "UC-09: Áp dụng mã Voucher" as UC9
+    usecase "UC-09: Áp dụng mã khuyến mãi" as UC9
     usecase "UC-10: Thanh toán không tiền mặt" as UC10
     usecase "UC-05: Theo dõi trạng thái đơn" as UC5
     usecase "UC-06: Xem lịch sử đơn hàng" as UC6

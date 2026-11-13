@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite – Nền tảng đặt cà phê không dùng tiền mặt (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
 - **Mã tài liệu:** `REQ-CTX-01`
-- **Phiên bản:** 1.2.0 (Post-Merge Audit & Corrective Maintenance)
+- **Phiên bản:** 1.3.0 (Post-Merge Audit & GAP Synchronization)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -108,23 +108,23 @@ Hệ thống BrewLite được thiết kế để phục vụ và thỏa mãn y�
    - Khi đơn hàng thanh toán thành công, hệ thống khấu trừ số lượng sản phẩm khả dụng theo số lượng đặt mua bằng cơ chế Optimistic Concurrency Control (OCC) với cột `version`, đảm bảo `stock >= 0`.
 6. **Các giải pháp kỹ thuật bắt buộc:**
    - **Order State Machine:** Máy trạng thái hữu hạn kiểm soát chuyển đổi trạng thái đơn hàng thông qua hàm tập trung `assertTransition()`, chặn đứng các chuyển tiếp bất hợp lệ.
-   - **Idempotent Payment:** Cơ chế chống trùng lặp thanh toán thông qua HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL.
+   - **Idempotent Payment:** Cơ chế chống trùng lặp thanh toán thông qua HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL (Lưu ý: Khoảng trống lưu trữ key phía client được ghi nhận tại GAP-02).
 7. **Kiểm thử tự động đa tầng (Automated Testing):**
    - Unit tests: Kiểm thử State Machine, thuật toán tính giá, logic giỏ hàng, xác thực JWT.
    - Integration tests: Kiểm thử luồng tạo đơn hàng, thanh toán và trừ kho.
    - End-to-End (E2E) tests: Kịch bản kiểm thử tự động toàn diện từ bước mở menu đến khi hoàn tất đơn hàng.
 8. **Container hóa & DevOps:**
    - `docker-compose.yml` khởi chạy trọn gói hệ thống tại local gồm 3 dịch vụ: Frontend (`web`), Backend API (`api`), và Cơ sở dữ liệu (`db`).
-   - Endpoint kiểm tra tình trạng dịch vụ `GET /health`.
+   - Endpoint kiểm tra tình trạng dịch vụ `GET /health` (Lưu ý: Endpoint này hiện diện trên nhánh feature Prisma nhưng chưa có trên baseline `main` TypeORM, được ghi nhận tại GAP-04).
    - CI Pipeline (GitHub Actions) kích hoạt tự động trên Pull Request: `Install -> Lint -> Unit Test -> Build`.
    - CD Pipeline hỗ trợ đóng gói Docker image, gắn tag phiên bản, smoke test và triển khai lên môi trường Production với URL HTTPS thật.
 
 ### 3.3 Phạm vi mở rộng (Extensions / Should Have & Could Have)
-1. **FR-10: Khuyến mãi Voucher & Tích lũy điểm Loyalty:**
-   - Áp dụng mã giảm giá hợp lệ (`BREW20`) tại bước checkout.
+1. **FR-10: Khuyến mãi (Promotion) & Tích lũy điểm Loyalty:**
+   - Áp dụng mã giảm giá hợp lệ (`BREW20`) tại bước checkout dựa trên model `Promotion`.
    - Tự động tích lũy điểm thưởng thành viên khi đơn hàng chuyển sang trạng thái `PAID`.
    > [!NOTE]
-   > Voucher và Loyalty là tính năng giá trị gia tăng, xếp loại **Should Have / Could Have**. Nếu người dùng không áp voucher hoặc không tích điểm, luồng cốt lõi Đặt đồ uống vẫn thực thi hoàn tất.
+   > Khuyến mãi (Promotion) và Loyalty là tính năng giá trị gia tăng, xếp loại **Should Have / Could Have**. Nếu người dùng không áp mã khuyến mãi hoặc không tích điểm, luồng cốt lõi Đặt đồ uống vẫn thực thi hoàn tất.
 2. **FR-12: Quản lý trạng thái pha chế cho Barista:**
    - Cung cấp API nội bộ cho nhân viên quầy chuyển trạng thái đơn hàng: `PAID -> PREPARING -> READY -> COMPLETED`. Giao diện chuyên biệt Barista Portal là tính năng nâng cao.
 
@@ -213,14 +213,21 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
 > - *Tài liệu đề xuất ban đầu (Context & Scope v1.0):* 10.000 VNĐ chi tiêu = 1 điểm thưởng khách hàng thân thiết.
 > - *Mã nguồn triển khai thực tế trên nhánh Sprint 1 (`payments.service.ts`):* `Math.floor(amount / 1000)` (tương đương 1.000 VNĐ chi tiêu = 1 điểm thưởng).
 > - **Trạng thái:** `PROPOSED / PENDING APPROVAL from PO`.
-> - **Nguyên tắc kỹ nghệ:** Đây là tham số cấu hình kinh doanh (Business Configuration Parameter) chưa có biên bản phê duyệt chính thức từ Product Owner. Trong giai đoạn kiểm thử hiện tại, hệ thống tuân theo cài đặt của mã nguồn (1.000 VNĐ = 1 điểm) để đảm bảo toàn bộ kiểm thử tự động (Unit/Integration Test) đạt kết quả nhất quán.
+> - **Khoảng trống triển khai (GAP-03):** Công thức tích điểm có sự không nhất quán giữa đề bài và mã nguồn thử nghiệm, cần quyết định chính thức từ PO. Trong giai đoạn kiểm thử hiện tại, hệ thống tuân theo cài đặt của mã nguồn (1.000 VNĐ = 1 điểm) để đảm bảo toàn bộ kiểm thử tự động (Unit/Integration Test) đạt kết quả nhất quán.
 
 ### 4.5 Quy tắc hoàn tiền khi hủy đơn (BR-REFUND-01)
 > [!NOTE]
 > **Business Rule đề xuất về Hoàn tiền (BR-REFUND-01):**
 > - **Hành vi nghiệp vụ mong muốn:** Nếu đơn hàng đã ở trạng thái `PAID` mà bị hủy do sự cố kỹ thuật hoặc hết nguyên liệu tại quầy, hệ thống cần thực hiện hoàn tiền tự động 100% cho khách hàng và hoàn lại số lượng tồn kho thành phẩm.
 > - **Trạng thái hiện tại:** `PROPOSED / PENDING APPROVAL` (Đề xuất nghiệp vụ, **CHƯA ĐƯỢC TRIỂN KHAI TRONG MÃ NGUỒN**).
-> - **Khoảng trống triển khai (Implementation Gap - GAP-01):** Cả trên nhánh `main` và nhánh `feature/sprint1-mvp-foundation`, phương thức `mockPaymentService.refund()` và endpoint `PATCH /orders/:id/cancel` chưa tồn tại trong mã nguồn backend; `PaymentStatus` enum chỉ gồm `PENDING`, `SUCCESS`, `FAILED` (chưa có `REFUNDED`). Do đó, tài liệu không khẳng định hoàn tiền tự động là tính năng đang hoạt động mà ghi nhận đây là yêu cầu cần triển khai bổ sung trong các Task tiếp theo.
+> - **Khoảng trống triển khai (GAP-01):** Cả trên nhánh `main` và nhánh `feature/sprint1-mvp-foundation`, phương thức `mockPaymentService.refund()` và endpoint `PATCH /orders/:id/cancel` chưa tồn tại trong mã nguồn backend; `PaymentStatus` enum chỉ gồm `PENDING`, `SUCCESS`, `FAILED` (chưa có `REFUNDED`). Do đó, tài liệu không khẳng định hoàn tiền tự động là tính năng đang hoạt động mà ghi nhận đây là yêu cầu cần triển khai bổ sung trong các Task tiếp theo.
+
+### 4.6 Danh mục Khoảng hở Triển khai Đồng bộ (Synchronized Implementation Gaps)
+Hệ thống tài liệu BrewLite thống nhất 4 mã định danh khoảng hở kỹ thuật (GAPs) xuyên suốt các văn bản:
+1. **`GAP-01` (Cơ chế Hoàn tiền - Refund):** Chưa có API `POST /payments/:id/refund` hay `PATCH /orders/:id/cancel`; quy tắc `BR-REFUND-01` ở trạng thái đề xuất, việc hủy đơn hợp lệ xử lý thủ công ngoại tuyến.
+2. **`GAP-02` (Lưu trữ Idempotency Key phía Client):** Backend đã có cơ chế Unique Index chống thanh toán trùng, nhưng giao diện Client Next.js chưa lưu key vào `sessionStorage` để tái sử dụng khi reload hoặc thử lại.
+3. **`GAP-03` (Công thức tích điểm thành viên - Loyalty Formula):** Mâu thuẫn giữa đề bài Assignment 2 (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ PO phê duyệt.
+4. **`GAP-04` (Endpoint Health Check trên baseline `main`):** Nhánh `main` (TypeORM) chưa có endpoint `GET /health` (chỉ có `AppController` trả về 'Hello World!'). Endpoint `/health` đầy đủ chỉ mới hiện diện trên nhánh feature Prisma.
 
 ---
 
