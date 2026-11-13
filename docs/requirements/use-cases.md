@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-01`
-- **Phiên bản:** 1.3.0 (Post-Merge Audit & GAP Synchronization)
+- **Phiên bản:** 1.4.0 (Final Verification Evidence & Use-Case Calibration)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -44,14 +44,18 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
 
 ### 2.3 Hậu điều kiện (Postconditions)
 
-#### Hậu điều kiện thành công (Success Postconditions):
+#### Hậu điều kiện thành công cốt lõi (Core Mandatory Success Postconditions):
+Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo đơn, thanh toán hợp lệ và xác nhận đơn:
 1. Một bản ghi Đơn hàng mới (`Order`) được tạo lập và chuyển sang trạng thái **`PAID`**.
-2. Mã định danh đơn hàng duy nhất (`id` - UUID) và mã hiển thị nhận nước (`orderCode`, ví dụ: `#BL-1042`) được cấp phát cho khách hàng.
+2. Mã định danh đơn hàng duy nhất (`id` - UUID v4) và mã hiển thị nhận nước (`orderCode`, ví dụ: `#BL-1042`) được cấp phát cho khách hàng.
 3. Số lượng tồn kho thành phẩm (`stock`) của tất cả sản phẩm trong đơn được trừ chính xác thông qua Database Transaction và cơ chế Optimistic Locking (cột `version` tăng thêm 1).
 4. Bản ghi giao dịch thanh toán (`Payment`) được lưu trữ thành công với trạng thái `SUCCESS` và liên kết với khóa duy nhất `idempotencyKey`.
-5. Điểm thưởng khách hàng thân thiết (Loyalty Points) được tính toán tự động và cộng dồn vào tài khoản khách hàng, đồng thời ghi nhận lịch sử vào bảng `LoyaltyTransaction` (theo quy tắc `BR-LOYALTY-01`, công thức tích điểm đang chờ PO phê duyệt giữa tỷ lệ 10.000đ hoặc 1.000đ = 1 điểm theo khoảng hở `GAP-03`).
-6. Giỏ hàng trên thiết bị client được làm trống.
-7. Màn hình điều hướng hiển thị Trang Xác nhận thành công kèm mã đơn, huy hiệu `PAID`, và thông điệp: *"Mời tới quầy lấy nước"*.
+5. Giỏ hàng trên thiết bị client được làm trống.
+6. Màn hình điều hướng hiển thị Trang Xác nhận thành công kèm mã đơn, huy hiệu `PAID`, và thông điệp: *"Mời tới quầy lấy nước"*.
+
+#### Hậu điều kiện có điều kiện / Chức năng mở rộng (Conditional / Extension Postcondition — FR-10 Should Have):
+- **Tích lũy điểm thưởng Loyalty:** Nếu chức năng Loyalty được kích hoạt và khách hàng đã đăng nhập tài khoản, hệ thống sẽ tự động tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03`.
+- **Nguyên tắc kỹ nghệ về tính độc lập:** Chức năng Loyalty là yêu cầu **Should Have** (FR-10). Việc tích điểm thành công hay thất bại không phải là điều kiện tiên quyết và không làm ảnh hưởng đến tính hợp lệ của đơn hàng cốt lõi đã thanh toán thành công.
 
 #### Hậu điều kiện thất bại / Hủy bỏ (Failure Postconditions):
 1. Số lượng tồn kho thành phẩm của các sản phẩm được hoàn nguyên nguyên vẹn (Transaction Rollback), tuyệt đối không bị trừ sai.
@@ -77,7 +81,7 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
       │                            │   (Idempotency-Key, DTO)     │── 7. Mock Payment Call ────►│
       │                            │                              │── 8. AssertTransition PAID ─►│
       │                            │                              │── 9. Optimistic Deduct Stock│
-      │                            │                              │── 10. Award Loyalty Points ─►│
+      │                            │                              │── 10. [Extension] Loyalty ──►│
       │                            │◄─ 11. Trả về PAID Result ────│◄────────────────────────────│
       │                            │                              │                             │
       │◄─ 12. Màn hình xác nhận ───│ (Clear Cart)                 │                             │
@@ -125,7 +129,7 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
     {
       "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
       "orderCode": "#BL-1042",
-      "userId": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+      "userId": "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f",
       "status": "PENDING",
       "subtotal": "60000.00",
       "discountAmount": "0.00",
@@ -135,7 +139,7 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
       "createdAt": "2026-11-14T00:00:00.000Z",
       "items": [
         {
-          "id": "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a",
+          "id": "d4e5f6a7-b8c9-4d0e-9f2a-3b4c5d6e7f8a",
           "orderId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
           "productId": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
           "size": "MEDIUM",
@@ -150,12 +154,12 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
     }
     ```
 - **Bước 5:** Ứng dụng Next.js chuyển sang màn hình Thanh toán. Khách hàng chọn hình thức **"Ví điện tử (E_WALLET)"** và nhấn nút **"Xác nhận thanh toán"**.
-- **Bước 6:** Ứng dụng Next.js sinh mã duy nhất UUID-v4 làm `Idempotency-Key` (ví dụ minh họa: `e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b`):
+- **Bước 6:** Ứng dụng Next.js sinh mã duy nhất UUID-v4 làm `Idempotency-Key` (ví dụ minh họa: `e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b`):
   - Client gửi request thanh toán:
     - `POST /payments`
     - Headers:
       - `Authorization: Bearer <accessToken>`
-      - `Idempotency-Key: e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b`
+      - `Idempotency-Key: e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b`
     - Body (chuẩn `ProcessPaymentDto`):
       ```json
       {
@@ -168,7 +172,7 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
   - **Quy tắc bảo vệ giá phía Backend (Amount Verification):**
     - Backend truy vấn đơn hàng từ CSDL theo `orderId` và bắt buộc đối chiếu tính toàn vẹn: `payload.amount === order.totalAmount`. Nếu phát hiện sai lệch, lập tức từ chối với HTTP 400 Bad Request.
 - **Bước 7:** Backend NestJS kiểm tra khóa Idempotency trong cơ sở dữ liệu:
-  - Xác nhận khóa `e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b` chưa từng được sử dụng.
+  - Xác nhận khóa `e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b` chưa từng được sử dụng.
 - **Bước 8:** Backend gọi dịch vụ thanh toán mô phỏng (Mock Payment Service):
   - Dịch vụ xác thực tính hợp lệ của số tiền và phương thức. Phản hồi giao dịch thành công.
 - **Bước 9:** Backend thực hiện chuỗi nghiệp vụ cập nhật cơ sở dữ liệu bên trong một Database Transaction:
@@ -179,8 +183,8 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
      SET stock = stock - 1, version = version + 1
      WHERE id = 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d' AND stock >= 1 AND version = :currentVersion;
      ```
-  3. Tạo bản ghi thanh toán `Payment` với `status = 'SUCCESS'`, `idempotencyKey = 'e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b'`.
-  4. Tính toán điểm thưởng khách hàng thân thiết theo quy tắc `BR-LOYALTY-01` (chưa chốt số điểm cụ thể do chờ PO phê duyệt công thức tích điểm giữa 10.000đ hoặc 1.000đ = 1 điểm theo khoảng hở `GAP-03`), ghi nhận bản ghi vào bảng `LoyaltyTransaction` và cập nhật điểm tích lũy của người dùng.
+  3. Tạo bản ghi thanh toán `Payment` với `status = 'SUCCESS'`, `idempotencyKey = 'e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b'`.
+  4. *Xử lý tích lũy điểm thưởng (Hành vi mở rộng - Extension Behavior / FR-10 Should Have):* Nếu người dùng có tài khoản, backend (trên nhánh Prisma hiện tại) đang tự động thực hiện ghi nhận giao dịch tích điểm vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Lưu ý kỹ nghệ: Đây là chức năng mở rộng, quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03` (10.000đ vs 1.000đ = 1 điểm); việc tích điểm không phải điều kiện bắt buộc để hoàn tất chu trình Đặt và Thanh toán đồ uống cốt lõi.
 - **Bước 10:** Backend commit transaction thành công và trả về phản hồi HTTP 200 OK:
   ```json
   {
@@ -189,9 +193,9 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
     "isDuplicate": false,
     "message": "Thanh toán thành công qua Mock Payment Service.",
     "payment": {
-      "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+      "id": "f6a7b8c9-d0e1-4f2a-bb4c-5d6e7f8a9b0c",
       "orderId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
-      "idempotencyKey": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b",
+      "idempotencyKey": "e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b",
       "method": "E_WALLET",
       "amount": "60000.00",
       "status": "SUCCESS",
@@ -244,6 +248,11 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
 - Backend kiểm tra bản ghi `Payment`: phát hiện key đã tồn tại và đã ở trạng thái `SUCCESS`, backend **ngay lập tức trả về kết quả thành công của giao dịch trước đó (`isDuplicate = true`)** mà không thực hiện trừ kho lần hai, không gọi lại Mock Payment, và không cộng trùng lặp điểm loyalty.
 - > [!WARNING]
   > **Khoảng trống triển khai Client-side (GAP-02):** Mã nguồn frontend hiện tại trên `CheckoutPage` chưa lưu trữ `Idempotency-Key` vào `sessionStorage` gắn với `orderId`; mỗi lần nhấn nút thanh toán lại, client đang gọi `createOrder` tạo đơn mới và sinh UUID mới. Cần bổ sung logic giữ khóa và giữ đơn tại frontend ở Task 4/5 để hiện thực hóa trọn vẹn kịch bản này.
+
+#### Alt-6: Tích lũy điểm thưởng thành viên (Loyalty Points Accumulation — Should Have - FR-10)
+- **Bối cảnh:** Tích điểm thành viên là chức năng giá trị gia tăng được phân loại là **Should Have (FR-10)**, không thuộc điều kiện bắt buộc của Happy Path.
+- **Hành vi nghiệp vụ:** Khi khách hàng đã đăng nhập và thanh toán thành công, hệ thống thực hiện tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction`.
+- **Hiện trạng triển khai thực tế:** Trên nhánh tính năng Prisma, `PaymentsService` hiện đang tự động gọi hàm tạo `LoyaltyTransaction` bên trong transaction thanh toán. Tuy nhiên, quy tắc quy đổi chính thức giữa 10.000 VNĐ = 1 điểm (đề bài Assignment 2) và 1.000 VNĐ = 1 điểm (mã nguồn thử nghiệm) vẫn đang ở trạng thái `PROPOSED / PENDING APPROVAL from PO` (`GAP-03`). Nếu có lỗi xảy ra ở tầng tích điểm hoặc khách hàng thanh toán ở chế độ khách vãng lai, chu trình Đặt và Thanh toán cốt lõi vẫn hoàn tất thành công.
 
 ---
 
