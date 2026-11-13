@@ -8,6 +8,7 @@ async function bootstrap() {
   // Cấu hình CORS cho Frontend BrewLite
   app.enableCors({
     origin: [
+      process.env.FRONTEND_URL ?? 'http://localhost:3000',
       'https://scaling-dollop-gxr9xjw7xg7gcvg5g-3000.app.github.dev',
     ],
     methods: [
