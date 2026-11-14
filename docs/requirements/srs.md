@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
 - **Mã tài liệu:** `REQ-SRS-01`
-- **Phiên bản:** 1.3.1 (Use Case Diagram Alignment & Traceability Synchronization)
+- **Phiên bản:** 1.3.2 (UC-04 & UC-10 Include Semantics Alignment)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -33,8 +33,8 @@ Toàn bộ các yêu cầu chức năng được đánh số định danh duy nh
 | **FR-02** | Xem chi tiết, chọn size/topping | **Must Have** | Khách hàng xem chi tiết món, chọn kích cỡ (Size: SMALL, MEDIUM, LARGE) và các loại Topping; giá sản phẩm tự động cập nhật theo thời gian thực. Ghi chú mức đường/đá lưu vào trường ghi chú đơn hàng. | Ass 1 §4.1, Ass 2 §7.1 |
 | **FR-03** | Quản lý giỏ hàng | **Must Have** | Khách hàng thêm món vào giỏ, tăng/giảm số lượng, gộp món trùng cấu hình, xóa món, và tính tổng tiền giỏ hàng chính xác. | Ass 1 §8 (T5), Ass 2 §7.1 |
 | **FR-04** | Đăng ký, đăng nhập và JWT | **Must Have** | Khách hàng đăng ký tài khoản mới bằng email/mật khẩu, đăng nhập nhận JWT Bearer Token, mật khẩu băm một chiều an toàn bằng bcrypt. | Ass 1 §8 (T7), Ass 2 §7.1 |
-| **FR-05** | Tạo đơn hàng | **Must Have** | Tiếp nhận thông tin từ giỏ hàng, xác thực dữ liệu đầu vào, kiểm tra tồn kho thành phẩm, khởi tạo đơn hàng mới ở trạng thái chờ thanh toán `PENDING`. | Ass 1 §8 (T6), Ass 2 §7.1 |
-| **FR-06** | Thanh toán mô phỏng | **Must Have** | Xử lý thanh toán không tiền mặt qua Ví điện tử (`E_WALLET`) hoặc Thẻ ngân hàng (`BANK_CARD`) qua Mock Payment Service, chuyển trạng thái đơn sang `PAID`. | Ass 1 §8 (T8), Ass 2 §7.1 |
+| **FR-05** | Tạo đơn hàng | **Must Have** | Tiếp nhận thông tin từ giỏ hàng, xác thực dữ liệu đầu vào, kiểm tra tồn kho thành phẩm, khởi tạo đơn hàng mới ở trạng thái chờ thanh toán `PENDING`. Đây là bước kỹ thuật tiền đề trong quy trình đặt hàng tổng thể (`UC-04`). | Ass 1 §8 (T6), Ass 2 §7.1 |
+| **FR-06** | Thanh toán mô phỏng | **Must Have** | Xử lý thanh toán không tiền mặt qua Ví điện tử (`E_WALLET`) hoặc Thẻ ngân hàng (`BANK_CARD`) qua Mock Payment Service, chuyển trạng thái đơn sang `PAID`. Đây là hành vi bắt buộc (`<<include>>`) để hoàn tất ca sử dụng đặt hàng (`UC-04`). | Ass 1 §8 (T8), Ass 2 §7.1 |
 | **FR-07** | Quản lý trạng thái đơn | **Must Have** | Kiểm soát chặt chẽ vòng đời đơn hàng qua Máy trạng thái hữu hạn (`assertTransition`), ngăn chặn mọi chuyển tiếp trạng thái bất hợp lệ hoặc nhảy cóc. | Ass 1 §9.1, Ass 2 §4.3 |
 | **FR-08** | Idempotent Payment | **Must Have** | Sử dụng HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL để loại bỏ rủi ro trừ tiền hoặc tạo giao dịch trùng lặp khi retry. | Ass 1 §9.2, Ass 2 §4.2 |
 | **FR-09** | Kiểm soát tồn kho đồng thời | **Must Have** | Sử dụng Database Transaction và Optimistic Locking (cột `version`) để loại bỏ hoàn toàn rủi ro bán vượt tồn kho thành phẩm (Overselling) khi có nhiều yêu cầu đồng thời. | Ass 1 §9.3, Ass 2 §4.2 |
@@ -138,6 +138,9 @@ Scenario: Từ chối tạo đơn khi giỏ hàng trống hoặc sản phẩm h�
   Then hệ thống chặn lại với mã lỗi HTTP 400 Bad Request hoặc HTTP 409 Conflict
   And không có bản ghi đơn hàng nào được tạo trong cơ sở dữ liệu
 ```
+
+> [!NOTE]
+> **Mối quan hệ giữa nghiệm thu bước kỹ thuật FR-05 và ca sử dụng nghiệp vụ UC-04:** Kịch bản kiểm thử trên nghiệm thu riêng bước kỹ thuật gọi API `POST /orders` (khởi tạo thành công bản ghi đơn hàng ở trạng thái trung gian `PENDING`). Để nghiệm thu trọn vẹn ca sử dụng nghiệp vụ **`UC-04: Đặt hàng (Place Order)`** theo mô hình cà phê không tiền mặt, hệ thống bắt buộc kích hoạt tiếp ca sử dụng được bao gồm là **`UC-10: Thanh toán không tiền mặt`** (FR-06); chỉ khi thanh toán thành công và đơn hàng chuyển sang `PAID`, `UC-04` mới đạt điều kiện thành công cuối cùng (xem đặc tả chuyên sâu tại [use-case-place-order.md](./use-case-place-order.md)).
 
 ### 4.6 Nghiệm thu FR-06: Thanh toán mô phỏng
 ```gherkin
@@ -272,9 +275,11 @@ Hệ thống bao gồm 13 Use Case nguyên tử được tổ chức thành 4 ph
 
 > [!IMPORTANT]
 > **Các phân định phạm vi nghiệp vụ và kiến trúc quan trọng:**
-> 1. **Phân định giữa Tạo đơn hàng (`UC-04`) và Thanh toán không tiền mặt (`UC-10`):**
->    - `UC-04` (Đặt hàng / Place Order): Khách hàng xác nhận giỏ hàng, hệ thống kiểm tra tồn kho thành phẩm, kiểm tra tính hợp lệ của DTO và tạo bản ghi đơn hàng (`Order`) cùng chi tiết món (`OrderItem`) tại trạng thái **`PENDING`**. Việc thực hiện thành công `UC-04` dừng lại ở việc tạo đơn `PENDING`, **tuyệt đối không đồng nghĩa với hoàn tất thanh toán**.
->    - `UC-10` (Thanh toán không tiền mặt): Tiếp nhận đơn hàng ở trạng thái `PENDING`, gửi yêu cầu sang Cổng thanh toán mô phỏng kèm header `Idempotency-Key` (FR-08) và xử lý trừ tồn kho đồng thời qua Optimistic Concurrency Control (FR-09). **Chỉ khi giao dịch thanh toán thành công (`SUCCESS`), đơn hàng mới được chuyển sang trạng thái `PAID`**. Trường hợp thanh toán thất bại, đơn hàng chuyển sang `PAYMENT_FAILED` hoặc giữ nguyên `PENDING` để khách hàng thử lại, số lượng tồn kho không bị trừ.
+> 1. **Ngữ nghĩa chuẩn UML của `UC-04: Đặt hàng (Place Order)` và quan hệ bao gồm `UC-10` (`<<include>>`):**
+>    - **`UC-04` (Đặt hàng / Place Order):** Là ca sử dụng nghiệp vụ đặt đồ uống không dùng tiền mặt hoàn chỉnh. Luồng chính thành công (Happy Path) của `UC-04` bắt buộc phải thực thi hành vi của **`UC-10: Thanh toán không tiền mặt`** thông qua quan hệ `<<include>>`. Hậu điều kiện thành công của `UC-04` chỉ đạt được khi thanh toán thành công và đơn hàng chuyển sang trạng thái **`PAID`**.
+>    - **Phân định giữa bước kỹ thuật FR-05 và ca sử dụng UC-04:** Yêu cầu chức năng **FR-05 (Tạo đơn hàng)** chỉ đặc tả bước kỹ thuật đầu tiên trong `UC-04` (gọi `POST /orders`, tạo đơn trong CSDL ở trạng thái trung gian `PENDING`). Việc hoàn tất FR-05 chưa hoàn tất ca sử dụng `UC-04`; trạng thái `PENDING` chỉ là điểm chuyển tiếp để hệ thống thực thi tiếp `UC-10`.
+>    - **`UC-10` (Thanh toán không tiền mặt):** Đóng gói quy trình thanh toán mô phỏng (`POST /payments`), kiểm soát khóa duy nhất `Idempotency-Key` (FR-08) và trừ tồn kho đồng thời OCC (FR-09). `UC-10` vừa là hành vi bắt buộc cấu thành Luồng chính của `UC-04`, vừa có thể tái sử dụng độc lập khi khách hàng thử thanh toán lại một đơn hàng đã tồn tại ở trạng thái `PENDING` hoặc `PAYMENT_FAILED`.
+>    - **Tách biệt giao dịch CSDL kỹ thuật (Two Technical Transactions):** Tuy nằm trong một ca sử dụng nghiệp vụ thống nhất (`UC-04`), ở tầng triển khai kỹ thuật, bước tạo đơn (`POST /orders` - FR-05) và bước thanh toán (`POST /payments` - FR-06) là hai Database Transaction độc lập. Nếu giao dịch thanh toán thất bại, đơn hàng `PENDING` đã commit không bị rollback mà chuyển sang `PAYMENT_FAILED`, cho phép khách hàng thực hiện lại `UC-10` mà không phải chọn lại giỏ hàng từ đầu.
 > 2. **Vị trí của Kịch bản tích hợp cốt lõi `UC-CORE-01`:**
 >    - `UC-CORE-01: Đặt và thanh toán đồ uống (Place and Pay for Drink Order)` là mã định danh kịch bản tích hợp end-to-end (chuỗi mắt xích nghiệp vụ hoàn chỉnh từ duyệt menu, tùy biến giỏ hàng, tạo đơn đến thanh toán và nhận xác nhận đơn). Kịch bản này được đặc tả chuyên sâu tại Task 1.3 (`docs/requirements/use-cases.md`) và làm đầu vào trực tiếp cho Biểu đồ tuần tự (Sequence Diagram) tại Task 2.
 >    - Trong sơ đồ Use Case tổng quát của Task 1.2, `UC-CORE-01` **không phải là một hình elip Use Case độc lập thứ 14**, mà là sự kết hợp cấu thành từ các Use Case nguyên tử: `UC-01`, `UC-02`, `UC-03`, `UC-04`, `UC-09`, `UC-10` và `UC-05`.
@@ -292,11 +297,11 @@ Bản kết xuất đồ họa chính thức được nhúng trực tiếp dư�
 #### Phân tích Kiến trúc và Mối quan hệ UML trong Sơ đồ
 
 1. **Quan hệ `<<include>>` (`UC-04 ..> UC-10`):**
-   - *Góc nhìn nghiệp vụ (Business / User Perspective):* Trong mô hình kinh doanh quán cà phê không dùng tiền mặt (Cashless Ordering Platform), quy trình đặt hàng của khách hàng luôn gắn liền với bước thanh toán điện tử bắt buộc để đơn hàng có hiệu lực và được chuyển sang quầy pha chế. Do đó, trên sơ đồ Use Case mức khái niệm tổng quát, liên kết `<<include>>` thể hiện ý đồ của người dùng là tiến hành thanh toán như một phần cấu thành tất yếu của quy trình mua nước.
-   - *Góc nhìn kiến trúc kỹ thuật & Máy trạng thái (Technical Architecture & State Machine):* Ở tầng triển khai hệ thống (REST API, Database Transaction và State Machine), hai hành vi này được tách biệt thành hai giao dịch độc lập:
-     + `POST /orders` (`UC-04`): Khởi tạo đơn hàng dừng lại ở trạng thái `PENDING`.
-     + `POST /payments` (`UC-10`): Xử lý trừ kho đồng thời (OCC) và chuyển trạng thái sang `PAID` thông qua hàm `assertTransition`.
-     Việc ghi nhận sự phân tách kiến trúc này là bắt buộc nhằm định hướng chính xác cho việc thiết kế Sequence Diagram (Task 2) và cài đặt API (Task 4/5), tránh ngộ nhận sai lầm rằng việc tạo đơn tự động hoàn tất thanh toán trong một transaction nguyên khối duy nhất.
+   - *Tính chuẩn xác theo chuẩn UML 2.5:* Theo đặc tả hình thức của UML, một Use Case cơ sở khi có quan hệ `<<include>>` với một Use Case được bao gồm thì hành vi của Use Case được bao gồm là một phần bắt buộc không thể tách rời trong Luồng chính thành công của Use Case cơ sở. Trong nền tảng BrewLite, `UC-04: Đặt hàng (Place Order)` là quy trình đặt đồ uống không tiền mặt; mục tiêu nghiệp vụ của khách hàng chỉ hoàn tất khi đồ uống đã được thanh toán và đơn chuyển sang `PAID` để quầy Barista pha chế. Do đó, `UC-04` bắt buộc kích hoạt `UC-10: Thanh toán không tiền mặt`. `UC-10` đồng thời có thể được tái sử dụng độc lập khi người dùng thực hiện thanh toán lại cho đơn hàng bị lỗi mạng hoặc lỗi thẻ trước đó.
+   - *Kiến trúc phân tầng và Quản lý giao dịch (Architectural Layering & Transaction Separation):* Mặc dù về mặt nghiệp vụ `UC-04` bao gồm `UC-10`, ở tầng triển khai REST API và cơ sở dữ liệu, quy trình được phân rã thành hai giao dịch độc lập:
+     + Giao dịch 1 (`POST /orders` - bước kỹ thuật FR-05): Tạo bản ghi đơn hàng ở trạng thái trung gian `PENDING`.
+     + Giao dịch 2 (`POST /payments` - hành vi `UC-10`, FR-06, FR-08, FR-09): Xác thực Mock Payment, trừ tồn kho bằng Optimistic Locking (OCC), và chuyển trạng thái đơn hàng sang `PAID` thông qua hàm `assertTransition`.
+     Sự tách biệt này đảm bảo nếu thanh toán thất bại, bản ghi đơn hàng `PENDING` đã tạo không bị hủy hoàn toàn mà chuyển sang `PAYMENT_FAILED`, cho phép khách hàng gọi lại `UC-10` mà không cần nhập lại thông tin giỏ hàng.
 
 2. **Quan hệ `<<extend>>` (`UC-09 ..> UC-04`):**
    - `UC-09: Áp dụng mã khuyến mãi` mở rộng hành vi của `UC-04: Đặt hàng (Place Order)`. Đây là hành vi tùy chọn (optional extension) thuộc phạm vi Should Have (FR-10). Khách hàng có thể nhập mã giảm giá (ví dụ: `BREW20`) tại bước đặt đơn; nếu điểm mở rộng (extension point) thỏa mãn điều kiện đơn hàng tối thiểu, hệ thống sẽ tính toán chiết khấu và cập nhật lại tổng tiền thanh toán trước khi xác nhận đơn.
@@ -319,8 +324,8 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 | **FR-02** | Xem chi tiết, chọn size/topping | `UC-02: Tùy biến size & topping` | `GET /products/:id` | `apps/web/src/app/menu/page.tsx`, `apps/api/src/products/` |
 | **FR-03** | Quản lý giỏ hàng | `UC-03: Quản lý giỏ hàng` | N/A (Client State) | `apps/web/src/app/menu/page.tsx` |
 | **FR-04** | Đăng ký, đăng nhập và JWT | `UC-07: Đăng ký tài khoản`<br>`UC-08: Đăng nhập (JWT)` | `POST /auth/register`, `POST /auth/login` | `apps/api/src/auth/` |
-| **FR-05** | Tạo đơn hàng | `UC-04: Đặt hàng (Place Order)` | `POST /orders` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
-| **FR-06** | Thanh toán mô phỏng | `UC-10: Thanh toán không tiền mặt` | `POST /payments` | `apps/api/src/payments/`, `apps/web/src/app/menu/page.tsx` |
+| **FR-05** | Tạo đơn hàng | `UC-04: Đặt hàng (Place Order)` *(bước kỹ thuật tạo đơn PENDING)* | `POST /orders` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
+| **FR-06** | Thanh toán mô phỏng | `UC-10: Thanh toán không tiền mặt` *(hành vi <<include>> trong UC-04)* | `POST /payments` | `apps/api/src/payments/`, `apps/web/src/app/menu/page.tsx` |
 | **FR-07** | Quản lý trạng thái đơn | `UC-04: Đặt hàng (Place Order)`<br>`UC-10: Thanh toán không tiền mặt`<br>`UC-12: Cập nhật tiến độ pha chế` | Nội bộ `order-state-machine` | `apps/api/src/orders/state-machine/` |
 | **FR-08** | Idempotent Payment | `UC-10: Thanh toán không tiền mặt` | Header `Idempotency-Key` trên `/payments` | `apps/api/src/payments/` |
 | **FR-09** | Kiểm soát tồn kho đồng thời | `UC-04: Đặt hàng (Place Order)`<br>`UC-10: Thanh toán không tiền mặt` | Transaction & OCC (`version`) | `apps/api/src/payments/`, `apps/api/src/products/` |

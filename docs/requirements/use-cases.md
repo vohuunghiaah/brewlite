@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-CORE`
-- **Phiên bản:** 1.5.0 (Final Task 1.3 Alignment & Atomic UC Traceability)
+- **Phiên bản:** 1.5.1 (Alignment with UC-04 Included Payment Semantics)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -25,7 +25,7 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
 - **`UC-01: Xem menu đồ uống`** (FR-01) & **`UC-02: Tùy biến size & topping`** (FR-02): Khách hàng duyệt và tùy biến sản phẩm.
 - **`UC-03: Quản lý giỏ hàng`** (FR-03): Quản lý danh mục món chọn, tính tổng tiền tạm tính.
 - **`UC-07: Đăng ký tài khoản`** & **`UC-08: Đăng nhập (JWT)`** (FR-04): Xác thực phiên làm việc an toàn của khách hàng.
-- **`UC-04: Đặt hàng (Place Order)`** (FR-05, FR-07, FR-09): Xác nhận giỏ hàng, tạo bản ghi `Order` ở trạng thái **`PENDING`** (được đặc tả độc lập tại `docs/requirements/use-case-place-order.md`).
+- **`UC-04: Đặt hàng (Place Order)`** (FR-05, FR-06, FR-07, FR-08, FR-09): Quy trình đặt hàng không tiền mặt hoàn chỉnh bao gồm bước khởi tạo đơn hàng trung gian `PENDING` (FR-05) và bắt buộc thực thi bước thanh toán không tiền mặt `UC-10` (FR-06, FR-08, FR-09) để đạt trạng thái `PAID` (được đặc tả chuyên sâu độc lập tại `docs/requirements/use-case-place-order.md`).
 - **`UC-09: Áp dụng mã khuyến mãi`** (FR-10): Hành vi mở rộng tùy chọn tại bước checkout (Luồng thay thế ALT-2).
 - **`UC-10: Thanh toán không tiền mặt`** (FR-06, FR-08, FR-09): Thực thi thanh toán qua cổng mô phỏng, trừ tồn kho OCC, chuyển đơn sang **`PAID`**.
 - **`UC-05: Theo dõi trạng thái đơn`** (FR-11): Điều hướng hiển thị màn hình xác nhận đơn hàng thành công kèm mã nhận nước tại quầy.
