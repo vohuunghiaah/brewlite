@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
 - **Mã tài liệu:** `REQ-SRS-01`
-- **Phiên bản:** 1.3.0 (Post-Merge Audit & GAP Synchronization)
+- **Phiên bản:** 1.3.1 (Use Case Diagram Alignment & Traceability Synchronization)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -243,12 +243,15 @@ Scenario: Kiểm tra tình trạng sức khỏe hệ thống
 ## 5. MÔ HÌNH HÓA USE CASE TOÀN HỆ THỐNG
 
 ### 5.1 Danh sách Actor
-1. **Khách hàng (Customer) — Primary Actor:** Người dùng cuối trực tiếp duyệt menu, tùy biến đồ uống, quản lý giỏ hàng, đặt đơn và thanh toán.
-2. **Nhân viên quầy / Barista (Counter Staff) — Secondary Actor:** Nhân viên tiếp nhận đơn hàng đã thanh toán và cập nhật tiến độ pha chế qua API.
-3. **Cổng thanh toán mô phỏng (Mock Payment Service) — Secondary System Actor:** Hệ thống giả lập xử lý giao dịch thanh toán không tiền mặt.
-4. **Hệ thống giám sát (Monitoring System) — System Actor:** Công cụ tự động thăm dò endpoint kiểm tra sức khỏe hệ thống.
+Hệ thống BrewLite tương tác với 4 Actor chính (được chuẩn hóa đồng bộ trong sơ đồ Use Case tổng quát):
+1. **Khách hàng (Customer) — Primary Actor:** Người dùng cuối trực tiếp tương tác qua giao diện web/PWA để duyệt menu, tùy biến size/topping, quản lý giỏ hàng, đăng ký/đăng nhập, đặt hàng, áp dụng khuyến mãi, thực hiện thanh toán không tiền mặt và tra cứu điểm loyalty.
+2. **Nhân viên quầy / Barista (Counter Staff) — Secondary Actor:** Nhân viên tại cửa hàng tiếp nhận đơn hàng đã thanh toán thành công (`PAID`) và cập nhật tiến độ pha chế qua hệ thống (`PREPARING -> READY -> COMPLETED`).
+3. **Cổng thanh toán mô phỏng (Mock Payment Service) — Secondary System Actor:** Hệ thống giả lập bên ngoài tiếp nhận yêu cầu thanh toán không tiền mặt, xác thực tính duy nhất qua khóa Idempotency và trả về kết quả giao dịch (`SUCCESS` hoặc `FAILED`).
+4. **Hệ thống giám sát (Monitoring System) — System Actor:** Công cụ tự động bên ngoài định kỳ thăm dò endpoint kiểm tra sức khỏe hệ thống (`GET /health`) để theo dõi tính sẵn sàng của dịch vụ API và cơ sở dữ liệu.
 
-### 5.2 Phân rã Gói Use Case
+### 5.2 Phân rã Gói và Danh mục Use Case Chính thức
+Hệ thống bao gồm 13 Use Case nguyên tử được tổ chức thành 4 phân nhóm nghiệp vụ logic:
+
 - **Gói 1: Quản lý Sản phẩm & Giỏ hàng (Menu & Cart)**
   - `UC-01`: Xem menu đồ uống (FR-01)
   - `UC-02`: Tùy biến size & topping (FR-02)
@@ -257,109 +260,81 @@ Scenario: Kiểm tra tình trạng sức khỏe hệ thống
   - `UC-07`: Đăng ký tài khoản (FR-04)
   - `UC-08`: Đăng nhập (JWT) (FR-04)
   - `UC-11`: Tra cứu điểm Loyalty (FR-10)
-- **Gói 3: Đơn hàng & Thanh toán (Orders & Payments - Core)**
+- **Gói 3: Đơn hàng & Thanh toán (Orders & Payments - Core Flow)**
   - `UC-04`: Đặt hàng (Place Order) (FR-05, FR-07, FR-09)
-  - `UC-09`: Áp dụng mã khuyến mãi (Promotion) (FR-10)
+  - `UC-09`: Áp dụng mã khuyến mãi (FR-10)
   - `UC-10`: Thanh toán không tiền mặt (FR-06, FR-08)
-  - `UC-05`: Theo dõi trạng thái đơn hàng (FR-11)
-  - `UC-06`: Xem lịch sử đơn hàng cá nhân (FR-11)
+  - `UC-05`: Theo dõi trạng thái đơn (FR-11)
+  - `UC-06`: Xem lịch sử đơn hàng (FR-11)
 - **Gói 4: Vận hành & Kỹ thuật (Operations & Health)**
   - `UC-12`: Cập nhật tiến độ pha chế (FR-12)
   - `UC-13`: Kiểm tra sức khỏe hệ thống (FR-13)
 
-### 5.3 Đặc Tả Sơ Đồ Use Case Toàn Hệ Thống (PlantUML Specification)
-Sơ đồ tuân thủ tiêu chuẩn học thuật tối giản, đen trắng (Academic Monochrome UML), loại bỏ các liên kết include sai ngữ nghĩa (ví dụ: đăng nhập là tiền điều kiện, không phải hành động luôn include khi đặt hàng):
+> [!IMPORTANT]
+> **Các phân định phạm vi nghiệp vụ và kiến trúc quan trọng:**
+> 1. **Phân định giữa Tạo đơn hàng (`UC-04`) và Thanh toán không tiền mặt (`UC-10`):**
+>    - `UC-04` (Đặt hàng / Place Order): Khách hàng xác nhận giỏ hàng, hệ thống kiểm tra tồn kho thành phẩm, kiểm tra tính hợp lệ của DTO và tạo bản ghi đơn hàng (`Order`) cùng chi tiết món (`OrderItem`) tại trạng thái **`PENDING`**. Việc thực hiện thành công `UC-04` dừng lại ở việc tạo đơn `PENDING`, **tuyệt đối không đồng nghĩa với hoàn tất thanh toán**.
+>    - `UC-10` (Thanh toán không tiền mặt): Tiếp nhận đơn hàng ở trạng thái `PENDING`, gửi yêu cầu sang Cổng thanh toán mô phỏng kèm header `Idempotency-Key` (FR-08) và xử lý trừ tồn kho đồng thời qua Optimistic Concurrency Control (FR-09). **Chỉ khi giao dịch thanh toán thành công (`SUCCESS`), đơn hàng mới được chuyển sang trạng thái `PAID`**. Trường hợp thanh toán thất bại, đơn hàng chuyển sang `PAYMENT_FAILED` hoặc giữ nguyên `PENDING` để khách hàng thử lại, số lượng tồn kho không bị trừ.
+> 2. **Vị trí của Kịch bản tích hợp cốt lõi `UC-CORE-01`:**
+>    - `UC-CORE-01: Đặt và thanh toán đồ uống (Place and Pay for Drink Order)` là mã định danh kịch bản tích hợp end-to-end (chuỗi mắt xích nghiệp vụ hoàn chỉnh từ duyệt menu, tùy biến giỏ hàng, tạo đơn đến thanh toán và nhận xác nhận đơn). Kịch bản này được đặc tả chuyên sâu tại Task 1.3 (`docs/requirements/use-cases.md`) và làm đầu vào trực tiếp cho Biểu đồ tuần tự (Sequence Diagram) tại Task 2.
+>    - Trong sơ đồ Use Case tổng quát của Task 1.2, `UC-CORE-01` **không phải là một hình elip Use Case độc lập thứ 14**, mà là sự kết hợp cấu thành từ các Use Case nguyên tử: `UC-01`, `UC-02`, `UC-03`, `UC-04`, `UC-09`, `UC-10` và `UC-05`.
 
-```plantuml
-@startuml brewlite-system-usecases
-skinparam monochrome true
-skinparam shadowing false
-skinparam defaultFontName Arial
-skinparam packageStyle rectangle
-left to right direction
+### 5.3 Sơ Đồ Use Case Toàn Hệ Thống (Use Case Overview Diagram)
 
-actor "Khách hàng\n(Customer)" as Customer
-actor "Nhân viên quầy\n(Barista)" as Barista
-actor "Cổng Thanh Toán\n(Mock Payment)" as PaymentGateway
-actor "Hệ thống Giám sát\n(Monitoring)" as Monitor
+Mô hình Use Case tổng quát của hệ thống BrewLite được lưu trữ và quản lý thống nhất tại tệp nguồn PlantUML: [use-case-overview.puml](./use-case-overview.puml).
 
-rectangle "Hệ Thống BrewLite" {
-  package "Quản lý Sản phẩm & Giỏ hàng" {
-    usecase "UC-01: Xem menu đồ uống" as UC1
-    usecase "UC-02: Tùy biến size & topping" as UC2
-    usecase "UC-03: Quản lý giỏ hàng" as UC3
-  }
+Bản kết xuất đồ họa chính thức được nhúng trực tiếp dưới đây:
 
-  package "Xác thực & Người dùng" {
-    usecase "UC-07: Đăng ký tài khoản" as UC7
-    usecase "UC-08: Đăng nhập (JWT)" as UC8
-    usecase "UC-11: Tra cứu điểm Loyalty" as UC11
-  }
+![Sơ đồ Use Case tổng quát BrewLite](./use-case-overview.svg)
 
-  package "Đơn hàng & Thanh toán" {
-    usecase "UC-04: Đặt hàng (Place Order)" as UC4
-    usecase "UC-09: Áp dụng mã khuyến mãi" as UC9
-    usecase "UC-10: Thanh toán không tiền mặt" as UC10
-    usecase "UC-05: Theo dõi trạng thái đơn" as UC5
-    usecase "UC-06: Xem lịch sử đơn hàng" as UC6
-  }
+*(Ghi chú: Toàn bộ 13 Use Cases nằm trong ranh giới hệ thống `Hệ Thống BrewLite`. Các actor bên ngoài bao gồm Customer, Barista, PaymentGateway, Monitor).*
 
-  package "Vận hành & Kỹ thuật" {
-    usecase "UC-12: Cập nhật tiến độ pha chế" as UC12
-    usecase "UC-13: Kiểm tra sức khỏe hệ thống" as UC13
-  }
-}
+#### Phân tích Kiến trúc và Mối quan hệ UML trong Sơ đồ
 
-' Quan hệ Khách hàng (Primary Actor)
-Customer --> UC1
-Customer --> UC2
-Customer --> UC3
-Customer --> UC7
-Customer --> UC8
-Customer --> UC4
-Customer --> UC5
-Customer --> UC6
-Customer --> UC11
+1. **Quan hệ `<<include>>` (`UC-04 ..> UC-10`):**
+   - *Góc nhìn nghiệp vụ (Business / User Perspective):* Trong mô hình kinh doanh quán cà phê không dùng tiền mặt (Cashless Ordering Platform), quy trình đặt hàng của khách hàng luôn gắn liền với bước thanh toán điện tử bắt buộc để đơn hàng có hiệu lực và được chuyển sang quầy pha chế. Do đó, trên sơ đồ Use Case mức khái niệm tổng quát, liên kết `<<include>>` thể hiện ý đồ của người dùng là tiến hành thanh toán như một phần cấu thành tất yếu của quy trình mua nước.
+   - *Góc nhìn kiến trúc kỹ thuật & Máy trạng thái (Technical Architecture & State Machine):* Ở tầng triển khai hệ thống (REST API, Database Transaction và State Machine), hai hành vi này được tách biệt thành hai giao dịch độc lập:
+     + `POST /orders` (`UC-04`): Khởi tạo đơn hàng dừng lại ở trạng thái `PENDING`.
+     + `POST /payments` (`UC-10`): Xử lý trừ kho đồng thời (OCC) và chuyển trạng thái sang `PAID` thông qua hàm `assertTransition`.
+     Việc ghi nhận sự phân tách kiến trúc này là bắt buộc nhằm định hướng chính xác cho việc thiết kế Sequence Diagram (Task 2) và cài đặt API (Task 4/5), tránh ngộ nhận sai lầm rằng việc tạo đơn tự động hoàn tất thanh toán trong một transaction nguyên khối duy nhất.
 
-' Quan hệ include (Hành vi bắt buộc cấu thành)
-UC4 ..> UC10 : <<include>>
+2. **Quan hệ `<<extend>>` (`UC-09 ..> UC-04`):**
+   - `UC-09: Áp dụng mã khuyến mãi` mở rộng hành vi của `UC-04: Đặt hàng (Place Order)`. Đây là hành vi tùy chọn (optional extension) thuộc phạm vi Should Have (FR-10). Khách hàng có thể nhập mã giảm giá (ví dụ: `BREW20`) tại bước đặt đơn; nếu điểm mở rộng (extension point) thỏa mãn điều kiện đơn hàng tối thiểu, hệ thống sẽ tính toán chiết khấu và cập nhật lại tổng tiền thanh toán trước khi xác nhận đơn.
 
-' Quan hệ extend (Hành vi mở rộng tùy chọn)
-UC9 ..> UC4 : <<extend>>
-
-' Quan hệ Cổng thanh toán mô phỏng (Secondary System Actor)
-UC10 --> PaymentGateway
-
-' Quan hệ Barista (Secondary Actor)
-Barista --> UC12
-
-' Quan hệ Giám sát kỹ thuật (System Actor)
-Monitor --> UC13
-
-@enduml
-```
+3. **Quan hệ tương tác với Actor bên ngoài (External Actor Associations):**
+   - `Customer` (Primary Actor) liên kết trực tiếp với các Use Case phía khách hàng (`UC-01` đến `UC-11`).
+   - `PaymentGateway` (Secondary System Actor) tương tác với `UC-10` qua lời gọi API mock để xác thực thanh toán.
+   - `Barista` (Secondary Actor) tương tác với `UC-12` để cập nhật trạng thái chế biến đơn hàng.
+   - `Monitor` (System Actor) tương tác với `UC-13` để định kỳ kiểm tra sức khỏe của API và Database.
 
 ---
 
 ## 6. MA TRẬN ÁNH XẠ TRUY VẾT BAN ĐẦU (TRACEABILITY MAPPING)
 
-Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), Use Case nghiệp vụ, API Endpoint và Thành phần mã nguồn:
+Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), Use Case nghiệp vụ chính thức, API Endpoint và Thành phần mã nguồn:
 
-| Mã Yêu Cầu | Tên Yêu Cầu Chức Năng | Use Case Ánh Xạ | API Endpoint Dự Kiến | Thành Phần Triển Khai |
+| Mã Yêu Cầu | Tên Yêu Cầu Chức Năng | Use Case Ánh Xạ (Tên Chính Thức) | API Endpoint Dự Kiến | Thành Phần Triển Khai |
 | :--- | :--- | :--- | :--- | :--- |
-| **FR-01** | Xem menu đồ uống | `UC-01` | `GET /products` | `apps/web/src/app/page.tsx`, `apps/api/src/products/` |
-| **FR-02** | Xem chi tiết, chọn size/topping | `UC-02` | `GET /products/:id` | `apps/web/src/app/menu/page.tsx`, `apps/api/src/products/` |
-| **FR-03** | Quản lý giỏ hàng | `UC-03` | N/A (Client State) | `apps/web/src/app/menu/page.tsx` |
-| **FR-04** | Đăng ký, đăng nhập và JWT | `UC-07`, `UC-08` | `POST /auth/register`, `POST /auth/login` | `apps/api/src/auth/` |
-| **FR-05** | Tạo đơn hàng | `UC-04` | `POST /orders` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
-| **FR-06** | Thanh toán mô phỏng | `UC-10` | `POST /payments` | `apps/api/src/payments/`, `apps/web/src/app/menu/page.tsx` |
-| **FR-07** | Quản lý trạng thái đơn | `UC-04`, `UC-10`, `UC-12` | Nội bộ `order-state-machine` | `apps/api/src/orders/state-machine/` |
-| **FR-08** | Idempotent Payment | `UC-10` | Header `Idempotency-Key` trên `/payments` | `apps/api/src/payments/` |
-| **FR-09** | Kiểm soát tồn kho đồng thời | `UC-04`, `UC-10` | Transaction & OCC (`version`) | `apps/api/src/payments/`, `apps/api/src/products/` |
-| **FR-10** | Mã khuyến mãi & Loyalty | `UC-09`, `UC-11` | `PromotionsService`, `LoyaltyService` | `apps/api/src/payments/`, model `Promotion` |
-| **FR-11** | Xác nhận và lịch sử đơn | `UC-05`, `UC-06` | `GET /orders/me`, `GET /orders/:id` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
-| **FR-12** | Cập nhật tiến độ pha chế | `UC-12` | `PATCH /orders/:id/status` | Staff Portal / API |
-| **FR-13** | Health Check | `UC-13` | `GET /health` | `apps/api/src/health/` (nhánh feature) / `AppController` (`main` baseline - GAP-04) |
+| **FR-01** | Xem menu đồ uống | `UC-01: Xem menu đồ uống` | `GET /products` | `apps/web/src/app/page.tsx`, `apps/api/src/products/` |
+| **FR-02** | Xem chi tiết, chọn size/topping | `UC-02: Tùy biến size & topping` | `GET /products/:id` | `apps/web/src/app/menu/page.tsx`, `apps/api/src/products/` |
+| **FR-03** | Quản lý giỏ hàng | `UC-03: Quản lý giỏ hàng` | N/A (Client State) | `apps/web/src/app/menu/page.tsx` |
+| **FR-04** | Đăng ký, đăng nhập và JWT | `UC-07: Đăng ký tài khoản`<br>`UC-08: Đăng nhập (JWT)` | `POST /auth/register`, `POST /auth/login` | `apps/api/src/auth/` |
+| **FR-05** | Tạo đơn hàng | `UC-04: Đặt hàng (Place Order)` | `POST /orders` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
+| **FR-06** | Thanh toán mô phỏng | `UC-10: Thanh toán không tiền mặt` | `POST /payments` | `apps/api/src/payments/`, `apps/web/src/app/menu/page.tsx` |
+| **FR-07** | Quản lý trạng thái đơn | `UC-04: Đặt hàng (Place Order)`<br>`UC-10: Thanh toán không tiền mặt`<br>`UC-12: Cập nhật tiến độ pha chế` | Nội bộ `order-state-machine` | `apps/api/src/orders/state-machine/` |
+| **FR-08** | Idempotent Payment | `UC-10: Thanh toán không tiền mặt` | Header `Idempotency-Key` trên `/payments` | `apps/api/src/payments/` |
+| **FR-09** | Kiểm soát tồn kho đồng thời | `UC-04: Đặt hàng (Place Order)`<br>`UC-10: Thanh toán không tiền mặt` | Transaction & OCC (`version`) | `apps/api/src/payments/`, `apps/api/src/products/` |
+| **FR-10** | Mã khuyến mãi & Loyalty | `UC-09: Áp dụng mã khuyến mãi`<br>`UC-11: Tra cứu điểm Loyalty` | `PromotionsService`, `LoyaltyService` | `apps/api/src/payments/`, model `Promotion` |
+| **FR-11** | Xác nhận và lịch sử đơn | `UC-05: Theo dõi trạng thái đơn`<br>`UC-06: Xem lịch sử đơn hàng` | `GET /orders/me`, `GET /orders/:id` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
+| **FR-12** | Cập nhật tiến độ pha chế | `UC-12: Cập nhật tiến độ pha chế` | `PATCH /orders/:id/status` | Staff Portal / API |
+| **FR-13** | Health Check | `UC-13: Kiểm tra sức khỏe hệ thống` | `GET /health` | `apps/api/src/health/` (nhánh feature) / `AppController` (`main` baseline - GAP-04) |
+
+> [!NOTE]
+> **Phân định đối soát giữa FR-11 và Use Case UC-05, UC-06:**
+> Yêu cầu chức năng **FR-11 ("Xác nhận và lịch sử đơn")** bao trùm hai mục tiêu trải nghiệm người dùng:
+> 1. Hiển thị thông tin xác nhận sau khi thanh toán và theo dõi tiến độ đơn hàng hiện tại (`UC-05: Theo dõi trạng thái đơn`).
+> 2. Tra cứu toàn bộ danh sách các đơn hàng đã đặt trong quá khứ của cá nhân khách hàng (`UC-06: Xem lịch sử đơn hàng`).
+> Trong mô hình Use Case chuẩn UML, hai mục tiêu này được phân rã thành hai Use Case độc lập (`UC-05` và `UC-06`) nhằm đảm bảo tính đơn trách nhiệm (Single Responsibility Principle) của từng Use Case, trong khi ở mức đặc tả yêu cầu người dùng FR-11 gom nhóm chúng theo cùng một chủ đề nghiệp vụ sau thanh toán.
 
 ---
 
