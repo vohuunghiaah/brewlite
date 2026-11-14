@@ -1,0 +1,45 @@
+@startuml brewlite-usecase-place-order
+' BrewLite — Task 1.3 — Đặc tả Use Case Chi tiết UC-04 Đặt hàng
+' Tài liệu tham chiếu: SRS 1.3.2 và REQ-UC-04 v1.3.1
+' Mô hình chuẩn UML: UC-04 bắt buộc bao gồm (<<include>>) thanh toán UC-10
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam roundCorner 0
+skinparam usecase {
+    BackgroundColor White
+    BorderColor Black
+    ArrowColor Black
+}
+skinparam note {
+    BackgroundColor White
+    BorderColor Black
+    ArrowColor Black
+}
+left to right direction
+
+title BREWLITE — TASK 1.3: UC-04 ĐẶT HÀNG (PLACE ORDER)
+
+actor "Khách hàng\n(Customer)" as Customer
+
+rectangle "Hệ Thống BrewLite" {
+    usecase "UC-09: Áp dụng\nmã khuyến mãi" as UC9
+    usecase "UC-04: Đặt hàng\n(Place Order)" as UC4
+    usecase "UC-10: Thanh toán\nkhông tiền mặt" as UC10
+
+    note "UC-04 thành công khi thanh toán UC-10 hoàn tất\nvà Order đạt trạng thái PAID.\nPENDING chỉ là trạng thái trung gian." as N1
+    UC4 .. N1
+}
+
+actor "Cổng Thanh Toán Mô Phỏng\n(Mock Payment Service)" as PaymentGateway
+
+Customer -- UC4
+Customer -- UC9
+
+UC9 ..> UC4 : <<extend>>
+UC4 ..> UC10 : <<include>>
+
+UC10 -- PaymentGateway
+
+@enduml

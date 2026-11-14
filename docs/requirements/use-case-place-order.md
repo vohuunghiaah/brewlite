@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-04`
-- **Phiên bản:** 1.3.1 (Loyalty Standardization & Baseline Reference Alignment)
+- **Phiên bản:** 1.3.2 (Diagram Synchronization — PUML Source & SVG Alignment)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 - **MVP do nhóm lựa chọn:** Đặt đồ uống (Drink Ordering)
 - **Use-case trọng tâm:** `UC-04 — Đặt hàng (Place Order)`
@@ -61,6 +61,14 @@ Bản chất của `UC-10` là **thực hiện giao dịch thanh toán không ti
 
 > [!NOTE]
 > `UC-10` được thiết kế như một Use Case có khả năng tái sử dụng (Reusable Use Case). Ngoài việc được bao gồm trực tiếp trong luồng chính của `UC-04`, `UC-10` còn có thể được kích hoạt độc lập khi khách hàng thực hiện thanh toán lại (retry payment) cho một đơn hàng trước đó bị gián đoạn mạng hoặc thanh toán thất bại.
+
+### 2.1 Sơ Đồ Use Case Chi Tiết (Detail Use Case Diagram)
+
+Mô hình Use Case chi tiết của `UC-04: Đặt hàng (Place Order)` được quản lý thống nhất tại tệp nguồn PlantUML: [use-case-place-order.puml](./use-case-place-order.puml).
+
+Bản kết xuất đồ họa chính thức được nhúng trực tiếp dưới đây:
+
+![Sơ đồ Use Case chi tiết UC-04](./use-case-place-order.svg)
 
 ---
 
