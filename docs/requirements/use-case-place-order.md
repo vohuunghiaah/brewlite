@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-04`
-- **Phiên bản:** 1.3.0 (UML Semantics Alignment — Required Payment Inclusion)
+- **Phiên bản:** 1.3.1 (Loyalty Standardization & Baseline Reference Alignment)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 - **MVP do nhóm lựa chọn:** Đặt đồ uống (Drink Ordering)
 - **Use-case trọng tâm:** `UC-04 — Đặt hàng (Place Order)`
@@ -118,7 +118,7 @@ Bản chất của `UC-10` là **thực hiện giao dịch thanh toán không ti
 | **ALT-03** | Khách hàng đặt món tiêu chuẩn không có topping | Cho phép tạo đơn với danh sách topping rỗng (`toppings: []`), đơn giá tính theo size niêm yết. |
 | **ALT-04** | Khách hàng chưa đăng nhập khi nhấn đặt hàng | Tại Bước 4, hệ thống phát hiện chưa có JWT Token; client tạm lưu giỏ hàng vào `localStorage`, chuyển hướng sang Đăng nhập (`UC-08`); sau khi đăng nhập thành công, tự động điều hướng quay lại và tiếp tục từ Bước 5. |
 | **ALT-05** | Khách hàng thực hiện thanh toán lại cho đơn hàng chưa hoàn tất | Khách hàng truy cập đơn hàng đang ở trạng thái `PENDING` hoặc `PAYMENT_FAILED` từ lịch sử đơn; hệ thống bỏ qua các Bước 1-7 và **kích hoạt trực tiếp `UC-10`** từ Bước 8 để thực hiện thanh toán chuyển đơn sang `PAID`. |
-| **ALT-06** | Tích lũy điểm thưởng thành viên (`UC-11` - Should Have / FR-10) | Khi `UC-10` chuyển đơn sang `PAID`, hệ thống ghi nhận điểm tích lũy vào bảng `LoyaltyTransaction`. (Lưu ý: Tỷ lệ quy đổi đang chờ phê duyệt tại `GAP-03`; việc tách biệt transaction thanh toán và tích điểm là định hướng kỹ thuật mong muốn). |
+| **ALT-06** | Tích lũy điểm thưởng thành viên (Quy tắc nghiệp vụ FR-10 / BR-LOYALTY-01 - Should Have) | Khi `UC-10` chuyển đơn sang `PAID`, hệ thống tự động ghi nhận điểm tích lũy vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Khách hàng có thể tra cứu số dư điểm qua `UC-11: Tra cứu điểm Loyalty`. (Lưu ý: Tỷ lệ quy đổi đang chờ phê duyệt tại `GAP-03`; việc tách biệt transaction thanh toán và tích điểm là định hướng kỹ thuật mong muốn). |
 
 ---
 
@@ -156,7 +156,7 @@ Hệ thống phân định rạch ròi 3 tầng ngoại lệ tương ứng với
 
 ## 7. Ma Trận Truy Vết Yêu Cầu Chức Năng (FR Traceability)
 
-| Thành phần của UC-04 | Mã FR Ánh Xạ | Tên Yêu Cầu Chức Năng (SRS 1.3.1) | Phân loại MoSCoW | Trách nhiệm thực thi |
+| Thành phần của UC-04 | Mã FR Ánh Xạ | Tên Yêu Cầu Chức Năng (SRS 1.3.2) | Phân loại MoSCoW | Trách nhiệm thực thi |
 | :--- | :---: | :--- | :---: | :--- |
 | Nguồn dữ liệu thực đơn | **FR-01** | Xem menu đồ uống | Must Have | Cung cấp danh mục sản phẩm cho giỏ hàng. |
 | Cấu hình size & topping | **FR-02** | Xem chi tiết, chọn size/topping | Must Have | Lưu snapshot kích cỡ và topping vào `OrderItem`. |
@@ -167,7 +167,7 @@ Hệ thống phân định rạch ròi 3 tầng ngoại lệ tương ứng với
 | Máy trạng thái đơn hàng | **FR-07** | Quản lý trạng thái đơn | Must Have | Kiểm soát chuyển tiếp hợp lệ `PENDING -> PAID` hoặc `PAYMENT_FAILED`. |
 | Thanh toán Idempotent | **FR-08** | Idempotent Payment | Must Have | Header `Idempotency-Key` trong `UC-10` chống thanh toán trùng lặp. |
 | Kiểm soát kho đồng thời | **FR-09** | Kiểm soát tồn kho đồng thời | Must Have | Kiểm tra kho ở FR-05 và trừ kho OCC (`version`) ở `UC-10`. |
-| Khuyến mãi & Loyalty | **FR-10** | Mã khuyến mãi & Loyalty | Should Have | `UC-09` chiết khấu đơn hàng; `UC-11` tích điểm sau `PAID`. |
+| Khuyến mãi & Loyalty | **FR-10** | Mã khuyến mãi & Loyalty | Should Have | `UC-09` chiết khấu đơn hàng; Tự động tích điểm theo `BR-LOYALTY-01` sau `PAID`; Khách hàng dùng `UC-11` tra cứu điểm. |
 | Màn hình xác nhận thành công | **FR-11** | Xác nhận và lịch sử đơn | Must Have | Hiển thị mã nhận nước `#BL-xxxx` và huy hiệu `PAID` khi UC-04 thành công. |
 
 ---

@@ -4,24 +4,24 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-CORE`
-- **Phiên bản:** 1.5.1 (Alignment with UC-04 Included Payment Semantics)
+- **Phiên bản:** 1.5.2 (Loyalty Standardization & Baseline Reference Alignment)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
 
-## 1. TỔNG QUAN PHẠM VI USE CASE TRỌNG TÂM
+## 1. TỔNG QUAN PHẠM VI KỊCH BẢN TÍCH HỢP TRỌNG TÂM
 
-Theo yêu cầu tại **Task 1.3 (Assignment 2)**, hệ thống BrewLite tập trung đặc tả chi tiết và sâu sắc nhất cho Use Case cốt lõi sống còn của nền tảng:
-> **Đặt và Thanh toán Đồ uống (Place and Pay for Drink Order)** — Mã định danh: `UC-CORE-01`
+Theo yêu cầu tại **Task 1.3 (Assignment 2)**, hệ thống BrewLite tập trung đặc tả chi tiết cho kịch bản tích hợp nghiệp vụ cốt lõi xuyên suốt toàn bộ nền tảng:
+> **Kịch bản tích hợp cốt lõi: Đặt và thanh toán đồ uống (Place and Pay for Drink Order)** — Mã định danh: `UC-CORE-01`
 
-Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại giá trị trực tiếp cho khách hàng và doanh thu cho cửa hàng, tích hợp đầy đủ các cơ chế kỹ thuật phức tạp nhất:
+Kịch bản tích hợp này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại giá trị trực tiếp cho khách hàng và doanh thu cho cửa hàng, tích hợp đầy đủ các cơ chế kỹ thuật phức tạp nhất:
 1. **Quản lý phiên xác thực (JWT Auth Guard)**
 2. **Kiểm soát tồn kho thành phẩm đồng thời (Concurrency Control qua Optimistic Locking)**
 3. **Thanh toán không tiền mặt Idempotent (Idempotency-Key Header)**
 4. **Máy trạng thái đơn hàng (Order State Machine với hàm chặn `assertTransition`)**
 
-### 1.1 Vị trí kiến trúc và Quan hệ với 13 Use Cases nguyên tử (SRS 1.3.1 §5.2)
-`UC-CORE-01` đóng vai trò là **kịch bản tích hợp end-to-end** xuyên suốt trải nghiệm đặt cà phê không tiền mặt, kết nối tuần tự các Use Case nguyên tử trong danh mục chính thức:
+### 1.1 Vị trí kiến trúc và Quan hệ với 13 Use Cases nguyên tử (SRS 1.3.2 §5.2)
+`UC-CORE-01` đóng vai trò là **kịch bản tích hợp end-to-end (End-to-End Integration Scenario)** xuyên suốt hành trình trải nghiệm đặt cà phê không tiền mặt của khách hàng, kết nối tuần tự các Use Case nguyên tử trong danh mục chính thức:
 - **`UC-01: Xem menu đồ uống`** (FR-01) & **`UC-02: Tùy biến size & topping`** (FR-02): Khách hàng duyệt và tùy biến sản phẩm.
 - **`UC-03: Quản lý giỏ hàng`** (FR-03): Quản lý danh mục món chọn, tính tổng tiền tạm tính.
 - **`UC-07: Đăng ký tài khoản`** & **`UC-08: Đăng nhập (JWT)`** (FR-04): Xác thực phiên làm việc an toàn của khách hàng.
@@ -29,22 +29,22 @@ Use Case này bao hàm toàn bộ chuỗi mắt xích nghiệp vụ mang lại g
 - **`UC-09: Áp dụng mã khuyến mãi`** (FR-10): Hành vi mở rộng tùy chọn tại bước checkout (Luồng thay thế ALT-2).
 - **`UC-10: Thanh toán không tiền mặt`** (FR-06, FR-08, FR-09): Thực thi thanh toán qua cổng mô phỏng, trừ tồn kho OCC, chuyển đơn sang **`PAID`**.
 - **`UC-05: Theo dõi trạng thái đơn`** (FR-11): Điều hướng hiển thị màn hình xác nhận đơn hàng thành công kèm mã nhận nước tại quầy.
-- **`UC-11: Tra cứu điểm Loyalty`** (FR-10): Tích lũy điểm thành viên sau khi đơn hàng chuyển sang `PAID` (Luồng thay thế ALT-6).
+- **`UC-11: Tra cứu điểm Loyalty`** (FR-10): Khách hàng chủ động tra cứu số dư và lịch sử điểm thưởng thành viên tích lũy từ các đơn hàng `PAID` (thao tác tự động cộng điểm sau thanh toán thuộc quy tắc nghiệp vụ `BR-LOYALTY-01` của FR-10, mô tả tại Luồng thay thế ALT-6).
 - **`UC-12: Cập nhật tiến độ pha chế`** (FR-12): Nhân viên quầy tiếp nhận và cập nhật tiến độ pha chế cho đơn hàng đã `PAID`.
 
 > [!NOTE]
-> `UC-CORE-01` không phải là một hình elip Use Case thứ 14 trong Sơ đồ Use Case tổng quát (`docs/requirements/use-case-overview.puml`), mà là luồng cộng tác tích hợp (Integrated Collaboration Flow) kết nối các Use Case nguyên tử để phục vụ thiết kế Activity Diagram và Sequence Diagram tại Task 2.
+> **Định vị kiến trúc của `UC-CORE-01`:** `UC-CORE-01` là **kịch bản tích hợp end-to-end (End-to-End Integration Scenario)** mô tả hành trình trải nghiệm người dùng xuyên suốt từ duyệt menu, tùy biến, giỏ hàng, xác thực đến đặt hàng (`UC-04`), thanh toán (`UC-10`) và nhận xác nhận đơn (`UC-05`). Kịch bản này **không phải là một Use Case nguyên tử thứ 14** trong Sơ đồ Use Case tổng quát (`docs/requirements/use-case-overview.puml`), và **không phải là định nghĩa nghiệp vụ cạnh tranh hay thay thế `UC-04`**. Kịch bản tích hợp này đóng vai trò là hợp đồng luồng cộng tác (Integrated Collaboration Flow) kết nối các ca sử dụng nguyên tử làm căn cứ trực tiếp để xây dựng Biểu đồ hoạt động (Activity Diagram) và Biểu đồ tuần tự (Sequence Diagram) tại Task 2.
 
 ---
 
-## 2. ĐẶC TẢ CHI TIẾT USE CASE CỐT LÕI: UC-CORE-01
+## 2. ĐẶC TẢ CHI TIẾT KỊCH BẢN TÍCH HỢP CỐT LÕI: UC-CORE-01
 
-### 2.1 Thuộc tính định danh Use Case
+### 2.1 Thuộc tính định danh Kịch bản
 | Thuộc tính | Chi tiết đặc tả |
 | :--- | :--- |
-| **Mã Use Case** | `UC-CORE-01` |
-| **Tên Use Case** | Đặt và thanh toán đồ uống (Place and Pay for Drink Order) |
-| **Phân loại** | Core Business Flow (Nghiệp vụ cốt lõi) |
+| **Mã định danh** | `UC-CORE-01` |
+| **Tên kịch bản** | Đặt và thanh toán đồ uống (Place and Pay for Drink Order) |
+| **Phân loại** | Kịch bản tích hợp End-to-End (Integration Scenario / Collaboration Flow) |
 | **Tác nhân chính (Primary Actor)** | **Khách hàng (Customer):** Người dùng trực tiếp thao tác trên ứng dụng web/PWA để xem menu, tùy chọn món, quản lý giỏ hàng, đặt hàng và thanh toán. |
 | **Tác nhân phụ (Secondary Actors)** | 1. **Cổng thanh toán mô phỏng (Mock Payment Service):** Tiếp nhận yêu cầu thanh toán, kiểm tra tính duy nhất qua Idempotency-Key và trả về kết quả giao dịch.<br>2. **Nhân viên quầy (Barista):** Tiếp nhận đơn hàng đã thanh toán thành công (`PAID`) để chuẩn bị pha chế đồ uống. |
 | **Sự kiện kích hoạt (Trigger)** | Khách hàng nhấn nút **"Thanh toán"** tại trang Giỏ hàng hoặc nhấn nút **"Xác nhận thanh toán"** tại trang Checkout. |
@@ -390,9 +390,9 @@ Hàm kiểm soát máy trạng thái `assertTransition(currentStatus: OrderStatu
 | Máy trạng thái đơn hàng | `UC-04`, `UC-10`, `UC-12` | `FR-07` | `NFR-04` (State Integrity) | `UNIT-SM-01`, `UNIT-SM-02` |
 | Thanh toán Idempotent | `UC-10: Thanh toán không tiền mặt` | `FR-08` | `NFR-04` (Anti-duplicate) | `INT-IDEMP-01`, `INT-IDEMP-02` |
 | Kiểm soát tồn kho Optimistic | `UC-04`, `UC-10` | `FR-09` | `NFR-04` (No overselling) | `CONC-STOCK-01`, `CONC-STOCK-02` |
-| Khuyến mãi & Loyalty | `UC-09: Áp dụng mã khuyến mãi`<br>`UC-11: Tra cứu điểm Loyalty` | `FR-10` | `NFR-04` (Loyalty calculation) | `UNIT-LOYAL-01`, `UNIT-PROMO-01` |
+| Khuyến mãi & Tra cứu Loyalty | `UC-09: Áp dụng mã khuyến mãi`<br>`UC-11: Tra cứu điểm Loyalty` | `FR-10` | `NFR-04` (Loyalty calculation) | `UNIT-LOYAL-01`, `UNIT-PROMO-01` |
 | Màn hình xác nhận & Lịch sử | `UC-05: Theo dõi trạng thái đơn`<br>`UC-06: Xem lịch sử đơn hàng` | `FR-11` | `NFR-02` (Anti-IDOR `/me`) | `UI-CONFIRM-01`, `E2E-ORDER-01` |
 | Cập nhật trạng thái pha chế | `UC-12: Cập nhật tiến độ pha chế` | `FR-12` | `NFR-02` (Roles Guard, Staff) | `API-STAFF-01`, `UNIT-SM-03` |
 
 ---
-*Tài liệu đặc tả Use Case này là căn cứ trực tiếp để xây dựng Sơ đồ Hoạt động (Activity Diagram), Sơ đồ Tuần tự (Sequence Diagram), Lược đồ Lớp (Class Diagram) trong Task 2 và cài đặt kiểm thử tự động trong Task 4 & 5.*
+*Tài liệu đặc tả Kịch bản tích hợp này là căn cứ trực tiếp để xây dựng Sơ đồ Hoạt động (Activity Diagram), Sơ đồ Tuần tự (Sequence Diagram), Lược đồ Lớp (Class Diagram) trong Task 2 và cài đặt kiểm thử tự động trong Task 4 & 5.*
