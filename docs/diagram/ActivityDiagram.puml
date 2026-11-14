@@ -1,71 +1,180 @@
 @startuml
+' BrewLite | Assignment 2 | Task 2.1 | Activity Diagram
+' Căn cứ: UC-CORE-01, UC-04 <<include>> UC-10, SRS v1.3.2
+' UC-04 chỉ thành công khi thanh toán UC-10 thành công và Order = PAID.
+' TX1 lưu đơn PENDING; TX2 thanh toán và trừ tồn kho OCC.
+' GAP-01: Không khẳng định có hoàn tiền tự động.
+' GAP-02: Lưu / tái dùng Idempotency-Key phía client là mục tiêu cần hoàn thiện.
 
-skinparam backgroundColor #FFFFFF
-skinparam DefaultTextAlignment center
+skinparam backgroundColor white
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam defaultTextAlignment center
+skinparam shadowing false
+skinparam roundCorner 4
+skinparam ArrowColor black
+skinparam ArrowThickness 1
+skinparam ActivityBackgroundColor white
+skinparam ActivityBorderColor black
+skinparam ActivityFontColor black
+skinparam ActivityDiamondBackgroundColor white
+skinparam ActivityDiamondBorderColor black
+skinparam ActivityDiamondFontColor white
+skinparam SwimlaneBorderColor #888888
+skinparam SwimlaneTitleBackgroundColor white
+skinparam PartitionBackgroundColor white
+skinparam wrapWidth 170
 
-
-skinparam ActivityBackgroundColor #E2E8F0
-skinparam ActivityBorderColor #4A5568
-skinparam ActivityFontColor #1A202C
-
-
-skinparam ActivityDiamondBackgroundColor #CBD5E1
-skinparam ActivityDiamondBorderColor #4A5568
-skinparam ActivityDiamondFontColor #1A202C
-
-skinparam ArrowColor #2D3748
-
-|Khách hàng (Frontend)|
+|Khách hàng|
 start
-:Truy cập ứng dụng & Xem danh sách menu;
-:Chọn món, tuỳ chỉnh size/topping & Thêm vào giỏ hàng;
-:Kiểm tra giỏ hàng và nhấn "Đặt đơn & Thanh toán";
+:Xem menu, chọn đồ uống;
+:Chọn size, topping, số lượng;
+:Thêm vào giỏ và mở checkout;
+|Frontend|
+:Hiển thị giỏ và kiểm tra dữ liệu;
+if () then (Giỏ không hợp lệ)
+  :Báo lỗi, giữ giỏ để điều chỉnh;
+  stop
+else (Hợp lệ)
+endif
 
-|Hệ thống (Backend)|
-if (Khách hàng đã đăng nhập / JWT hợp lệ?) then (Chưa đăng nhập)
-  |Khách hàng (Frontend)|
-  :Chuyển hướng đến màn hình Đăng nhập / Đăng ký;
-  :Nhập thông tin tài khoản;
-  |Hệ thống (Backend)|
-  :Xác thực thông tin và cấp JWT;
-  if (Xác thực thành công?) then (Sai)
-    :Thông báo lỗi đăng nhập;
+:Kiểm tra đăng nhập;
+if () then (Chưa đăng nhập)
+  :Giữ giỏ và chuyển đến đăng nhập;
+  |Khách hàng|
+  :Nhập tài khoản, mật khẩu;
+  |Backend|
+  :Xác thực thông tin đăng nhập;
+  if () then (Thất bại)
+    |Frontend|
+    :Báo lỗi, giữ giỏ hàng;
     stop
-  else (Đúng)
+  else (Thành công)
+    |Frontend|
+    :Trở lại checkout với JWT;
   endif
 else (Đã đăng nhập)
 endif
 
-|Hệ thống (Backend)|
-:Kiểm tra trạng thái sản phẩm và tồn kho trong Database;
-
-if (Sản phẩm còn hàng và đang bán?) then (Hết hàng / Ngừng bán)
-  |Khách hàng (Frontend)|
-  :Hiển thị thông báo sản phẩm hết hàng;
-  :Yêu cầu khách hàng chỉnh sửa giỏ hàng;
+|Frontend|
+:Gửi yêu cầu tạo đơn;
+|Backend|
+:Kiểm tra JWT và dữ liệu đầu vào;
+if () then (Không hợp lệ)
+  |Frontend|
+  :Báo lỗi, giữ giỏ;
   stop
-else (Còn hàng)
-  |Khách hàng (Frontend)|
-  :Chọn phương thức thanh toán Ví / Thẻ;
-  :Xác nhận thanh toán;
-  
-  |Dịch vụ thanh toán (Mock)|
-  :Xử lý giao dịch thanh toán mô phỏng;
-  
-  |Hệ thống (Backend)|
-  if (Kết quả thanh toán?) then (Thanh toán thất bại)
-    |Khách hàng (Frontend)|
-    :Hiển thị thông báo thanh toán thất bại;
-    :Cho phép thử lại hoặc đổi phương thức thanh toán;
-    stop
-  else (Thanh toán thành công)
-    |Hệ thống (Backend)|
-    :Thực hiện Transaction: Tạo đơn hàng & Cập nhật tồn kho;
-    :Ghi nhận trạng thái "Received" (Đã tiếp nhận);
-    
-    |Khách hàng (Frontend)|
-    :Hiển thị màn hình xác nhận thành công & Mã đơn hàng;
+else (Hợp lệ)
+endif
+
+|PostgreSQL|
+:TX1 — kiểm tra giá và tồn kho;
+|Backend|
+:Tính lại giá, kiểm tra số lượng;
+if () then (Hết / thiếu hàng)
+  |PostgreSQL|
+  :ROLLBACK TX1;
+  |Frontend|
+  :Thông báo hết hàng, giữ giỏ;
+  stop
+else (Đủ hàng)
+endif
+|PostgreSQL|
+:Lưu Order + OrderItem ở PENDING;
+if () then (Lỗi lưu đơn)
+  :ROLLBACK TX1;
+  |Frontend|
+  :Báo lỗi tạo đơn;
+  stop
+else (Lưu thành công)
+  :COMMIT TX1;
+endif
+|Frontend|
+:Nhận orderId, orderCode,\ntổng tiền và PENDING;
+
+|Khách hàng|
+:Chọn Ví hoặc Thẻ;
+:Xác nhận thanh toán;
+|Frontend|
+:Gửi yêu cầu thanh toán UC-10;
+:Kèm JWT và Idempotency-Key;
+|Backend|
+:Kiểm tra quyền, số tiền,\ntrạng thái và khóa giao dịch;
+if () then (Không hợp lệ)
+  |Frontend|
+  :Thông báo lỗi, giữ orderId;
+  stop
+else (Hợp lệ)
+endif
+
+|Backend|
+:Tra cứu kết quả theo khóa;
+if () then (Đã có kết quả)
+  :Trả kết quả cũ; không xử lý lại;
+  if () then (Đã PAID)
+    :Xác nhận đơn đã thanh toán;
+  else (Chưa PAID)
+    |Frontend|
+    :Hiển thị trạng thái hiện tại;
+    :Đối soát trước khi thử lại;
     stop
   endif
+else (Chưa có)
+  |Thanh toán mô phỏng|
+  :Thực hiện giao dịch mô phỏng;
+  |Backend|
+  :Nhận kết quả giao dịch;
+  if () then (SUCCESS)
+    |PostgreSQL|
+    :TX2 — kiểm tra stock / version;
+    if () then (Xung đột OCC)
+      :ROLLBACK TX2;
+      |Frontend|
+      :Báo xung đột; chưa xác nhận PAID;
+      stop
+    else (Không xung đột)
+      |PostgreSQL|
+      :Trừ kho, lưu Payment SUCCESS;
+      :Chuyển Order sang PAID;
+      :COMMIT TX2;
+    endif
+  else (Không SUCCESS)
+    |Backend|
+    :Phân loại kết quả;
+    if () then (FAILED)
+      |PostgreSQL|
+      :Payment FAILED;
+      :Order PAYMENT_FAILED;
+      :Không trừ tồn kho;
+      |Frontend|
+      :Báo lỗi; giữ đơn để thanh toán lại;
+      stop
+    else (PENDING / timeout)
+      |PostgreSQL|
+      :Giữ Order = PENDING;
+      |Frontend|
+      :Báo trạng thái chưa xác định;
+      :Kiểm tra trước khi gửi lại;
+      stop
+    endif
+  endif
 endif
+
+|Frontend|
+:Chỉ xóa giỏ khi Order = PAID;
+:Hiển thị mã đơn và xác nhận;
+|Khách hàng|
+:Xem kết quả đặt hàng thành công;
+:Chọn xem tiến độ đơn;
+|Frontend|
+:Yêu cầu trạng thái đơn hiện tại;
+|Backend|
+:Kiểm tra quyền và lấy trạng thái;
+|PostgreSQL|
+:Trả trạng thái đơn;
+|Frontend|
+:Hiển thị PAID / PREPARING /\nREADY / COMPLETED khi tương ứng;
+|Khách hàng|
+:Theo dõi đơn và mã nhận món;
+stop
 @enduml
