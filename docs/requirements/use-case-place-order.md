@@ -283,3 +283,5 @@ Scenario: Xử lý khi thanh toán thất bại trong quy trình đặt hàng
 3. **Sơ đồ Máy trạng thái (State Machine Diagram):** Thể hiện rõ vòng đời chuyển đổi trạng thái của đơn hàng từ `Initial -> PENDING -> PAID` (hoặc `PAYMENT_FAILED`), khẳng định `PENDING` là trạng thái chờ và chỉ `PAID` mới đưa đơn vào chu trình pha chế.
 
 Activity tương ứng: `ActivityDiagram.puml` (Sẽ hoàn thiện ở Task 2) và `ActivityDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2).
+
+GAP-03 (tỷ lệ Loyalty) thuộc FR-10 Should Have, chờ PO phê duyệt; không chặn nghiệm thu phạm vi Must Have của UC-04/UC-10.

@@ -3,7 +3,7 @@
 **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
 **Phiên bản:** 2.4.2 (Loyalty & Integration Scenario Traceability Refinement)
 **Ngày cập nhật:** 14/11/2026
-**Mục đích:** Truy vết đa chiều từ Yêu cầu chức năng (FR-01 -> FR-13) và Phi chức năng (NFR-01 -> NFR-06) đến Use Case, Thiết kế kiến trúc, Mã nguồn triển khai và Ca kiểm thử xác minh.
+**Mục đích:** Truy vết đa chiều từ Yêu cầu chức năng (FR-01 -> FR-13) và Phi chức năng (NFR-01 -> NFR-07) đến Use Case, Thiết kế kiến trúc, Mã nguồn triển khai và Ca kiểm thử xác minh.
 **Giới hạn audit 16/11/2026:** Các kết quả PASS và số đo của nhánh feature trong bảng là ghi nhận lịch sử, chưa được tái kiểm chứng trong audit tài liệu này; không coi là bằng chứng nghiệm thu hiện tại. ADR-002/003/004/005 về lifecycle, OCC, JWT và idempotency nằm trên baseline feature Prisma, không phải bộ ADR cùng số trên main. Các đường dẫn Activity/Sequence dưới đây là thiết kế dự kiến, **Sẽ hoàn thiện ở Task 2**; main hiện chưa đồng bộ việc tách UC-04/UC-10.
 
 **Nguyên tắc đánh giá:** Phân định minh bạch giữa hiện trạng nhánh `main` (baseline TypeORM khởi tạo ban đầu) và các nhánh tính năng `feature/sprint1-mvp-foundation` / `feature/sprint2-full-flow` (baseline Prisma hoàn thiện Drink Ordering).
@@ -49,6 +49,7 @@
 | **NFR-04** | Tính toàn vẹn dữ liệu & Kiểm soát đồng thời | - PostgreSQL ACID Transactions<br>- Optimistic Concurrency Control (OCC) với cột `version` | Concurrency race condition test và Database transaction test | Đã có ACID Transaction (`dataSource.transaction`) tạo đơn; chưa có OCC version | PostgreSQL Transaction + Prisma OCC version chặn hoàn toàn overselling | **PARTIAL** | **VERIFIED (PASS)** |
 | **NFR-05** | Khả năng triển khai & Đóng gói Container | Khởi chạy trọn gói hệ thống (Web, API, DB) qua lệnh `docker compose up` | `docker-compose.yml` khởi chạy thành công 3 container sạch | `docker-compose.yml` và Dockerfile có sẵn tại root; tuy nhiên `main` chưa có endpoint `GET /health` (`GAP-04`) để container hoàn tất health check tự động, và chưa có log kiểm thử môi trường sạch độc lập trên `main` | Tách biệt cấu hình local/production, build và push image lên GHCR thành công | **PARTIAL** | **VERIFIED (PASS)** |
 | **NFR-06** | Tự động hóa CI/CD & Khả năng bảo trì | GitHub Actions CI Quality Gate (Install, Lint, Unit Test, Build) | Workflow CI kiểm tra tự động trên mọi PR | Thư mục `.github/workflows/` chưa được merge vào `main`; đồng thời unit test `products` trên `main` đang thiếu mock TypeORM | Quality Gate toàn diện (Lint, Test, Playwright, Docker GHCR) pass 100% trên commit `75e4ccd9` của PR #9 | **NOT IMPLEMENTED** | **VERIFIED (PASS)** |
+| **NFR-07** | Khả dụng ≥99% trong 7 ngày | Probe frontend/API/PostgreSQL mỗi phút, timeout 5 giây; SRS §3 | Thiết kế phép đo được phê duyệt 16/11/2026; chưa thực thi monitoring | Chưa có bằng chứng uptime | Chưa tái kiểm chứng | **NOT VERIFIED** | **NOT VERIFIED** |
 
 ---
 
@@ -63,3 +64,5 @@
    - **GAP-02 (Lưu trữ Idempotency Key phía Client):** Backend đã có cơ chế Unique Index chống thanh toán trùng, nhưng giao diện Client Next.js chưa lưu key vào `sessionStorage` để tái sử dụng khi người dùng refresh hoặc ấn thanh toán lại.
    - **GAP-03 (Công thức tích điểm thành viên - Loyalty Formula):** Quy tắc `BR-LOYALTY-01` có sự không đồng nhất giữa đề xuất nghiệp vụ ban đầu (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt cuối cùng từ Product Owner.
    - **GAP-04 (Endpoint Health Check trên baseline `main`):** Nhánh `main` (TypeORM) chưa có endpoint `GET /health` (chỉ có `AppController` trả về `'Hello World!'`). Endpoint `GET /health` đầy đủ chỉ mới hiện diện trên nhánh feature Prisma.
+
+GAP-03 là phần mở rộng FR-10 Should Have chờ PO; không chặn nghiệm thu Must Have của Task 1.

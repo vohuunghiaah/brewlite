@@ -49,9 +49,9 @@ Toàn bộ các yêu cầu chức năng được đánh số định danh duy nh
 
 ## 3. YÊU CẦU PHI CHỨC NĂNG (NON-FUNCTIONAL REQUIREMENTS - NFR)
 
-Giới hạn nghiệm thu còn mở: NFR-01 cần chốt cấu hình tải/mạng đo; nhóm yêu cầu tính khả dụng theo §3.2 của đề chưa có ngưỡng uptime và cửa sổ đo được phê duyệt. FR-13/health check chưa thay thế tiêu chí khả dụng. Không tự đặt SLA khi chưa có quyết định của nhóm.
+Cấu hình đo NFR-01 và NFR-07 được người dùng phê duyệt ngày 16/11/2026 trong phiên audit. Đây là mục tiêu nghiệm thu, chưa phải kết quả benchmark/uptime thực tế. NFR-01 đến NFR-07 đều có ưu tiên MoSCoW Must Have.
 
-Ưu tiên MoSCoW: NFR-01 đến NFR-06 đều là Must Have cho nghiệm thu sản phẩm. Các ngưỡng dưới đây là yêu cầu mục tiêu, không phải kết quả kiểm thử đã đạt.
+NFR-01: production Docker trên máy 4 vCPU/8 GB RAM, PostgreSQL cùng môi trường; ghi CPU, OS, image SHA, seed và phiên bản công cụ trong báo cáo. Mỗi API GET /products, GET /products/:id, POST /orders chạy riêng với 20 người dùng đồng thời, warm-up 2 phút rồi đo 10 phút, tối thiểu 1.000 request/API (không tính warm-up). Đo từ load generator cùng mạng LAN, không chạy workload khác. Sắp xếp thời gian tăng dần, p95 là phần tử ceil(0,95 × N); PASS khi từng API có p95 <500 ms, đủ mẫu và không có lỗi ngoài kỳ vọng. Thiếu mẫu hoặc lỗi request làm FAIL. FCP đo 30 lần cold-cache trên Chrome mobile viewport 390×844, mạng 10 Mbps download/2 Mbps upload/RTT 50 ms; ghi phiên bản Chrome/Lighthouse, lấy p95 cùng công thức, PASS khi <1,5 giây. Đánh giá API và FCP riêng, NFR-01 chỉ PASS khi cả hai đạt.
 
 | Mã NFR | Tên NFR | Định nghĩa & Tiêu chuẩn kỹ thuật | Điều kiện đo lường & Ngưỡng chấp thuận | Phương pháp kiểm chứng |
 | :--- | :--- | :--- | :--- | :--- |
@@ -61,6 +61,7 @@ Giới hạn nghiệm thu còn mở: NFR-01 cần chốt cấu hình tải/mạn
 | **NFR-04** | **Tính toàn vẹn dữ liệu & Đồng thời (Data Integrity & Concurrency)** | - Hệ thống phải đảm bảo tính ACID trong các giao dịch tạo đơn và thanh toán.<br>- Cơ chế Optimistic Concurrency Control (OCC) ngăn chặn hoàn toàn hiện tượng số lượng tồn kho thành phẩm (`stock`) bị âm khi có nhiều luồng mua đồng thời. | - Số lượng tồn kho luôn $\ge 0$.<br>- 0 lỗi race condition dẫn đến trừ kho sai hoặc thanh toán trùng lặp. | - Kịch bản kiểm thử tranh chấp đồng thời (Concurrency Tests).<br>- Kiểm thử kịch bản Idempotency Key lặp lại. |
 | **NFR-05** | **Khả năng triển khai & Container hóa (Deployability & Containerization)** | - Toàn bộ hệ thống (Web Next.js, API NestJS, Database PostgreSQL) phải khởi chạy đồng bộ thông qua một lệnh duy nhất `docker compose up`.<br>- Tách biệt rõ ràng biến môi trường phát triển và môi trường production. | - Khởi động thành công toàn bộ stack trong môi trường container sạch sẽ.<br>- Container vượt qua health check tự động trong 30 giây. | - Khởi chạy và kiểm tra logs trên Docker Engine.<br>- Kiểm tra endpoint `GET /health` qua curl. |
 | **NFR-06** | **Tự động hóa CI/CD & Khả năng bảo trì (Maintainability & CI/CD)** | - Pipeline CI tự động kích hoạt trên Pull Request, thực thi 4 công đoạn: `Install -> Lint -> Unit Test -> Build`. Không cho phép merge nếu CI thất bại.<br>- CD Pipeline hỗ trợ đóng gói Docker image, kiểm tra smoke test và triển khai lên môi trường Production an toàn. | - 100% commit trên nhánh `main` vượt qua CI Quality Gate.<br>- Có quy trình smoke test xác minh và phương án rollback khi triển khai lỗi. | - GitHub Actions workflow execution logs.<br>- Báo cáo kết quả CI/CD trên pull request. |
+| **NFR-07** | **Tính khả dụng (Availability)** | Probe từ bên ngoài: frontend GET /menu trả 200 và nội dung menu, API GET /products trả 200 JSON hợp lệ, GET /health trả 200 và xác nhận PostgreSQL kết nối thành công. | Mỗi phút trong 7 ngày liên tục (10.080 lượt); timeout mỗi probe 5 giây. Một lượt chỉ khả dụng khi cả ba probe thành công. Tỷ lệ = lượt khả dụng / 10.080 × 100%; PASS ≥99%. Timeout, HTTP lỗi, dữ liệu sai, DB mất kết nối, probe thiếu và bảo trì đều tính không khả dụng. | Synthetic monitoring lưu timestamp UTC, URL, status, latency, kết quả DB và lỗi; báo cáo cửa sổ đo, tổng mẫu và tỷ lệ. Kiểm thử mất API/DB/frontend và timeout để xác minh bộ đo; lưu log làm bằng chứng. Chưa có kết quả đo thực tế. |
 
 ---
 
@@ -211,7 +212,7 @@ Scenario: Áp dụng mã khuyến mãi hợp lệ
 Scenario: Tích lũy điểm khách hàng thân thiết khi đơn hàng PAID
   Given đơn hàng thanh toán thành công số tiền 48.000đ
   When đơn hàng chuyển sang trạng thái PAID
-  Then hệ thống tính toán điểm thưởng (theo BR-LOYALTY-01, GAP-03)
+  Then hệ thống tính toán điểm thưởng theo tỷ lệ được PO phê duyệt (BR-LOYALTY-01, GAP-03; AC mở rộng chưa nghiệm thu khi chưa chốt tỷ lệ)
   And ghi nhận giao dịch vào bảng LoyaltyTransaction và cộng vào tài khoản khách
 ```
 
@@ -374,3 +375,5 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 Đã chọn BR-REFUND-OCC cho luồng UC-10: SUCCESS từ dịch vụ thanh toán, rollback TX2, lưu REFUND_PENDING trong TX3, hoàn tiền idempotent và kết thúc bằng Payment REFUNDED / Order CANCELLED. Chi tiết và tiêu chí nghiệm thu tại [UC-10 — BR-REFUND-OCC](./use-case-place-order.md#br-refund-occ--hoàn-tiền-mô-phỏng-sau-xung-đột-tồn-kho).
 
 GAP-01 vẫn ghi nhận phần triển khai backend còn thiếu. Quyết định này áp dụng cho xung đột OCC trước khi đơn đạt PAID; quy tắc hủy đơn đã PAID trong BR-REFUND-01 có phạm vi riêng.
+
+GAP-03 thuộc FR-10 Should Have: chưa nghiệm thu phần Loyalty, không ngăn nghiệm thu phạm vi Must Have của Task 1.

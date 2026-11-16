@@ -5,7 +5,7 @@
 | Hạng mục | Kết quả | Căn cứ |
 |---|---|---|
 | Task 1.1 | PASS | Đủ vấn đề, 6 stakeholder/mục tiêu, MVP/mở rộng/ngoài phạm vi, giả định, Next.js/NestJS/PostgreSQL, rủi ro. |
-| Task 1.2 | PARTIAL | Đủ FR-01–13, NFR-01–06, MoSCoW, AC và 13 UC. Thiếu ngưỡng tính khả dụng; điều kiện tải/mạng NFR-01 chưa định lượng. GAP-03 chưa chốt tỷ lệ Loyalty nên AC mở rộng chưa có expected value cố định. |
+| Task 1.2 | PASS (phạm vi Must Have) | Đủ FR-01–13, NFR-01–07, MoSCoW, AC và 13 UC. Người dùng phê duyệt cấu hình NFR-01/NFR-07 ngày 16/11/2026. GAP-03 là Should Have chờ PO, không chặn phạm vi bắt buộc. |
 | Task 1.3 | PASS | UC-04 tạo PENDING; UC-10 độc lập thanh toán đơn có sẵn; UC-CORE-01 giữ hành trình đầu-cuối, không phải UC thứ 14. Các khoảng hở triển khai được công khai. |
 
 Nguồn: Assignment2-BrewLite.pdf do người dùng cung cấp, VER 1.0, 8 trang; §3.1–3.3 (trang PDF 3–4), §4.1–4.3 (trang 4–5), §6.4 (trang 6), §8.1 (trang 7). SHA256: `3E9F50F3E98EBE966E31DDAC1173FDD8EB324FACEBD7B0782754EFB988B7C0EC`. Đã đọc toàn văn và xem trang PDF 4. Không dùng Assignment 1 thay nguồn nghiệm thu Assignment 2.
@@ -31,6 +31,8 @@ FR-05 → UC-04 → POST /orders; FR-06 → UC-10 → POST /payments; FR-07 → 
 Chỉ `docs/requirements/`, `docs/traceability-matrix.md`, `scripts/render-use-case-overview.py`. Kế thừa bản tách UC mới nhất từ `bc9211a2`; sửa tối thiểu các mâu thuẫn/liên kết kể trên. Hai cặp PUML/SVG giữ nguyên nội dung và bố cục đã duyệt. Không đổi ứng dụng, Task 2 hoặc Task 3.
 
 ## F. Test & Validation
+
+Các kết quả dưới đây là baseline trước sửa kỹ thuật; bằng chứng PR kỹ thuật mới sẽ được bổ sung khi CI hoàn tất.
 
 - `git diff --check`: PASS.
 - Kiểm tra Python: mã FR/NFR, 13 UC/4 actor, các mục AC FR-01–13, đường dẫn tệp Markdown: PASS. Không tuyên bố đã kiểm tra toàn bộ anchor hoặc liên kết web.
@@ -65,3 +67,7 @@ PR #16 giữ ActivityDiagram, SequenceDiagram bản sửa và các bản UC10/Un
 ## J. Remaining Issues
 
 Blocker merge: thiếu tiêu chí khả dụng và điều kiện đo NFR-01; lint web và unit test API thất bại; không có pipeline CI để cung cấp bằng chứng chạy checks. GAP-03 cần PO chốt expected value Loyalty; GAP-01/02/04/05 là khoảng hở triển khai/thiết kế đã ghi nhận, không được trình bày như chức năng hoàn tất. Chỉ tiếp tục merge khi quality gate và điều kiện nghiệm thu đã đạt; không bypass bảo vệ nhánh.
+
+## Cập nhật xử lý blocker
+
+16/11/2026: người dùng phê duyệt NFR-01 (4 vCPU/8 GB, 20 concurrent users, 2 phút warm-up + 10 phút đo, ≥1.000 request/API; p95 <500 ms; FCP p95 <1,5 giây/30 cold loads/mạng 10/2 Mbps RTT 50 ms) và NFR-07 (probe frontend/API/DB mỗi phút/7 ngày/timeout 5 giây/≥99%, tính cả bảo trì và probe thiếu). Chưa thực thi benchmark/monitoring. GAP-03 không chặn Task 1 Must Have. Các blocker tài liệu nêu ở mục J trước đó đã được giải quyết; gate kỹ thuật chờ PR riêng.
