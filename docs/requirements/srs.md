@@ -4,10 +4,12 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
 - **Mã tài liệu:** `REQ-SRS-01`
-- **Phiên bản:** 1.3.2 (UC-04 & UC-10 Include Semantics Alignment)
+- **Phiên bản:** 1.4.0 (Independent Use Cases — Retry & Authorization Clarification)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
+
+> Nguồn nghiệm thu: Assignment2-BrewLite.pdf, VER 1.0, §3.1–3.3. Tham chiếu Assignment 1 chỉ là bối cảnh kế thừa. PDF Assignment 2 không quy định tỷ lệ Loyalty; GAP-03 là quyết định nội bộ còn chờ PO.
 
 ## 1. TỔNG QUAN HỆ THỐNG (SYSTEM OVERVIEW)
 
@@ -33,12 +35,12 @@ Toàn bộ các yêu cầu chức năng được đánh số định danh duy nh
 | **FR-02** | Xem chi tiết, chọn size/topping | **Must Have** | Khách hàng xem chi tiết món, chọn kích cỡ (Size: SMALL, MEDIUM, LARGE) và các loại Topping; giá sản phẩm tự động cập nhật theo thời gian thực. Ghi chú mức đường/đá lưu vào trường ghi chú đơn hàng. | Ass 1 §4.1, Ass 2 §7.1 |
 | **FR-03** | Quản lý giỏ hàng | **Must Have** | Khách hàng thêm món vào giỏ, tăng/giảm số lượng, gộp món trùng cấu hình, xóa món, và tính tổng tiền giỏ hàng chính xác. | Ass 1 §8 (T5), Ass 2 §7.1 |
 | **FR-04** | Đăng ký, đăng nhập và JWT | **Must Have** | Khách hàng đăng ký tài khoản mới bằng email/mật khẩu, đăng nhập nhận JWT Bearer Token, mật khẩu băm một chiều an toàn bằng bcrypt. | Ass 1 §8 (T7), Ass 2 §7.1 |
-| **FR-05** | Tạo đơn hàng | **Must Have** | Tiếp nhận thông tin từ giỏ hàng, xác thực dữ liệu đầu vào, kiểm tra tồn kho thành phẩm, khởi tạo đơn hàng mới ở trạng thái chờ thanh toán `PENDING`. Đây là bước kỹ thuật tiền đề trong quy trình đặt hàng tổng thể (`UC-04`). | Ass 1 §8 (T6), Ass 2 §7.1 |
-| **FR-06** | Thanh toán mô phỏng | **Must Have** | Xử lý thanh toán không tiền mặt qua Ví điện tử (`E_WALLET`) hoặc Thẻ ngân hàng (`BANK_CARD`) qua Mock Payment Service, chuyển trạng thái đơn sang `PAID`. Đây là hành vi bắt buộc (`<<include>>`) để hoàn tất ca sử dụng đặt hàng (`UC-04`). | Ass 1 §8 (T8), Ass 2 §7.1 |
+| **FR-05** | Tạo đơn hàng | **Must Have** | Tiếp nhận thông tin từ giỏ hàng, xác thực dữ liệu đầu vào, kiểm tra tồn kho thành phẩm, khởi tạo đơn hàng mới ở trạng thái chờ thanh toán `PENDING`. UC-04 hoàn tất thành công sau COMMIT TX1 và trả kết quả PENDING. | Ass 1 §8 (T6), Ass 2 §7.1 |
+| **FR-06** | Thanh toán mô phỏng | **Must Have** | Xử lý thanh toán không tiền mặt qua Ví điện tử (`E_WALLET`) hoặc Thẻ ngân hàng (`BANK_CARD`) qua Mock Payment Service, chuyển trạng thái đơn sang `PAID`. UC-10 được kích hoạt độc lập trên đơn đã tồn tại và hoàn tất khi TX2 đã COMMIT PAID. | Ass 1 §8 (T8), Ass 2 §7.1 |
 | **FR-07** | Quản lý trạng thái đơn | **Must Have** | Kiểm soát chặt chẽ vòng đời đơn hàng qua Máy trạng thái hữu hạn (`assertTransition`), ngăn chặn mọi chuyển tiếp trạng thái bất hợp lệ hoặc nhảy cóc. | Ass 1 §9.1, Ass 2 §4.3 |
 | **FR-08** | Idempotent Payment | **Must Have** | Sử dụng HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL để loại bỏ rủi ro trừ tiền hoặc tạo giao dịch trùng lặp khi retry. | Ass 1 §9.2, Ass 2 §4.2 |
 | **FR-09** | Kiểm soát tồn kho đồng thời | **Must Have** | Sử dụng Database Transaction và Optimistic Locking (cột `version`) để loại bỏ hoàn toàn rủi ro bán vượt tồn kho thành phẩm (Overselling) khi có nhiều yêu cầu đồng thời. | Ass 1 §9.3, Ass 2 §4.2 |
-| **FR-10** | Mã khuyến mãi (Promotion) & Loyalty | **Should Have** | Nhập mã khuyến mãi hợp lệ (`BREW20`) tại bước checkout dựa trên model `Promotion` và tự động tích lũy điểm thưởng khách hàng thân thiết sau khi đơn hàng chuyển sang `PAID` (theo quy tắc BR-LOYALTY-01, GAP-03). | Ass 1 §9.4, Ass 2 §2.3 |
+| **FR-10** | Mã khuyến mãi (Promotion) & Loyalty | **Should Have** | Nhập mã khuyến mãi hợp lệ (`BREW20`) tại bước checkout dựa trên model `Promotion` và tự động tích lũy điểm thưởng khách hàng thân thiết sau khi đơn hàng chuyển sang `PAID` (theo quy tắc BR-LOYALTY-01, GAP-03). | Ass 1 §9.4; Ass 2 §4.3 (domain); quy tắc mở rộng do nhóm đề xuất |
 | **FR-11** | Xác nhận và lịch sử đơn | **Must Have** | Màn hình hiển thị mã đơn nhận món `#xxxx`, trạng thái `PAID`, dặn lấy nước tại quầy; cho phép xem danh sách lịch sử đơn của cá nhân (`GET /orders/me`). | Ass 1 §7 (S5), Ass 2 §7.1 |
 | **FR-12** | Cập nhật tiến độ pha chế | **Should Have** | Cung cấp endpoint cho nhân viên quầy/Barista cập nhật tiến độ chế biến đơn hàng: `PAID -> PREPARING -> READY -> COMPLETED`. | Ass 1 §9.1, Ass 2 §7.1 |
 | **FR-13** | Health Check | **Must Have** | Endpoint `GET /health` cung cấp trạng thái hoạt động của Backend API và tình trạng kết nối tới cơ sở dữ liệu PostgreSQL. | Ass 2 §5.1, §7.2 |
@@ -46,6 +48,10 @@ Toàn bộ các yêu cầu chức năng được đánh số định danh duy nh
 ---
 
 ## 3. YÊU CẦU PHI CHỨC NĂNG (NON-FUNCTIONAL REQUIREMENTS - NFR)
+
+Cấu hình đo NFR-01 và NFR-07 được người dùng phê duyệt ngày 16/11/2026 trong phiên audit. Đây là mục tiêu nghiệm thu, chưa phải kết quả benchmark/uptime thực tế. NFR-01 đến NFR-07 đều có ưu tiên MoSCoW Must Have.
+
+NFR-01: production Docker trên máy 4 vCPU/8 GB RAM, PostgreSQL cùng môi trường; ghi CPU, OS, image SHA, seed và phiên bản công cụ trong báo cáo. Mỗi API GET /products, GET /products/:id, POST /orders chạy riêng với 20 người dùng đồng thời, warm-up 2 phút rồi đo 10 phút, tối thiểu 1.000 request/API (không tính warm-up). Đo từ load generator cùng mạng LAN, không chạy workload khác. Sắp xếp thời gian tăng dần, p95 là phần tử ceil(0,95 × N); PASS khi từng API có p95 <500 ms, đủ mẫu và không có lỗi ngoài kỳ vọng. Thiếu mẫu hoặc lỗi request làm FAIL. FCP đo 30 lần cold-cache trên Chrome mobile viewport 390×844, mạng 10 Mbps download/2 Mbps upload/RTT 50 ms; ghi phiên bản Chrome/Lighthouse, lấy p95 cùng công thức, PASS khi <1,5 giây. Đánh giá API và FCP riêng, NFR-01 chỉ PASS khi cả hai đạt.
 
 | Mã NFR | Tên NFR | Định nghĩa & Tiêu chuẩn kỹ thuật | Điều kiện đo lường & Ngưỡng chấp thuận | Phương pháp kiểm chứng |
 | :--- | :--- | :--- | :--- | :--- |
@@ -55,6 +61,7 @@ Toàn bộ các yêu cầu chức năng được đánh số định danh duy nh
 | **NFR-04** | **Tính toàn vẹn dữ liệu & Đồng thời (Data Integrity & Concurrency)** | - Hệ thống phải đảm bảo tính ACID trong các giao dịch tạo đơn và thanh toán.<br>- Cơ chế Optimistic Concurrency Control (OCC) ngăn chặn hoàn toàn hiện tượng số lượng tồn kho thành phẩm (`stock`) bị âm khi có nhiều luồng mua đồng thời. | - Số lượng tồn kho luôn $\ge 0$.<br>- 0 lỗi race condition dẫn đến trừ kho sai hoặc thanh toán trùng lặp. | - Kịch bản kiểm thử tranh chấp đồng thời (Concurrency Tests).<br>- Kiểm thử kịch bản Idempotency Key lặp lại. |
 | **NFR-05** | **Khả năng triển khai & Container hóa (Deployability & Containerization)** | - Toàn bộ hệ thống (Web Next.js, API NestJS, Database PostgreSQL) phải khởi chạy đồng bộ thông qua một lệnh duy nhất `docker compose up`.<br>- Tách biệt rõ ràng biến môi trường phát triển và môi trường production. | - Khởi động thành công toàn bộ stack trong môi trường container sạch sẽ.<br>- Container vượt qua health check tự động trong 30 giây. | - Khởi chạy và kiểm tra logs trên Docker Engine.<br>- Kiểm tra endpoint `GET /health` qua curl. |
 | **NFR-06** | **Tự động hóa CI/CD & Khả năng bảo trì (Maintainability & CI/CD)** | - Pipeline CI tự động kích hoạt trên Pull Request, thực thi 4 công đoạn: `Install -> Lint -> Unit Test -> Build`. Không cho phép merge nếu CI thất bại.<br>- CD Pipeline hỗ trợ đóng gói Docker image, kiểm tra smoke test và triển khai lên môi trường Production an toàn. | - 100% commit trên nhánh `main` vượt qua CI Quality Gate.<br>- Có quy trình smoke test xác minh và phương án rollback khi triển khai lỗi. | - GitHub Actions workflow execution logs.<br>- Báo cáo kết quả CI/CD trên pull request. |
+| **NFR-07** | **Tính khả dụng (Availability)** | Probe từ bên ngoài: frontend GET /menu trả 200 và nội dung menu, API GET /products trả 200 JSON hợp lệ, GET /health trả 200 và xác nhận PostgreSQL kết nối thành công. | Mỗi phút trong 7 ngày liên tục (10.080 lượt); timeout mỗi probe 5 giây. Một lượt chỉ khả dụng khi cả ba probe thành công. Tỷ lệ = lượt khả dụng / 10.080 × 100%; PASS ≥99%. Timeout, HTTP lỗi, dữ liệu sai, DB mất kết nối, probe thiếu và bảo trì đều tính không khả dụng. | Synthetic monitoring lưu timestamp UTC, URL, status, latency, kết quả DB và lỗi; báo cáo cửa sổ đo, tổng mẫu và tỷ lệ. Kiểm thử mất API/DB/frontend và timeout để xác minh bộ đo; lưu log làm bằng chứng. Chưa có kết quả đo thực tế. |
 
 ---
 
@@ -140,7 +147,7 @@ Scenario: Từ chối tạo đơn khi giỏ hàng trống hoặc sản phẩm h�
 ```
 
 > [!NOTE]
-> **Mối quan hệ giữa nghiệm thu bước kỹ thuật FR-05 và ca sử dụng nghiệp vụ UC-04:** Kịch bản kiểm thử trên nghiệm thu riêng bước kỹ thuật gọi API `POST /orders` (khởi tạo thành công bản ghi đơn hàng ở trạng thái trung gian `PENDING`). Để nghiệm thu trọn vẹn ca sử dụng nghiệp vụ **`UC-04: Đặt hàng (Place Order)`** theo mô hình cà phê không tiền mặt, hệ thống bắt buộc kích hoạt tiếp ca sử dụng được bao gồm là **`UC-10: Thanh toán không tiền mặt`** (FR-06); chỉ khi thanh toán thành công và đơn hàng chuyển sang `PAID`, `UC-04` mới đạt điều kiện thành công cuối cùng (xem đặc tả chuyên sâu tại [use-case-place-order.md](./use-case-place-order.md)).
+> **Nghiệm thu FR-05 và UC-04:** Tạo Order/OrderItem, COMMIT TX1 và trả 201/PENDING hoàn tất UC-04. Khách hàng kích hoạt UC-10 độc lập để thanh toán đơn đã có. Đơn PENDING chưa được pha chế; UC-04 không trừ hoặc giữ kho, UC-10 kiểm tra lại tồn kho bằng OCC (xem [use-case-place-order.md](./use-case-place-order.md)).
 
 ### 4.6 Nghiệm thu FR-06: Thanh toán mô phỏng
 ```gherkin
@@ -205,7 +212,7 @@ Scenario: Áp dụng mã khuyến mãi hợp lệ
 Scenario: Tích lũy điểm khách hàng thân thiết khi đơn hàng PAID
   Given đơn hàng thanh toán thành công số tiền 48.000đ
   When đơn hàng chuyển sang trạng thái PAID
-  Then hệ thống tính toán điểm thưởng (theo BR-LOYALTY-01, GAP-03)
+  Then hệ thống tính toán điểm thưởng theo tỷ lệ được PO phê duyệt (BR-LOYALTY-01, GAP-03; AC mở rộng chưa nghiệm thu khi chưa chốt tỷ lệ)
   And ghi nhận giao dịch vào bảng LoyaltyTransaction và cộng vào tài khoản khách
 ```
 
@@ -266,7 +273,7 @@ Hệ thống bao gồm 13 Use Case nguyên tử được tổ chức thành 4 ph
 - **Gói 3: Đơn hàng & Thanh toán (Orders & Payments - Core Flow)**
   - `UC-04`: Đặt hàng (Place Order) (FR-05, FR-07, FR-09)
   - `UC-09`: Áp dụng mã khuyến mãi (FR-10)
-  - `UC-10`: Thanh toán không tiền mặt (FR-06, FR-08)
+  - `UC-10`: Thanh toán không tiền mặt (FR-06, FR-07, FR-08, FR-09)
   - `UC-05`: Theo dõi trạng thái đơn (FR-11)
   - `UC-06`: Xem lịch sử đơn hàng (FR-11)
 - **Gói 4: Vận hành & Kỹ thuật (Operations & Health)**
@@ -275,11 +282,11 @@ Hệ thống bao gồm 13 Use Case nguyên tử được tổ chức thành 4 ph
 
 > [!IMPORTANT]
 > **Các phân định phạm vi nghiệp vụ và kiến trúc quan trọng:**
-> 1. **Ngữ nghĩa chuẩn UML của `UC-04: Đặt hàng (Place Order)` và quan hệ bao gồm `UC-10` (`<<include>>`):**
->    - **`UC-04` (Đặt hàng / Place Order):** Là ca sử dụng nghiệp vụ đặt đồ uống không dùng tiền mặt hoàn chỉnh. Luồng chính thành công (Happy Path) của `UC-04` bắt buộc phải thực thi hành vi của **`UC-10: Thanh toán không tiền mặt`** thông qua quan hệ `<<include>>`. Hậu điều kiện thành công của `UC-04` chỉ đạt được khi thanh toán thành công và đơn hàng chuyển sang trạng thái **`PAID`**.
->    - **Phân định giữa bước kỹ thuật FR-05 và ca sử dụng UC-04:** Yêu cầu chức năng **FR-05 (Tạo đơn hàng)** chỉ đặc tả bước kỹ thuật đầu tiên trong `UC-04` (gọi `POST /orders`, tạo đơn trong CSDL ở trạng thái trung gian `PENDING`). Việc hoàn tất FR-05 chưa hoàn tất ca sử dụng `UC-04`; trạng thái `PENDING` chỉ là điểm chuyển tiếp để hệ thống thực thi tiếp `UC-10`.
->    - **`UC-10` (Thanh toán không tiền mặt):** Đóng gói quy trình thanh toán mô phỏng (`POST /payments`), kiểm soát khóa duy nhất `Idempotency-Key` (FR-08) và trừ tồn kho đồng thời OCC (FR-09). `UC-10` vừa là hành vi bắt buộc cấu thành Luồng chính của `UC-04`, vừa có thể tái sử dụng độc lập khi khách hàng thử thanh toán lại một đơn hàng đã tồn tại ở trạng thái `PENDING` hoặc `PAYMENT_FAILED`.
->    - **Tách biệt giao dịch CSDL kỹ thuật (Two Technical Transactions):** Tuy nằm trong một ca sử dụng nghiệp vụ thống nhất (`UC-04`), ở tầng triển khai kỹ thuật, bước tạo đơn (`POST /orders` - FR-05) và bước thanh toán (`POST /payments` - FR-06) là hai Database Transaction độc lập. Nếu giao dịch thanh toán thất bại, đơn hàng `PENDING` đã commit không bị rollback mà chuyển sang `PAYMENT_FAILED`, cho phép khách hàng thực hiện lại `UC-10` mà không phải chọn lại giỏ hàng từ đầu.
+> 1. **Phạm vi độc lập của UC-04 và UC-10:**
+>    - **UC-04 (Đặt hàng):** Xác thực, kiểm tra giỏ/giá/tồn kho sơ bộ và tạo Order/OrderItem. Thành công sau COMMIT TX1 ở PENDING.
+>    - **FR-05:** Đặc tả tạo đơn của UC-04. PENDING là hậu điều kiện thành công của UC-04 và tiền điều kiện thanh toán mới của UC-10.
+>    - **UC-10 (Thanh toán):** Khách hàng chọn thanh toán đơn đã có qua POST /payments, kiểm tra khóa (FR-08), OCC/trừ kho (FR-09), và chuyển PAID sau COMMIT TX2 (FR-07).
+>    - **Hai transaction độc lập:** Thanh toán thất bại không rollback TX1 đã commit. UC-04 không giữ kho; UC-10 kiểm tra lại tồn kho. Chỉ đơn đã PAID mới được chuyển sang PREPARING, READY, COMPLETED.
 > 2. **Vị trí của Kịch bản tích hợp cốt lõi `UC-CORE-01`:**
 >    - `UC-CORE-01: Đặt và thanh toán đồ uống (Place and Pay for Drink Order)` là mã định danh kịch bản tích hợp end-to-end (chuỗi mắt xích nghiệp vụ hoàn chỉnh từ duyệt menu, tùy biến giỏ hàng, tạo đơn đến thanh toán và nhận xác nhận đơn). Kịch bản này được đặc tả chuyên sâu tại Task 1.3 (`docs/requirements/use-cases.md`) và làm đầu vào trực tiếp cho Biểu đồ tuần tự (Sequence Diagram) tại Task 2.
 >    - Trong sơ đồ Use Case tổng quát của Task 1.2, `UC-CORE-01` **không phải là một hình elip Use Case độc lập thứ 14**, mà là sự kết hợp cấu thành từ các Use Case nguyên tử: `UC-01`, `UC-02`, `UC-03`, `UC-04`, `UC-09`, `UC-10` và `UC-05`.
@@ -296,12 +303,11 @@ Bản kết xuất đồ họa chính thức được nhúng trực tiếp dư�
 
 #### Phân tích Kiến trúc và Mối quan hệ UML trong Sơ đồ
 
-1. **Quan hệ `<<include>>` (`UC-04 ..> UC-10`):**
-   - *Tính chuẩn xác theo chuẩn UML 2.5:* Theo đặc tả hình thức của UML, một Use Case cơ sở khi có quan hệ `<<include>>` với một Use Case được bao gồm thì hành vi của Use Case được bao gồm là một phần bắt buộc không thể tách rời trong Luồng chính thành công của Use Case cơ sở. Trong nền tảng BrewLite, `UC-04: Đặt hàng (Place Order)` là quy trình đặt đồ uống không tiền mặt; mục tiêu nghiệp vụ của khách hàng chỉ hoàn tất khi đồ uống đã được thanh toán và đơn chuyển sang `PAID` để quầy Barista pha chế. Do đó, `UC-04` bắt buộc kích hoạt `UC-10: Thanh toán không tiền mặt`. `UC-10` đồng thời có thể được tái sử dụng độc lập khi người dùng thực hiện thanh toán lại cho đơn hàng bị lỗi mạng hoặc lỗi thẻ trước đó.
-   - *Kiến trúc phân tầng và Quản lý giao dịch (Architectural Layering & Transaction Separation):* Mặc dù về mặt nghiệp vụ `UC-04` bao gồm `UC-10`, ở tầng triển khai REST API và cơ sở dữ liệu, quy trình được phân rã thành hai giao dịch độc lập:
-     + Giao dịch 1 (`POST /orders` - bước kỹ thuật FR-05): Tạo bản ghi đơn hàng ở trạng thái trung gian `PENDING`.
-     + Giao dịch 2 (`POST /payments` - hành vi `UC-10`, FR-06, FR-08, FR-09): Xác thực Mock Payment, trừ tồn kho bằng Optimistic Locking (OCC), và chuyển trạng thái đơn hàng sang `PAID` thông qua hàm `assertTransition`.
-     Sự tách biệt này đảm bảo nếu thanh toán thất bại, bản ghi đơn hàng `PENDING` đã tạo không bị hủy hoàn toàn mà chuyển sang `PAYMENT_FAILED`, cho phép khách hàng gọi lại `UC-10` mà không cần nhập lại thông tin giỏ hàng.
+1. **Hai Use Case độc lập UC-04 và UC-10:**
+   - Customer liên kết trực tiếp với cả hai Use Case. UC-10 sử dụng dữ liệu đơn đã tạo bởi UC-04; không có quan hệ include hoặc extend giữa chúng.
+   - UC-04: POST /orders và TX1 tạo Order PENDING, trả 201 Created.
+   - UC-10: POST /payments và TX2 xử lý thanh toán, OCC/trừ kho và chuyển PAID.
+   - UC-CORE-01 tích hợp tuần tự UC-04 và UC-10; toàn bộ hành trình hoàn tất khi PAID.
 
 2. **Quan hệ `<<extend>>` (`UC-09 ..> UC-04`):**
    - `UC-09: Áp dụng mã khuyến mãi` mở rộng hành vi của `UC-04: Đặt hàng (Place Order)`. Đây là hành vi tùy chọn (optional extension) thuộc phạm vi Should Have (FR-10). Khách hàng có thể nhập mã giảm giá (ví dụ: `BREW20`) tại bước đặt đơn; nếu điểm mở rộng (extension point) thỏa mãn điều kiện đơn hàng tối thiểu, hệ thống sẽ tính toán chiết khấu và cập nhật lại tổng tiền thanh toán trước khi xác nhận đơn.
@@ -324,11 +330,11 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 | **FR-02** | Xem chi tiết, chọn size/topping | `UC-02: Tùy biến size & topping` | `GET /products/:id` | `apps/web/src/app/menu/page.tsx`, `apps/api/src/products/` |
 | **FR-03** | Quản lý giỏ hàng | `UC-03: Quản lý giỏ hàng` | N/A (Client State) | `apps/web/src/app/menu/page.tsx` |
 | **FR-04** | Đăng ký, đăng nhập và JWT | `UC-07: Đăng ký tài khoản`<br>`UC-08: Đăng nhập (JWT)` | `POST /auth/register`, `POST /auth/login` | `apps/api/src/auth/` |
-| **FR-05** | Tạo đơn hàng | `UC-04: Đặt hàng (Place Order)` *(bước kỹ thuật tạo đơn PENDING)* | `POST /orders` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
-| **FR-06** | Thanh toán mô phỏng | `UC-10: Thanh toán không tiền mặt` *(hành vi <<include>> trong UC-04)* | `POST /payments` | `apps/api/src/payments/`, `apps/web/src/app/menu/page.tsx` |
+| **FR-05** | Tạo đơn hàng | `UC-04: Đặt hàng (Place Order)` *(hoàn tất ở PENDING)* | `POST /orders` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
+| **FR-06** | Thanh toán mô phỏng | `UC-10: Thanh toán không tiền mặt` *(độc lập trên đơn đã có)* | `POST /payments` | `apps/api/src/payments/`, `apps/web/src/app/menu/page.tsx` |
 | **FR-07** | Quản lý trạng thái đơn | `UC-04: Đặt hàng (Place Order)`<br>`UC-10: Thanh toán không tiền mặt`<br>`UC-12: Cập nhật tiến độ pha chế` | Nội bộ `order-state-machine` | `apps/api/src/orders/state-machine/` |
 | **FR-08** | Idempotent Payment | `UC-10: Thanh toán không tiền mặt` | Header `Idempotency-Key` trên `/payments` | `apps/api/src/payments/` |
-| **FR-09** | Kiểm soát tồn kho đồng thời | `UC-04: Đặt hàng (Place Order)`<br>`UC-10: Thanh toán không tiền mặt` | Transaction & OCC (`version`) | `apps/api/src/payments/`, `apps/api/src/products/` |
+| **FR-09** | Kiểm soát tồn kho đồng thời | `UC-04: Đặt hàng (Place Order)`<br>`UC-10: Thanh toán không tiền mặt` | UC-04 kiểm tra sơ bộ; UC-10 Transaction & OCC (`version`) | `apps/api/src/payments/`, `apps/api/src/products/` |
 | **FR-10** | Mã khuyến mãi & Loyalty | `UC-09: Áp dụng mã khuyến mãi`<br>`UC-11: Tra cứu điểm Loyalty` | `PromotionsService`, `LoyaltyService` | `apps/api/src/payments/`, model `Promotion` |
 | **FR-11** | Xác nhận và lịch sử đơn | `UC-05: Theo dõi trạng thái đơn`<br>`UC-06: Xem lịch sử đơn hàng` | `GET /orders/me`, `GET /orders/:id` | `apps/api/src/orders/`, `apps/web/src/app/menu/page.tsx` |
 | **FR-12** | Cập nhật tiến độ pha chế | `UC-12: Cập nhật tiến độ pha chế` | `PATCH /orders/:id/status` | Staff Portal / API |
@@ -359,5 +365,15 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 ### 7.2 Khoảng trống triển khai (Implementation Gaps)
 - **GAP-01 (Chức năng Refund & Hủy đơn sau thanh toán):** Mã nguồn backend hiện tại chưa cài đặt phương thức `refund()` trong service thanh toán và chưa có endpoint `PATCH /orders/:id/cancel`. Cần triển khai bổ sung ở Task 4/5 nếu bài toán yêu cầu nghiệp vụ hoàn tiền tự động.
 - **GAP-02 (Cơ chế lưu giữ Idempotency Key tại Client):** Frontend hiện tại tái tạo đơn mới và sinh key mới mỗi lần bấm; chưa lưu key vào `sessionStorage` gắn với `orderId` để chống trừ tiền trùng khi rớt mạng rồi bấm thử lại.
-- **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa đề bài Assignment 2 (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ Product Owner.
+- **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa đề xuất nghiệp vụ ban đầu (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ Product Owner.
 - **GAP-04 (Endpoint Health Check trên nhánh main):** Nhánh `main` (TypeORM) hiện chỉ có `AppController` trả về chuỗi chào mừng, chưa có endpoint `GET /health` trả về trạng thái database (đã có trên nhánh feature Prisma).
+
+- **GAP-05 (Retry tạo đơn khi mất phản hồi sau COMMIT):** `POST /orders` chưa có đặc tả idempotency; retry có thể tạo đơn trùng dù TX1 đã thành công. Không tự động gửi lại khi chưa rõ kết quả; tra cứu đơn có xác thực chỉ hỗ trợ khôi phục, không bảo đảm chống trùng. Cần thiết kế và kiểm chứng cơ chế nhận diện yêu cầu bền vững ở Task triển khai; xem [UC-04 — Luồng chính](./use-case-place-order.md#41-luồng-chính-thành-công-main-success-flow).
+
+## Bổ sung thiết kế hoàn tiền khi OCC xung đột
+
+Đã chọn BR-REFUND-OCC cho luồng UC-10: SUCCESS từ dịch vụ thanh toán, rollback TX2, lưu REFUND_PENDING trong TX3, hoàn tiền idempotent và kết thúc bằng Payment REFUNDED / Order CANCELLED. Chi tiết và tiêu chí nghiệm thu tại [UC-10 — BR-REFUND-OCC](./use-case-place-order.md#br-refund-occ--hoàn-tiền-mô-phỏng-sau-xung-đột-tồn-kho).
+
+GAP-01 vẫn ghi nhận phần triển khai backend còn thiếu. Quyết định này áp dụng cho xung đột OCC trước khi đơn đạt PAID; quy tắc hủy đơn đã PAID trong BR-REFUND-01 có phạm vi riêng.
+
+GAP-03 thuộc FR-10 Should Have: chưa nghiệm thu phần Loyalty, không ngăn nghiệm thu phạm vi Must Have của Task 1.

@@ -194,7 +194,7 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
                      └─────────────────┘
 ```
 
-- **`PENDING`:** Đơn hàng được tạo thành công từ giỏ hàng, đang chờ thực hiện giao dịch thanh toán.
+- **`PENDING`:** UC-04 đã tạo đơn thành công từ giỏ hàng và COMMIT TX1. Khách hàng kích hoạt UC-10 độc lập để thanh toán. Đơn chưa giữ hoặc trừ kho, không được chuyển sang PREPARING, READY hay COMPLETED trước khi thanh toán; UC-10 kiểm tra lại tồn kho bằng OCC.
 - **`PAID`:** Giao dịch thanh toán mô phỏng thành công, hệ thống đã trừ tồn kho an toàn và cấp mã nhận nước.
 - **`PREPARING`:** Nhân viên quầy/Barista tiếp nhận đơn và bắt đầu pha chế.
 - **`READY`:** Đồ uống đã hoàn tất, sẵn sàng tại quầy đón khách.
@@ -223,11 +223,13 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
 > - **Khoảng trống triển khai (GAP-01):** Cả trên nhánh `main` và nhánh `feature/sprint1-mvp-foundation`, phương thức `mockPaymentService.refund()` và endpoint `PATCH /orders/:id/cancel` chưa tồn tại trong mã nguồn backend; `PaymentStatus` enum chỉ gồm `PENDING`, `SUCCESS`, `FAILED` (chưa có `REFUNDED`). Do đó, tài liệu không khẳng định hoàn tiền tự động là tính năng đang hoạt động mà ghi nhận đây là yêu cầu cần triển khai bổ sung trong các Task tiếp theo.
 
 ### 4.6 Danh mục Khoảng hở Triển khai Đồng bộ (Synchronized Implementation Gaps)
-Hệ thống tài liệu BrewLite thống nhất 4 mã định danh khoảng hở kỹ thuật (GAPs) xuyên suốt các văn bản:
+Hệ thống tài liệu BrewLite thống nhất 5 mã định danh khoảng hở kỹ thuật (GAPs) xuyên suốt các văn bản:
 1. **`GAP-01` (Cơ chế Hoàn tiền - Refund):** Chưa có API `POST /payments/:id/refund` hay `PATCH /orders/:id/cancel`; quy tắc `BR-REFUND-01` ở trạng thái đề xuất, việc hủy đơn hợp lệ xử lý thủ công ngoại tuyến.
 2. **`GAP-02` (Lưu trữ Idempotency Key phía Client):** Backend đã có cơ chế Unique Index chống thanh toán trùng, nhưng giao diện Client Next.js chưa lưu key vào `sessionStorage` để tái sử dụng khi reload hoặc thử lại.
-3. **`GAP-03` (Công thức tích điểm thành viên - Loyalty Formula):** Mâu thuẫn giữa đề bài Assignment 2 (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ PO phê duyệt.
+3. **`GAP-03` (Công thức tích điểm thành viên - Loyalty Formula):** Mâu thuẫn giữa đề xuất nghiệp vụ ban đầu (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ PO phê duyệt.
 4. **`GAP-04` (Endpoint Health Check trên baseline `main`):** Nhánh `main` (TypeORM) chưa có endpoint `GET /health` (chỉ có `AppController` trả về 'Hello World!'). Endpoint `/health` đầy đủ chỉ mới hiện diện trên nhánh feature Prisma.
+
+5. **`GAP-05` (Retry tạo đơn):** Mất phản hồi sau COMMIT TX1 có thể gây tạo đơn trùng khi gửi lại; cơ chế nhận diện yêu cầu bền vững chưa được thiết kế đầy đủ, xem đặc tả UC-04.
 
 ---
 
@@ -262,4 +264,12 @@ Hệ thống tài liệu BrewLite thống nhất 4 mã định danh khoảng h�
 ---
 
 ## 6. Kết Luận & Định Hướng Giai Đoạn Tiếp Theo
-Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-and-scope.md`) phiên bản 1.2.0 đã chuẩn hóa ranh giới quản lý tồn kho thành phẩm (loại bỏ nhầm lẫn tồn kho nguyên liệu), phân định minh bạch các Business Rules đề xuất và các khoảng trống triển khai (Implementation Gaps). Toàn bộ các yêu cầu chức năng (FR) và phi chức năng (NFR) trong `docs/requirements/srs.md` cũng như kịch bản Use Case trọng tâm `docs/requirements/use-cases.md` sẽ bám sát tuyệt đối vào các ranh giới đã chuẩn hóa tại văn bản này.
+Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-and-scope.md`) phiên bản 1.3.0 đã chuẩn hóa ranh giới quản lý tồn kho thành phẩm (loại bỏ nhầm lẫn tồn kho nguyên liệu), phân định minh bạch các Business Rules đề xuất và các khoảng trống triển khai (Implementation Gaps). Toàn bộ các yêu cầu chức năng (FR) và phi chức năng (NFR) trong `docs/requirements/srs.md` cũng như kịch bản Use Case trọng tâm `docs/requirements/use-cases.md` sẽ bám sát tuyệt đối vào các ranh giới đã chuẩn hóa tại văn bản này.
+
+## Bổ sung thiết kế hoàn tiền khi OCC xung đột
+
+Đã chọn BR-REFUND-OCC cho luồng UC-10: SUCCESS từ dịch vụ thanh toán, rollback TX2, lưu REFUND_PENDING trong TX3, hoàn tiền idempotent và kết thúc bằng Payment REFUNDED / Order CANCELLED. Chi tiết và tiêu chí nghiệm thu tại [UC-10 — BR-REFUND-OCC](./use-case-place-order.md#br-refund-occ--hoàn-tiền-mô-phỏng-sau-xung-đột-tồn-kho).
+
+GAP-01 vẫn ghi nhận phần triển khai backend còn thiếu. Quyết định này áp dụng cho xung đột OCC trước khi đơn đạt PAID; quy tắc hủy đơn đã PAID trong BR-REFUND-01 có phạm vi riêng.
+
+GAP-03 thuộc FR-10 Should Have: tỷ lệ Loyalty vẫn chờ PO; không chặn nghiệm thu phạm vi Must Have của Task 1.

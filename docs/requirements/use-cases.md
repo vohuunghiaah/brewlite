@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-CORE`
-- **Phiên bản:** 1.5.2 (Loyalty Standardization & Baseline Reference Alignment)
+- **Phiên bản:** 1.6.0 (Independent Use Cases — Retry & Authorization Alignment)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -20,14 +20,14 @@ Kịch bản tích hợp này bao hàm toàn bộ chuỗi mắt xích nghiệp v
 3. **Thanh toán không tiền mặt Idempotent (Idempotency-Key Header)**
 4. **Máy trạng thái đơn hàng (Order State Machine với hàm chặn `assertTransition`)**
 
-### 1.1 Vị trí kiến trúc và Quan hệ với 13 Use Cases nguyên tử (SRS 1.3.2 §5.2)
+### 1.1 Vị trí kiến trúc và Quan hệ với 13 Use Cases nguyên tử (SRS 1.4.0 §5.2)
 `UC-CORE-01` đóng vai trò là **kịch bản tích hợp end-to-end (End-to-End Integration Scenario)** xuyên suốt hành trình trải nghiệm đặt cà phê không tiền mặt của khách hàng, kết nối tuần tự các Use Case nguyên tử trong danh mục chính thức:
 - **`UC-01: Xem menu đồ uống`** (FR-01) & **`UC-02: Tùy biến size & topping`** (FR-02): Khách hàng duyệt và tùy biến sản phẩm.
 - **`UC-03: Quản lý giỏ hàng`** (FR-03): Quản lý danh mục món chọn, tính tổng tiền tạm tính.
 - **`UC-07: Đăng ký tài khoản`** & **`UC-08: Đăng nhập (JWT)`** (FR-04): Xác thực phiên làm việc an toàn của khách hàng.
-- **`UC-04: Đặt hàng (Place Order)`** (FR-05, FR-06, FR-07, FR-08, FR-09): Quy trình đặt hàng không tiền mặt hoàn chỉnh bao gồm bước khởi tạo đơn hàng trung gian `PENDING` (FR-05) và bắt buộc thực thi bước thanh toán không tiền mặt `UC-10` (FR-06, FR-08, FR-09) để đạt trạng thái `PAID` (được đặc tả chuyên sâu độc lập tại `docs/requirements/use-case-place-order.md`).
+- **`UC-04: Đặt hàng (Place Order)`** (FR-05, FR-07; kiểm tra tồn kho sơ bộ của FR-09): Tạo Order/OrderItem và kết thúc thành công khi TX1 commit PENDING, trả mã đơn và số tiền cần thanh toán (đặc tả tại `docs/requirements/use-case-place-order.md`).
 - **`UC-09: Áp dụng mã khuyến mãi`** (FR-10): Hành vi mở rộng tùy chọn tại bước checkout (Luồng thay thế ALT-2).
-- **`UC-10: Thanh toán không tiền mặt`** (FR-06, FR-08, FR-09): Thực thi thanh toán qua cổng mô phỏng, trừ tồn kho OCC, chuyển đơn sang **`PAID`**.
+- **`UC-10: Thanh toán không tiền mặt`** (FR-06, FR-08, FR-09): Khách hàng kích hoạt độc lập trên đơn đã tồn tại; thanh toán qua cổng mô phỏng, trừ tồn kho OCC, chuyển đơn sang **`PAID`**.
 - **`UC-05: Theo dõi trạng thái đơn`** (FR-11): Điều hướng hiển thị màn hình xác nhận đơn hàng thành công kèm mã nhận nước tại quầy.
 - **`UC-11: Tra cứu điểm Loyalty`** (FR-10): Khách hàng chủ động tra cứu số dư và lịch sử điểm thưởng thành viên tích lũy từ các đơn hàng `PAID` (thao tác tự động cộng điểm sau thanh toán thuộc quy tắc nghiệp vụ `BR-LOYALTY-01` của FR-10, mô tả tại Luồng thay thế ALT-6).
 - **`UC-12: Cập nhật tiến độ pha chế`** (FR-12): Nhân viên quầy tiếp nhận và cập nhật tiến độ pha chế cho đơn hàng đã `PAID`.
@@ -47,10 +47,10 @@ Kịch bản tích hợp này bao hàm toàn bộ chuỗi mắt xích nghiệp v
 | **Phân loại** | Kịch bản tích hợp End-to-End (Integration Scenario / Collaboration Flow) |
 | **Tác nhân chính (Primary Actor)** | **Khách hàng (Customer):** Người dùng trực tiếp thao tác trên ứng dụng web/PWA để xem menu, tùy chọn món, quản lý giỏ hàng, đặt hàng và thanh toán. |
 | **Tác nhân phụ (Secondary Actors)** | 1. **Cổng thanh toán mô phỏng (Mock Payment Service):** Tiếp nhận yêu cầu thanh toán, kiểm tra tính duy nhất qua Idempotency-Key và trả về kết quả giao dịch.<br>2. **Nhân viên quầy (Barista):** Tiếp nhận đơn hàng đã thanh toán thành công (`PAID`) để chuẩn bị pha chế đồ uống. |
-| **Sự kiện kích hoạt (Trigger)** | Khách hàng nhấn nút **"Thanh toán"** tại trang Giỏ hàng hoặc nhấn nút **"Xác nhận thanh toán"** tại trang Checkout. |
+| **Sự kiện kích hoạt (Trigger)** | Khách hàng nhấn nút **"Xác nhận đặt hàng"**, sau đó chọn thanh toán đơn đã tạo. |
 
 ### 2.2 Tiền điều kiện (Preconditions)
-Để kích hoạt Use Case này, hệ thống và người dùng phải thỏa mãn các điều kiện tiên quyết:
+Để bắt đầu kịch bản tích hợp này, hệ thống và người dùng phải thỏa mãn các điều kiện tiên quyết:
 1. Khách hàng đã truy cập vào ứng dụng BrewLite trên thiết bị hỗ trợ kết nối mạng Internet.
 2. Giỏ hàng của khách hàng có ít nhất một (01) sản phẩm hợp lệ với số lượng lớn hơn 0.
 3. Các sản phẩm trong giỏ hàng đang ở trạng thái kinh doanh (`isAvailable = true`) và có số lượng tồn kho thành phẩm khả dụng (`stock >= quantity`).
@@ -60,7 +60,7 @@ Kịch bản tích hợp này bao hàm toàn bộ chuỗi mắt xích nghiệp v
 ### 2.3 Hậu điều kiện (Postconditions)
 
 #### Hậu điều kiện thành công cốt lõi (Core Mandatory Success Postconditions):
-Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo đơn, thanh toán hợp lệ và xác nhận đơn:
+Thành công của UC-CORE-01 được bảo đảm bởi việc tạo đơn, thanh toán hợp lệ và xác nhận đơn. UC-04 đã thành công tại PENDING; UC-10 và toàn trình UC-CORE-01 thành công khi TX2 commit PAID:
 1. Một bản ghi Đơn hàng mới (`Order`) được tạo lập và chuyển sang trạng thái **`PAID`**.
 2. Mã định danh đơn hàng duy nhất (`id` - UUID v4) và mã hiển thị nhận nước (`orderCode`, ví dụ: `#BL-1042`) được cấp phát cho khách hàng.
 3. Số lượng tồn kho thành phẩm (`stock`) của tất cả sản phẩm trong đơn được trừ chính xác thông qua Database Transaction và cơ chế Optimistic Locking (cột `version` tăng thêm 1).
@@ -71,6 +71,8 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 #### Hậu điều kiện có điều kiện / Chức năng mở rộng (Conditional / Extension Postcondition — FR-10 Should Have):
 - **Tích lũy điểm thưởng Loyalty:** Hệ thống thực hiện tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03`.
 - **Định hướng thiết kế mong muốn & Giới hạn triển khai hiện tại:** Về mặt nghiệp vụ, tính độc lập của Loyalty (lỗi tích điểm không làm gián đoạn thanh toán) là **yêu cầu thiết kế mong muốn** cho chức năng Should Have. Tuy nhiên, trong mã nguồn backend hiện tại trên nhánh Prisma, thao tác ghi nhận `Payment` và `LoyaltyTransaction` đang nằm chung trong cùng một `prisma.$transaction` nguyên khối; do đó nếu xảy ra lỗi chưa xử lý ở khâu tích điểm, toàn bộ transaction thanh toán có thể bị rollback. Giới hạn này được ghi nhận để đội ngũ kỹ thuật xử lý tách biệt transaction ở các Task triển khai tiếp theo nếu yêu cầu độc lập được xác định là bắt buộc.
+
+**Mất phản hồi tạo đơn (GAP-05):** Nếu TX1 đã COMMIT nhưng phản hồi `POST /orders` bị mất, đơn PENDING vẫn tồn tại. Không tự động tạo lại đơn; tra cứu đơn của chính khách hàng chỉ hỗ trợ khôi phục. Cơ chế chống tạo đơn trùng còn là khoảng hở thiết kế, xem [đặc tả UC-04](./use-case-place-order.md#41-luồng-chính-thành-công-main-success-flow).
 
 #### Hậu điều kiện thất bại / Hủy bỏ (Failure Postconditions):
 1. Số lượng tồn kho thành phẩm của các sản phẩm được hoàn nguyên nguyên vẹn (Transaction Rollback), tuyệt đối không bị trừ sai.
@@ -85,10 +87,10 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 ```
 [ Khách hàng ]             [ Next.js Client ]          [ NestJS Backend API ]       [ Database / Payment ]
       │                            │                              │                             │
-      │── 1. Nhấn "Thanh toán" ───►│                              │                             │
+      │── 1. Xác nhận đặt đơn ─────►│                              │                             │
       │                            │── 2. POST /orders ──────────►│                             │
-      │                            │   (Bearer JWT, Items, DTO)   │── 3. DB Transaction ───────►│
-      │                            │                              │   (Check stock, Create ORD) │
+      │                            │   (Bearer JWT, Items, DTO)   │   Kiểm tra giá / tồn kho    │
+      │                            │                              │── 3. TX1: Create ORD ──────►│
       │                            │◄─ 4. Trả về Order PENDING ───│◄────────────────────────────│
       │                            │                              │                             │
       │── 5. Chọn PT & Xác nhận ──►│                              │                             │
@@ -113,7 +115,7 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 > Theo tiêu chuẩn kỹ nghệ yêu cầu, Luồng chính (Happy Path) chỉ bao gồm các chức năng cốt lõi **Bắt buộc (Must Have)** của nghiệp vụ Đặt và Thanh toán đồ uống. Tính năng Mã khuyến mãi (Promotion) là chức năng **Nên có (Should Have - FR-10)** được đặc tả chi tiết tại Luồng thay thế Alt-2. Các mã định danh UUID trong tài liệu là dữ liệu minh họa kỹ thuật chuẩn hóa.
 
 - **Bước 1:** Khách hàng duyệt Menu (`GET /products`), xem chi tiết món (`GET /products/:id`), chọn kích cỡ (Size: `MEDIUM`), chọn topping (`["Kem cheese"]`), và nhập mức đường/đá trong ghi chú đơn hàng (`"50% đường, ít đá, mang đi"`), sau đó nhấn "Thêm vào giỏ hàng".
-- **Bước 2:** Khách hàng mở Giỏ hàng kiểm tra danh sách món, tổng số tiền tạm tính (ví dụ: 60.000đ) và nhấn nút **"Thanh toán"**.
+- **Bước 2:** Khách hàng mở Giỏ hàng kiểm tra danh sách món, tổng số tiền tạm tính (ví dụ: 60.000đ) và nhấn nút **"Xác nhận đặt hàng"**.
 - **Bước 3:** Ứng dụng Next.js kiểm tra trạng thái xác thực. Do khách hàng đã đăng nhập, client gửi yêu cầu tạo đơn hàng:
   - `POST /orders`
   - Header: `Authorization: Bearer <accessToken>`
@@ -134,10 +136,9 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
     }
     ```
 - **Bước 4:** Backend NestJS tiếp nhận request qua `JwtAuthGuard`, DTO `CreateOrderDto` validate hợp lệ dữ liệu:
-  - Khởi tạo Database Transaction.
   - Kiểm tra tính khả dụng và tồn kho thành phẩm (`isAvailable = true`, `stock >= quantity`).
   - Kiểm tra giá niêm yết phía server (Server-side Pricing).
-  - Tạo bản ghi `Order` với trạng thái ban đầu là **`PENDING`**, mã định danh `id` kiểu UUID (`b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e`), mã nhận món hiển thị `orderCode` (ví dụ: `#BL-1042`), `subtotal: "60000.00"`, `discountAmount: "0.00"`, `totalAmount: "60000.00"`.
+  - Bắt đầu TX1, tạo bản ghi `Order` với trạng thái ban đầu là **`PENDING`**, mã định danh `id` kiểu UUID (`b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e`), mã nhận món hiển thị `orderCode` (ví dụ: `#BL-1042`), `subtotal: "60000.00"`, `discountAmount: "0.00"`, `totalAmount: "60000.00"`.
   - Tạo các bản ghi con `OrderItem` tương ứng với `unitPrice: "60000.00"`, `lineTotal: "60000.00"`.
   - Commit transaction và phản hồi HTTP 201 Created:
     ```json
@@ -168,7 +169,7 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
       ]
     }
     ```
-- **Bước 5:** Ứng dụng Next.js chuyển sang màn hình Thanh toán. Khách hàng chọn hình thức **"Ví điện tử (E_WALLET)"** và nhấn nút **"Xác nhận thanh toán"**.
+- **Bước 5:** UC-04 đã thành công tại PENDING sau Bước 4. Khách hàng kích hoạt UC-10 độc lập và ứng dụng Next.js mở màn hình Thanh toán. Khách hàng chọn hình thức **"Ví điện tử (E_WALLET)"** và nhấn nút **"Xác nhận thanh toán"**.
 - **Bước 6:** Ứng dụng Next.js sinh mã duy nhất UUID-v4 làm `Idempotency-Key` (ví dụ minh họa: `e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b`):
   - Client gửi request thanh toán:
     - `POST /payments`
@@ -186,7 +187,7 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
       ```
   - **Quy tắc bảo vệ giá phía Backend (Amount Verification):**
     - Backend truy vấn đơn hàng từ CSDL theo `orderId` và bắt buộc đối chiếu tính toàn vẹn: `payload.amount === order.totalAmount`. Nếu phát hiện sai lệch, lập tức từ chối với HTTP 400 Bad Request.
-- **Bước 7:** Backend NestJS kiểm tra khóa Idempotency trong cơ sở dữ liệu:
+- **Bước 7:** Backend NestJS xác thực JWT, kiểm tra quyền sở hữu đơn/giao dịch trước khi trả dữ liệu; sau đó tra cứu khóa Idempotency trong phạm vi chủ sở hữu và đối chiếu payload:
   - Xác nhận khóa `e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b` chưa từng được sử dụng.
 - **Bước 8:** Backend gọi dịch vụ thanh toán mô phỏng (Mock Payment Service):
   - Dịch vụ xác thực tính hợp lệ của số tiền và phương thức. Phản hồi giao dịch thành công.
@@ -267,7 +268,7 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 #### Alt-6: Tích lũy điểm thưởng thành viên (Loyalty Points Accumulation — Should Have - FR-10)
 - **Bối cảnh:** Tích điểm thành viên là chức năng giá trị gia tăng được phân loại là **Should Have (FR-10)**, không thuộc điều kiện bắt buộc của Happy Path.
 - **Hành vi nghiệp vụ:** Khi khách hàng thanh toán thành công qua `POST /payments`, hệ thống thực hiện tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction`. (Toàn bộ luồng tạo đơn và thanh toán hiện tại đều bắt buộc xác thực người dùng qua `JwtAuthGuard` tại `OrdersController` và `PaymentsController`).
-- **Hiện trạng triển khai thực tế & Giới hạn kỹ thuật:** Trên nhánh tính năng Prisma, `PaymentsService` đang thực thi tạo `LoyaltyTransaction` cùng trong `prisma.$transaction` với bản ghi `Payment`. Quy tắc quy đổi chính thức giữa 10.000 VNĐ = 1 điểm (đề bài Assignment 2) và 1.000 VNĐ = 1 điểm (mã nguồn thử nghiệm) vẫn đang ở trạng thái `PROPOSED / PENDING APPROVAL from PO` (`GAP-03`). Về mặt thiết kế mong muốn, lỗi ở tầng tích điểm không nên làm gián đoạn thanh toán; tuy nhiên do đang chung transaction CSDL, nếu tích điểm gặp sự cố chưa được cô lập, giao dịch thanh toán sẽ bị rollback. Giới hạn này được ghi nhận để xử lý ở các Task triển khai tiếp theo nếu nhóm quyết định yêu cầu độc lập này là bắt buộc.
+- **Hiện trạng triển khai thực tế & Giới hạn kỹ thuật:** Trên nhánh tính năng Prisma, `PaymentsService` đang thực thi tạo `LoyaltyTransaction` cùng trong `prisma.$transaction` với bản ghi `Payment`. Quy tắc quy đổi chính thức giữa 10.000 VNĐ = 1 điểm (đề xuất nghiệp vụ ban đầu) và 1.000 VNĐ = 1 điểm (mã nguồn thử nghiệm) vẫn đang ở trạng thái `PROPOSED / PENDING APPROVAL from PO` (`GAP-03`). Về mặt thiết kế mong muốn, lỗi ở tầng tích điểm không nên làm gián đoạn thanh toán; tuy nhiên do đang chung transaction CSDL, nếu tích điểm gặp sự cố chưa được cô lập, giao dịch thanh toán sẽ bị rollback. Giới hạn này được ghi nhận để xử lý ở các Task triển khai tiếp theo nếu nhóm quyết định yêu cầu độc lập này là bắt buộc.
 
 ---
 
@@ -284,7 +285,7 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 - **Tình huống:** Tại thời điểm khách hàng gửi tạo đơn hoặc thanh toán, số lượng sản phẩm trong kho nhỏ hơn số lượng khách đặt mua (`stock < quantity`).
 - **Hành động hệ thống:**
   1. Backend kiểm tra tồn kho thành phẩm trong database query hoặc transaction.
-  2. Transaction bị rollback hoàn toàn.
+  2. Chỉ rollback transaction đang xử lý; không rollback TX1 đã COMMIT. Nếu cổng đã SUCCESS rồi TX2 xung đột, áp dụng BR-REFUND-OCC.
   3. API phản hồi mã lỗi HTTP 400 Bad Request hoặc HTTP 409 Conflict: `{"statusCode": 400, "message": "Sản phẩm 'Cà phê Latte' hiện không đủ số lượng tồn kho (còn 0 ly)."}`.
   4. Giao diện hiển thị cảnh báo đỏ, giữ nguyên giỏ hàng để khách hàng điều chỉnh số lượng hoặc chọn món thay thế.
 
@@ -320,22 +321,22 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 - **Tình huống:** Cổng thanh toán phản hồi trạng thái chờ duyệt hoặc mạng có độ trễ cao (giả lập qua `mockOutcome = 'PENDING'`).
 - **Hành động hệ thống:**
   1. Đơn hàng tiếp tục được duy trì ở trạng thái **`PENDING`**.
-  2. Bản ghi `Payment` được lưu với `status: 'PENDING'` và mã tham chiếu tạm thời `transactionRef`.
+  2. Bản ghi `Payment` được lưu với `status: 'PENDING'` và `merchantReference` bền vững đã lưu trước lời gọi cổng; lưu `transactionId` khi nhận được. Timeout trả 202, kết thúc HTTP; tác vụ đối soát xử lý tiếp theo đặc tả UC-10.
   3. Giao diện hiển thị thông báo: *"Giao dịch đang được xử lý bởi cổng thanh toán. Vui lòng kiểm tra lại trạng thái đơn hàng trong giây lát."*.
 
 #### Exc-8: Gửi lại request thanh toán trùng lặp (Network Idempotency)
 - **Tình huống:** Khách hàng bấm nút thanh toán nhiều lần liên tiếp do sốt ruột hoặc do mạng chập chờn gửi lại request.
 - **Hành động hệ thống:**
-  1. Nhờ header `Idempotency-Key`, Backend kiểm tra bản ghi `Payment`.
+  1. Backend xác thực JWT và kiểm tra quyền sở hữu đơn/giao dịch trước khi trả dữ liệu; tra cứu `Payment` bằng `Idempotency-Key` trong phạm vi chủ sở hữu và đối chiếu payload.
   2. Nếu key đã được ghi nhận thành công, Backend trả về ngay kết quả giao dịch trước đó (`isDuplicate: true`).
-  3. Tuyệt đối không trừ tiền lần hai, không trừ kho lặp lại và không tạo đơn trùng.
+  3. Tuyệt đối không trừ tiền lần hai, không trừ kho lặp lại và không tạo giao dịch thanh toán trùng; chống tạo đơn trùng thuộc GAP-05.
 
 #### Exc-9: Mất kết nối mạng trong quá trình thanh toán (Network Dropped)
 - **Tình huống:** Mạng Internet của khách hàng bị đứt đột ngột ngay sau khi gửi request `POST /payments`.
 - **Hành động hệ thống:**
   1. Frontend bắt sự kiện mất kết nối, hiển thị banner thông báo mất mạng.
   2. Khách hàng kiểm tra lại kết nối và gửi lại request thanh toán khi có mạng.
-  3. Hệ thống bảo đảm tính toàn vẹn thông qua giao dịch CSDL (nếu chưa hoàn tất, CSDL tự động rollback).
+  3. Mất kết nối client không chứng minh TX2 rollback hoặc cổng chưa thu tiền. Gửi lại cùng khóa/payload sau xác thực; giao dịch chưa rõ kết quả được đối soát theo Mục 2.4 của [đặc tả UC-10](./use-case-place-order.md). TX1 đã COMMIT luôn được bảo toàn.
 
 #### Exc-10: Chuyển đổi trạng thái đơn hàng sai quy tắc (Invalid State Transition Violation)
 - **Tình huống:** Một request bất thường cố gắng chuyển đơn hàng từ trạng thái đã hủy (`CANCELLED`) sang `PAID`, hoặc từ `PENDING` sang thẳng `COMPLETED`.
@@ -350,7 +351,7 @@ Thành công của Use Case cốt lõi được bảo đảm bởi việc tạo 
 - **Hành động hệ thống:**
   1. Câu lệnh `UPDATE "Product" SET stock = stock - qty, version = version + 1 WHERE id = :id AND version = :v` cập nhật được 0 dòng do `version` đã bị giao dịch trước thay đổi.
   2. Backend phát hiện xung đột và ném ngoại lệ `ConflictException` (HTTP 409 Conflict): `{"statusCode": 409, "message": "Xung đột tồn kho đồng thời đối với sản phẩm [Tên món]. Vui lòng thử lại."}`.
-  3. Transaction tự động rollback toàn bộ, không có dữ liệu nào bị sai lệch.
+  3. Chỉ rollback TX2; bảo toàn TX1 đã COMMIT. Nếu cổng đã SUCCESS, thực hiện BR-REFUND-OCC: TX3 lưu REFUND_PENDING, hoàn tiền idempotent, rồi REFUNDED/CANCELLED; không coi rollback CSDL là hoàn tiền. Xem [đặc tả UC-10](./use-case-place-order.md#br-refund-occ--hoàn-tiền-mô-phỏng-sau-xung-đột-tồn-kho).
 
 ---
 
@@ -389,10 +390,19 @@ Hàm kiểm soát máy trạng thái `assertTransition(currentStatus: OrderStatu
 | Thanh toán không tiền mặt | `UC-10: Thanh toán không tiền mặt` | `FR-06` | `NFR-01` (Fast response) | `INT-PAY-01`, `API-PAY-01` |
 | Máy trạng thái đơn hàng | `UC-04`, `UC-10`, `UC-12` | `FR-07` | `NFR-04` (State Integrity) | `UNIT-SM-01`, `UNIT-SM-02` |
 | Thanh toán Idempotent | `UC-10: Thanh toán không tiền mặt` | `FR-08` | `NFR-04` (Anti-duplicate) | `INT-IDEMP-01`, `INT-IDEMP-02` |
-| Kiểm soát tồn kho Optimistic | `UC-04`, `UC-10` | `FR-09` | `NFR-04` (No overselling) | `CONC-STOCK-01`, `CONC-STOCK-02` |
+| Kiểm soát tồn kho Optimistic | `UC-04` (kiểm tra sơ bộ), `UC-10` (OCC/trừ kho) | `FR-09` | `NFR-04` (No overselling) | `CONC-STOCK-01`, `CONC-STOCK-02` |
 | Khuyến mãi & Tra cứu Loyalty | `UC-09: Áp dụng mã khuyến mãi`<br>`UC-11: Tra cứu điểm Loyalty` | `FR-10` | `NFR-04` (Loyalty calculation) | `UNIT-LOYAL-01`, `UNIT-PROMO-01` |
 | Màn hình xác nhận & Lịch sử | `UC-05: Theo dõi trạng thái đơn`<br>`UC-06: Xem lịch sử đơn hàng` | `FR-11` | `NFR-02` (Anti-IDOR `/me`) | `UI-CONFIRM-01`, `E2E-ORDER-01` |
 | Cập nhật trạng thái pha chế | `UC-12: Cập nhật tiến độ pha chế` | `FR-12` | `NFR-02` (Roles Guard, Staff) | `API-STAFF-01`, `UNIT-SM-03` |
 
 ---
 *Tài liệu đặc tả Kịch bản tích hợp này là căn cứ trực tiếp để xây dựng Sơ đồ Hoạt động (Activity Diagram), Sơ đồ Tuần tự (Sequence Diagram), Lược đồ Lớp (Class Diagram) trong Task 2 và cài đặt kiểm thử tự động trong Task 4 & 5.*
+
+### Sơ đồ tham chiếu sau khi tách Use Case
+
+- UC-04 tạo đơn PENDING: `ActivityDiagram.puml` (Sẽ hoàn thiện ở Task 2), `SequenceDiagram.puml` (Sẽ hoàn thiện ở Task 2).
+- UC-10 thanh toán độc lập: `ActivityDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2), `SequenceDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2).
+- Bản tổng hợp đã được hoàn thiện trước khi tách được bảo toàn để tra cứu lịch sử: `ActivityDiagram-Unified.puml` (Sẽ hoàn thiện ở Task 2), `ActivityDiagram-Unified.svg` (Sẽ hoàn thiện ở Task 2). Các bản này được bảo toàn trên nhánh `docs/separate-order-payment-usecases` (PR #16), chưa được nghiệm thu trong đợt Task 1 này.
+- UC-CORE-01 tiếp tục là kịch bản tích hợp tuần tự, không thêm Use Case thứ 14. Đơn PENDING chưa giữ kho và chưa đủ điều kiện pha chế; UC-10 phải kiểm tra lại tồn kho.
+
+GAP-03 thuộc FR-10 Should Have: tỷ lệ Loyalty vẫn chờ PO; không chặn nghiệm thu phạm vi Must Have của Task 1.
