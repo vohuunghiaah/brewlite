@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { fetchProducts } from "./products.mjs";
 import ui from "./menu.module.css";
 
 // ================= API BACKEND =================
@@ -95,35 +96,25 @@ export default function MenuPage() {
   const [orderError, setOrderError] = useState("");
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
-  const loadProducts = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const response = await fetch(`${API_URL}/products`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data: Product[] = await response.json();
-
-      setProducts(data);
-    } catch (err) {
-      console.error("Lỗi tải sản phẩm:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Không thể tải danh sách đồ uống"
-      );
-    } finally {
-      setLoading(false);
-    }
+  const loadProducts = useCallback((signal?: AbortSignal) => {
+    return fetchProducts(API_URL, signal)
+      .then((data: Product[]) => {
+        if (!signal?.aborted) setProducts(data);
+      })
+      .catch((err: unknown) => {
+        if (signal?.aborted) return;
+        console.error("Lỗi tải sản phẩm:", err);
+        setError(err instanceof Error ? err.message : "Không thể tải danh sách đồ uống");
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
-    void loadProducts();
+    const controller = new AbortController();
+    void loadProducts(controller.signal);
+    return () => controller.abort();
   }, [loadProducts]);
 
   const filteredProducts = products.filter((product) => {
@@ -448,7 +439,11 @@ export default function MenuPage() {
               <button
                 type="button"
                 className={ui.retryButton}
-                onClick={() => void loadProducts()}
+                onClick={() => {
+                  setLoading(true);
+                  setError("");
+                  void loadProducts();
+                }}
               >
                 Thử tải lại
               </button>
