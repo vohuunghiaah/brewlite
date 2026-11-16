@@ -7,7 +7,7 @@
 skinparam monochrome true
 skinparam shadowing false
 skinparam defaultFontName Arial
-skinparam linetype spline
+skinparam linetype ortho
 skinparam roundCorner 0
 skinparam defaultFontSize 18
 skinparam titleFontSize 26
@@ -18,8 +18,8 @@ skinparam svgDimensionStyle false
 skinparam padding 0
 skinparam ArrowColor #999999
 skinparam usecaseBorderThickness 1.5
-skinparam nodesep 30
-skinparam ranksep 25
+skinparam nodesep 75
+skinparam ranksep 110
 skinparam usecase {
     BackgroundColor White
     BorderColor Black
@@ -72,19 +72,25 @@ rectangle "Hệ Thống BrewLite" {
 
     usecase "**UC-12: Cập nhật**\ntiến độ pha chế" as UC12
     usecase "**UC-13: Kiểm tra**\nsức khỏe hệ thống" as UC13
-    ' Trục nghiệp vụ dọc; khuyến mãi nằm ngay trước đặt hàng.
-    UC1 -[hidden]left-> UC2
-    UC2 -[hidden]left-> UC3
-    UC3 -[hidden]left-> UC7
-    UC7 -[hidden]left-> UC8
-    UC8 -[hidden]left-> UC11
-    UC11 -[hidden]left-> UC9
-    UC9 -[hidden]left-> UC4
-    UC4 -[hidden]left-> UC10
-    UC10 -[hidden]left-> UC5
-    UC5 -[hidden]left-> UC6
-    UC6 -[hidden]left-> UC12
-    UC12 -[hidden]left-> UC13
+    ' Ba cột, năm hàng nghiệp vụ; các liên kết ẩn chỉ hỗ trợ bố cục.
+    UC1 -[hidden]down-> UC2
+    UC2 -[hidden]down-> UC3
+    UC7 -[hidden]down-> UC8
+    UC8 -[hidden]down-> UC11
+    UC4 -[hidden]down-> UC9
+    UC9 -[hidden]down-> UC10
+    UC5 -[hidden]down-> UC6
+    UC12 -[hidden]down-> UC13
+    UC1 -[hidden]left-> UC7
+    UC7 -[hidden]left-> UC4
+    UC4 -[hidden]left-> UC5
+    UC5 -[hidden]left-> UC12
+    UC2 -[hidden]left-> UC8
+    UC8 -[hidden]left-> UC9
+    UC9 -[hidden]left-> UC6
+    UC6 -[hidden]left-> UC13
+    UC3 -[hidden]left-> UC11
+    UC11 -[hidden]left-> UC10
 
 }
 
@@ -102,13 +108,14 @@ Customer -[norank]- UC10
 Customer -[norank]- UC11
 
 ' UC-04 tạo đơn PENDING; UC-10 được khách hàng kích hoạt độc lập trên đơn đã tồn tại.
-' Khoảng đệm trong suốt đặt nhãn extend bên phải đường dọc.
-UC9 -[#333333,dashed,norank]left-> UC4 : <color:transparent>........................................</color><<extend>>
+UC9 -[#333333,dashed,norank]-> UC4 : <<extend>>
 
-Customer -[hidden]down-> UC4
+Customer -[hidden]down-> UC7
 UC10 -[hidden]down-> PaymentGateway
-UC13 -[hidden]down-> Monitor
-UC12 -[hidden]down-> Barista
+UC10 -[hidden]down-> Monitor
+UC10 -[hidden]down-> Barista
+PaymentGateway -[hidden]right-> Barista
+Barista -[hidden]right-> Monitor
 
 ' Các actor bên ngoài hệ thống
 UC10 -[norank]- PaymentGateway
