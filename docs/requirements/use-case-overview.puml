@@ -2,17 +2,24 @@
 ' BrewLite — Task 1.2 — Use Case tổng quát
 ' Bản mô hình nghiệp vụ để xây dựng và đối chiếu SRS ở bước đặc tả.
 ' UC-CORE-01 là luồng end-to-end được đặc tả riêng.
+' Render SVG căn giữa: python scripts/render-use-case-overview.py --jar <plantuml.jar>
 
 skinparam monochrome true
 skinparam shadowing false
 skinparam defaultFontName Arial
 skinparam linetype ortho
 skinparam roundCorner 0
-skinparam defaultFontSize 16
+skinparam defaultFontSize 18
+skinparam titleFontSize 26
+skinparam actorFontSize 18
+skinparam actorBorderColor #333333
+skinparam actorFontColor #222222
+skinparam svgDimensionStyle false
+skinparam padding 24
 skinparam ArrowColor #999999
 skinparam usecaseBorderThickness 1.5
-skinparam nodesep 55
-skinparam ranksep 65
+skinparam nodesep 80
+skinparam ranksep 90
 skinparam usecase {
     BackgroundColor White
     BorderColor Black
