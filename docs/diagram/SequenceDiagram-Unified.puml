@@ -1,0 +1,267 @@
+@startuml
+' Task 2.2 - UC-CORE-01: kịch bản tích hợp, không phải Use Case thứ 14.
+' Based on SRS v1.4.0, use-case-place-order.md and ActivityDiagram-Unified.puml.
+title BrewLite - UC-CORE-01: Đặt và thanh toán đồ uống
+hide footbox
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 25
+skinparam maxMessageSize 310
+actor "Khách hàng" as C
+boundary "Next.js UI" as UI
+control "NestJS API" as API
+database "Database\n(PostgreSQL)" as DB
+participant "Payment Service\n(Mock nội bộ)" as PAY
+
+== Menu, tùy biến và giỏ hàng ==
+C -> UI: Xem menu
+activate UI
+UI -> API: GET /products
+activate API
+API -> DB: Đọc danh sách đồ uống đang bán
+activate DB
+DB --> API: Danh sách sản phẩm
+deactivate DB
+API --> UI: 200 + danh sách đồ uống
+deactivate API
+UI --> C: Hiển thị menu
+C -> UI: Chọn đồ uống; xem size/topping
+UI -> API: GET /products/:id
+activate API
+API -> DB: Đọc chi tiết và lựa chọn sản phẩm
+activate DB
+DB --> API: Chi tiết sản phẩm
+deactivate DB
+API --> UI: 200 + chi tiết đồ uống
+deactivate API
+C -> UI: Chọn size, topping, số lượng; thêm vào giỏ
+UI -> UI: Cập nhật giỏ và tổng tiền tạm tính
+UI --> C: Hiển thị giỏ hàng
+deactivate UI
+
+== UC-04 độc lập: tạo Order PENDING ==
+' Các break cấp ngoài kết thúc tương tác lỗi; activation đóng trên luồng bình thường.
+C -> UI: Xác nhận đặt hàng
+activate UI
+UI -> UI: Kiểm tra dữ liệu giỏ hàng
+break Giỏ hàng không hợp lệ
+  UI --> C: Hiển thị lỗi; giữ giỏ để điều chỉnh
+end
+opt Chưa đăng nhập
+  UI -> UI: Giữ giỏ hàng và mở màn hình đăng nhập
+  C -> UI: Nhập thông tin đăng nhập
+  UI -> API: POST /auth/login
+  activate API
+  API --> UI: JWT hoặc lỗi xác thực
+  deactivate API
+end
+break Đã thử đăng nhập nhưng thất bại
+  UI --> C: Báo lỗi, giữ giỏ hàng; kết thúc UC-04
+end
+opt Đăng nhập thành công
+  UI --> C: Quay lại checkout với giỏ hàng đã lưu
+end
+UI -> API: POST /orders (giỏ hàng, JWT)
+activate API
+API -> API: Kiểm tra JWT và dữ liệu giỏ hàng
+break JWT thiếu / không hợp lệ / hết hạn hoặc dữ liệu sai
+  API --> UI: 401 / 400
+  UI --> C: Yêu cầu đăng nhập hoặc sửa giỏ hàng
+end
+API -> DB: Lấy giá và tồn kho
+activate DB
+DB --> API: Thông tin đồ uống
+deactivate DB
+API -> API: Kiểm tra khả dụng; tính tổng tiền
+break Hết hàng hoặc không đủ số lượng
+  API --> UI: 409 - Không đủ hàng
+  UI --> C: Yêu cầu điều chỉnh giỏ hàng
+end
+API -> DB: BEGIN TX1; lưu Order + OrderItem (PENDING)
+activate DB
+DB --> API: Kết quả ghi đơn
+deactivate DB
+alt Lưu đơn thành công
+  API -> DB: COMMIT TX1
+  activate DB
+  DB --> API: Xác nhận COMMIT; Order PENDING
+  deactivate DB
+  alt Client nhận được phản hồi
+    API --> UI: 201 Created - orderId, orderCode, totalAmount, PENDING
+    UI --> C: Tạo đơn thành công; chưa thanh toán, chưa được pha chế
+  else Mất HTTP 201 sau COMMIT TX1 (GAP-05)
+    API ->x UI: 201 Created không đến được client
+    UI -> UI: Kết quả chưa xác định; giữ giỏ và thông tin phiên đặt đơn\nKhông tự động gửi lại POST /orders
+    UI --> C: Chưa nhận được kết quả; có thể tra cứu đơn của chính mình
+    note over C, UI #white
+      GAP-05: tra cứu có xác thực chỉ hỗ trợ khôi phục.
+      Chưa có cơ chế chống tạo đơn trùng bền vững.
+      Đơn PENDING đã COMMIT vẫn tồn tại.
+    end note
+  end
+else Lỗi lưu Order hoặc OrderItem trước COMMIT
+  API -> DB: ROLLBACK TX1
+  activate DB
+  DB --> API: Đã hủy các thay đổi trong TX1
+  deactivate DB
+  API --> UI: 500 - Không thể tạo đơn
+  UI -> UI: Dừng checkout; giữ giỏ và cho phép sửa hoặc thử lại
+  UI --> C: Báo lỗi tạo đơn
+end
+deactivate API
+deactivate UI
+
+== UC-10 độc lập: thanh toán đơn đã tồn tại ==
+opt Khách đã nhận mã đơn PENDING và chủ động chọn thanh toán
+C -> UI: Chọn Ví/Thẻ và xác nhận thanh toán
+activate UI
+UI -> UI: Lần mới tạo khóa mới; lần gửi lại giữ khóa và payload
+UI -> API: POST /payments + JWT + Idempotency-Key\n(orderId, amount, method)
+activate API
+API -> API: Xác thực JWT, quyền sở hữu và dữ liệu
+break Yêu cầu không hợp lệ
+  API --> UI: 400 / 401 / 403 theo lỗi
+  UI --> C: Báo lỗi và giữ đơn
+end
+API -> DB: Tra cứu khóa theo chủ sở hữu; đối chiếu payload
+activate DB
+DB --> API: Khóa mới / payload khớp / payload khác
+deactivate DB
+alt Cùng khóa nhưng payload khác
+  API -> API: Kết quả: 409; không tạo giao dịch mới
+else Cùng khóa và payload
+  API -> API: Dùng kết quả/trạng thái hiện có\nKhông thu tiền hoặc trừ kho lần hai
+else Khóa mới
+  API -> DB: Kiểm tra trạng thái và cấp quyền xử lý nguyên tử
+  activate DB
+  DB --> API: Được phép / bị chặn
+  deactivate DB
+  alt Đơn hoặc giao dịch không cho phép thanh toán mới
+    API -> API: Kết quả từ chối; chặn PENDING chưa đối soát,\nREFUND_PENDING/REFUNDED và PAID/CANCELLED
+  else Đơn PENDING/PAYMENT_FAILED hợp lệ; FAILED cũ đã xác minh
+    API -> DB: COMMIT attempt PENDING, merchantReference, khóa/payload,\nchủ sở hữu và công việc đối soát trước khi gọi cổng
+    activate DB
+    DB --> API: Kết quả COMMIT attempt
+    deactivate DB
+    alt Lưu attempt lỗi hoặc chưa xác nhận
+      API -> API: Kết quả lỗi/chưa xác định; chưa gọi Payment Service
+    else Đã COMMIT attempt
+      API -> PAY: Thanh toán (merchantReference, amount, method)\nKhóa cố định cho cùng attempt
+      activate PAY
+      PAY --> API: SUCCESS / FAILED / PENDING hoặc timeout\ntransactionId nếu có
+      deactivate PAY
+      alt SUCCESS
+        API -> DB: BEGIN TX2; kiểm tra trạng thái và trừ kho OCC
+        activate DB
+        DB --> API: Cập nhật hợp lệ / xung đột
+        deactivate DB
+        alt OCC hợp lệ
+          API -> DB: Lưu Payment SUCCESS + Order PAID; COMMIT TX2
+          activate DB
+          DB --> API: Kết quả COMMIT TX2
+          deactivate DB
+          alt COMMIT TX2 đã xác nhận
+            API -> API: Kết quả: 200 + PAID
+          else COMMIT TX2 lỗi hoặc chưa xác định
+            API -> API: Không xác nhận PAID; giữ công việc đối soát
+            ref over API, DB
+              SequenceDiagram-UC10: xác minh TX2 trước khi áp dụng lại
+            end ref
+          end
+        else OCC Conflict sau Payment SUCCESS
+          API -> DB: ROLLBACK TX2
+          activate DB
+          DB --> API: Đã rollback; không tăng tồn kho thêm
+          deactivate DB
+          ref over API, PAY
+            SequenceDiagram-UC10: TX3 + kiểm tra COMMIT,
+            hoàn tiền cùng refundKey, kiểm tra lưu REFUNDED/CANCELLED.
+            TX3 lỗi: không hoàn; giữ khóa/công việc để khôi phục.
+          end ref
+          API -> API: Kết quả: 409 + trạng thái hoàn tiền đã lưu,\nhoặc lỗi/chưa xác định theo API Contract
+        end
+      else FAILED đã xác minh
+        API -> DB: Transaction: Payment FAILED + Order PAYMENT_FAILED\nKhông trừ kho; TX1 vẫn được bảo toàn
+        activate DB
+        DB --> API: Đã lưu kết quả
+        deactivate DB
+        API -> API: Kết quả: thanh toán thất bại
+      else PENDING / timeout
+        API -> DB: Giữ Payment PENDING, mã tham chiếu và công việc đối soát
+        activate DB
+        DB --> API: Đã lưu; không kết luận FAILED
+        deactivate DB
+        API -> API: Kết quả: 202 + PENDING
+      end
+    end
+  end
+end
+alt Client nhận được phản hồi
+  API --> UI: Kết quả thanh toán và trạng thái đã xác minh
+else Mất phản hồi HTTP
+  API ->x UI: Kết quả không đến được client
+end
+deactivate API
+opt Mất phản hồi; client gửi lại cùng yêu cầu
+  UI -> API: POST /payments mới + JWT\nCùng Idempotency-Key và payload đã lưu
+  activate API
+  ref over UI, DB
+    SequenceDiagram-UC10: xác thực JWT/quyền sở hữu,
+    đối chiếu key/payload và trả trạng thái đã lưu.
+    Không thu tiền hoặc trừ kho lần hai.
+  end ref
+  API --> UI: Trạng thái hiện có hoặc lỗi xác thực/quyền/payload
+  deactivate API
+end
+alt Phản hồi hợp lệ xác nhận PAID sau COMMIT TX2
+  UI -> UI: Xóa giỏ hàng
+  UI --> C: Thanh toán thành công + mã nhận món\nUC-CORE-01 đạt hậu điều kiện PAID
+else FAILED đã xác minh
+  UI --> C: Thanh toán thất bại; lần thanh toán mới dùng khóa mới
+else PENDING / REFUND_PENDING / chưa xác định
+  UI --> C: Đang chờ xử lý/xác minh; giữ đơn và khóa
+else REFUNDED đã lưu
+  UI --> C: Đã hoàn tiền; Order CANCELLED
+else Lỗi yêu cầu
+  UI --> C: Báo lỗi; giữ thông tin đơn
+end
+deactivate UI
+end
+
+== Theo dõi đơn bằng thao tác mới của khách hàng ==
+note over UI, PAY #white
+  Tác vụ đến hạn hoạt động độc lập theo SequenceDiagram-UC10.
+  Không có phản hồi lần hai vào POST đã đóng; không tự động polling.
+end note
+opt Khách có mã đơn và chủ động kiểm tra trạng thái
+C -> UI: Chọn kiểm tra trạng thái đơn
+activate UI
+UI -> API: GET /orders/:id + JWT (HTTP mới)
+activate API
+API -> API: Xác thực JWT
+alt JWT không hợp lệ
+  API --> UI: 401 Unauthorized
+  UI --> C: Yêu cầu đăng nhập lại
+else JWT hợp lệ
+  API -> DB: Kiểm tra chủ sở hữu; đọc Order/Payment trong phạm vi được phép
+  activate DB
+  DB --> API: Kết quả kiểm tra quyền và dữ liệu được phép / lỗi đọc
+  deactivate DB
+  alt Không có quyền
+    API --> UI: 403 Forbidden; không trả dữ liệu đơn
+    UI --> C: Không có quyền truy cập
+  else Không tìm thấy hoặc lỗi đọc
+    API --> UI: Lỗi theo API Contract
+    UI --> C: Chưa đọc được trạng thái
+  else Đọc thành công
+    API --> UI: 200 + trạng thái hiện tại
+    UI --> C: Hiển thị thanh toán/hoàn tiền hoặc tiến độ nhận món\nPENDING chưa được pha chế; PAID mới được xử lý tiếp
+  end
+end
+deactivate API
+deactivate UI
+end
+@enduml
