@@ -1,60 +1,273 @@
-# BrewLite
+# BrewLite — Hệ Thống Đặt Đồ Uống Trực Tuyến (Online Drink Ordering System)
 
-BrewLite đang được thiết lập repository theo Task 4.1. Mục tiêu đã xác minh là tổ chức mã nguồn, tài liệu và quy trình cộng tác. Chưa có tài liệu nghiệp vụ sản phẩm.
+[![Quality gates](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml)
+[![Node.js Version](https://img.shields.io/badge/Node.js-24.x-brightgreen.svg)](https://nodejs.org/)
+[![NestJS](https://img.shields.io/badge/Backend-NestJS%2012-E0234E.svg)](https://nestjs.com/)
+[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2016-black.svg)](https://nextjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016-336791.svg)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Container-Docker%20Compose-2496ED.svg)](https://www.docker.com/)
 
-## Công nghệ và hiện trạng
+---
 
-Kiểm tra ngày 03/11/2026: local chỉ có .git, remote không có ref. Không có package.json, lockfile, cấu hình framework hay mã nguồn. Chưa xác nhận frontend, backend, database hoặc công cụ triển khai. apps/web và apps/api hiện chỉ chứa .gitkeep, không phải ứng dụng.
+## 1. Giới Thiệu Dự Án & Phạm Vi Assignment 2
 
-## Cấu trúc
+**BrewLite** là hệ thống phần mềm hỗ trợ đặt đồ uống trực tuyến và quản lý quy trình pha chế cho chuỗi cửa hàng cà phê / đồ uống giải khát, được thực hiện trong khuôn khổ môn học **Công nghệ Phần mềm (Software Engineering)** — Học kỳ 1 Năm học 2026-2027.
+
+### Phân Định Giữa Assignment 1 và Assignment 2:
+- **Assignment 1 (Kỹ nghệ Yêu cầu - Requirements Engineering):** Tập trung vào khảo sát nghiệp vụ, phân tích stakeholder, xác định phạm vi hệ thống, xây dựng tài liệu Đặc tả Yêu cầu Phần mềm (SRS v1.3.2), Danh mục Use Case (`UC-01` -> `UC-13`), Ma trận truy vết yêu cầu (RTM) và giải quyết các mâu thuẫn ngữ nghĩa UML ban đầu.
+- **Assignment 2 (Phân tích, Thiết kế Kiến trúc & Triển khai MVP):** Mở rộng toàn diện các pha của vòng đời phát triển phần mềm:
+  - **Task 1:** Nghiệm thu và chuẩn hóa tài liệu yêu cầu SRS v1.3.2 và Use Case chi tiết.
+  - **Task 2 (Phân tích & Thiết kế UML):** Xây dựng sơ đồ Hoạt động Activity Diagram (Task 2.1), sơ đồ Tuần tự Sequence Diagram (Task 2.2), sơ đồ Lớp miền Class Diagram (Task 2.3).
+  - **Task 3 (Thiết kế Kiến trúc Hệ thống):** Lựa chọn phong cách kiến trúc, hệ thống các quyết định kiến trúc (ADR) và xây dựng sơ đồ Triển khai Deployment Diagram (Task 3.2).
+  - **Task 4 (Triển khai MVP & DevOps):** Hiện thực hóa mã nguồn (Next.js, NestJS, PostgreSQL), tự động hóa CI/CD với GitHub Actions và đóng gói Docker container.
+  - **Task 5 (Kiểm thử & Đảm bảo Chất lượng):** Kiểm thử đơn vị (Unit Test), kiểm thử tích hợp, kiểm thử đầu-cuối (E2E Test) và nghiệm thu kỹ thuật.
+
+---
+
+## 2. Công Nghệ Có Bằng Chứng Trên Nhánh `main`
+
+Toàn bộ công nghệ dưới đây đều đã được tích hợp mã nguồn, cấu hình và kiểm chứng thành công trong pipeline GitHub Actions:
+
+- **Frontend (`apps/web`):**
+  - Framework: [Next.js](https://nextjs.org/) v16.4.5 (App Router, React Server Components & Client Hooks).
+  - Thư viện giao diện: [React](https://react.dev/) v19.3.0, TypeScript 5, TailwindCSS, Lucide React icons.
+  - Định hướng thiết kế: Mobile-first responsive UI (tối ưu hóa kích thước màn hình điện thoại 360px - 430px).
+- **Backend API (`apps/api`):**
+  - Framework: [NestJS](https://nestjs.com/) v12.0.1 (Kiến trúc Modular Monolith trên nền Express Platform).
+  - Cơ sở dữ liệu & ORM: [PostgreSQL](https://www.postgresql.org/) 16 với driver `pg` v8.23.1, [TypeORM](https://typeorm.io/) v1.1.2 kết hợp `@nestjs/typeorm` v12.0.3.
+  - Quản lý cấu hình & DTO: `@nestjs/config` v12.1.1, `class-validator` v0.15.1, `class-transformer` v0.5.1.
+- **Công Cụ Kiểm Thử & Đảm Bảo Chất Lượng:**
+  - Linter: [Oxlint](https://oxc.rs/) v1.58.0 (Kiểm tra kiểu dữ liệu và cú pháp TypeScript siêu tốc cho API) và ESLint v9 (cho Web).
+  - Test Runner: [Jest](https://jestjs.io/) v30.0.0 (API unit tests) và Node.js native test runner (`node --test` cho Web).
+- **Đóng Gói & DevOps:**
+  - Containerization: [Docker](https://www.docker.com/) và Docker Compose đa dịch vụ (`docker-compose.yml`, `docker-compose.prod.yml`).
+  - Tự động hóa CI: GitHub Actions Quality Gates (`.github/workflows/quality.yml`) chạy tự động Install → Lint → Unit Test → Build trên môi trường Node.js 24 (Ubuntu Latest).
+
+---
+
+## 3. Cấu Trúc Thư Mục Repository
 
 ```text
-.github/
-  ISSUE_TEMPLATE/{task,bug_report}.md
-  pull_request_template.md
-apps/
-  web/.gitkeep
-  api/.gitkeep
-docs/
-  architecture/README.md
-  backlog/{product-backlog,sprint-1,sprint-2}.md
-  branching-strategy.md
-  commit-convention.md
-  definition-of-done.md
-  github-setup.md
-  task-4.1-verification.md
-.env.example
-.gitignore
-README.md
+brewlite/
+├── .github/
+│   ├── workflows/
+│   │   └── quality.yml         # GitHub Actions CI workflow (lint, test, build)
+│   ├── ISSUE_TEMPLATE/         # Biểu mẫu quản lý Task và Bug Report
+│   └── pull_request_template.md # Template Pull Request chuẩn hóa
+├── apps/
+│   ├── api/                    # Backend NestJS Application
+│   │   ├── src/
+│   │   │   ├── orders/         # OrdersModule (Controller, Service, TypeORM Entities, DTOs)
+│   │   │   ├── products/       # ProductsModule (Controller, Service, Seed data, Unit tests)
+│   │   │   ├── app.controller.ts
+│   │   │   ├── app.module.ts   # AppModule nạp ConfigModule & TypeOrmModule
+│   │   │   └── main.ts         # Điểm khởi chạy NestJS, cấu hình CORS & ValidationPipe
+│   │   ├── package.json
+│   │   └── Dockerfile
+│   └── web/                    # Frontend Next.js Application
+│       ├── src/
+│       │   └── app/
+│       │       ├── menu/       # Trang danh mục đồ uống & giỏ hàng client
+│       │       ├── layout.tsx  # Layout gốc ứng dụng
+│       │       └── page.tsx    # Trang chủ chuyển hướng
+│       ├── tests/              # Ca kiểm thử đơn vị cho logic tính toán sản phẩm
+│       ├── package.json
+│       └── Dockerfile
+├── docs/
+│   ├── architecture/           # Tài liệu Kiến trúc Hệ thống (Task 3)
+│   │   ├── adr/                # Architecture Decision Records (ADR-001 -> ADR-005)
+│   │   ├── DeploymentDiagram.svg # Sơ đồ Triển khai UML (Task 3.2)
+│   │   └── README.md           # Đặc tả kiến trúc tổng thể
+│   ├── audits/                 # Báo cáo kiểm toán kỹ thuật
+│   │   └── task2-to-task3-gap-audit.md # Kiểm toán GAP-01 -> GAP-05 & TypeORM vs Prisma
+│   ├── diagram/                # 14 tệp sơ đồ UML chính thức (Task 2 đã nghiệm thu PASS)
+│   │   ├── ActivityDiagram*.{puml,svg} # Sơ đồ Hoạt động (Task 2.1)
+│   │   ├── SequenceDiagram*.{puml,svg} # Sơ đồ Tuần tự (Task 2.2)
+│   │   └── ClassDiagram-Conceptual.{mmd,svg} # Sơ đồ Lớp miền Mermaid (Task 2.3)
+│   ├── requirements/           # Tài liệu Yêu cầu Phần mềm (Task 1)
+│   │   ├── srs.md              # Software Requirements Specification (v1.3.2)
+│   │   ├── use-cases.md        # Danh mục và đặc tả tóm tắt Use Cases
+│   │   ├── use-case-place-order.md # Đặc tả chi tiết Use Case trọng tâm (UC-04)
+│   │   └── context-and-scope.md# Bối cảnh và phạm vi hệ thống
+│   └── traceability-matrix.md  # Ma trận truy vết yêu cầu (RTM v2.5.0)
+├── scripts/                    # Scripts tiện ích và công cụ tự động hóa
+│   └── render-use-case-overview.py # Script kết xuất SVG từ PlantUML
+├── docker-compose.yml          # Cấu hình Docker Compose môi trường Development
+├── docker-compose.prod.yml     # Cấu hình Docker Compose môi trường Production
+├── .env.example                # Khung biến môi trường mẫu chuẩn
+├── .gitignore
+└── README.md                   # Tài liệu hướng dẫn chính của dự án
 ```
 
-## Điều kiện và cài đặt
+---
 
-Cần Git; cần tài khoản GitHub có quyền phù hợp để push/PR. Chưa có yêu cầu runtime ứng dụng.
+## 4. Hướng Dẫn Cài Đặt & Khởi Chạy Ứng Dụng
 
+### Yêu Cầu Môi Trường (Prerequisites):
+- **Node.js:** Phiên bản `24.x` (LTS khuyến nghị).
+- **Package Manager:** `npm` v10+ đi kèm Node.js.
+- **Docker & Docker Compose:** Docker Desktop (Windows/macOS) hoặc Docker Engine 24+ (Linux).
+- **PostgreSQL:** Phiên bản 16 (tự động khởi chạy qua Docker).
+
+### Bước 1: Sao chép mã nguồn và thiết lập biến môi trường
 ```sh
 git clone https://github.com/vohuunghiaah/brewlite.git
 cd brewlite
-git switch main
+cp .env.example .env
+```
+Chỉnh sửa file `.env` với các thông số cấu hình cơ bản (hoặc giữ giá trị mặc định để chạy thử):
+```env
+POSTGRES_USER=brewlite
+POSTGRES_PASSWORD=brewlite_secret
+POSTGRES_DB=brewlite_db
+POSTGRES_PORT=5432
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+API_PORT=3001
+NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
 
-Nếu đã có checkout, làm việc ở thư mục hiện tại, không clone lồng nhau. Trong lúc PR thiết lập chưa merge, checkout nhánh chore/setup-repository để xem đầy đủ tài liệu. Chưa có dependency để cài hoặc lệnh frontend/backend/build/test để chạy.
+### Bước 2: Khởi chạy ứng dụng
 
-## Biến môi trường
+#### Cách 1: Khởi chạy trọn gói bằng Docker Compose (Khuyến nghị)
+Chỉ với một câu lệnh, toàn bộ 3 dịch vụ cơ sở dữ liệu (`db`), backend (`api`) và frontend (`web`) sẽ được tự động đóng gói và khởi chạy:
+```sh
+docker compose up -d --build
+```
+Kiểm tra trạng thái các container đang chạy:
+```sh
+docker compose ps
+```
+- **Frontend Next.js:** Truy cập tại [http://localhost:3000](http://localhost:3000)
+- **Backend NestJS API:** Truy cập tại [http://localhost:3001](http://localhost:3001)
+- **PostgreSQL Database:** Lắng nghe tại cổng `localhost:5432`
 
-[.env.example](.env.example) chỉ có chú thích vì chưa có mã nguồn đọc biến môi trường. Hiện chưa cần tạo .env. Khi có ứng dụng, thêm tên biến theo mã nguồn và giá trị mẫu an toàn tại root hoặc từng ứng dụng; cập nhật hướng dẫn. Không chép bí mật từ .env thật.
+Dừng hệ thống:
+```sh
+docker compose down
+```
 
-## Git và Pull Request
+#### Cách 2: Khởi chạy thủ công cho môi trường phát triển (Local Development)
+1. **Khởi động Database PostgreSQL bằng Docker:**
+   ```sh
+   docker compose up -d db
+   ```
+2. **Cài đặt và chạy Backend API:**
+   ```sh
+   cd apps/api
+   npm install
+   npm run start:dev
+   ```
+   *(Backend sẽ tự động kết nối PostgreSQL và khởi tạo schema bảng dữ liệu qua TypeORM)*.
+3. **Cài đặt và chạy Frontend Web (mở terminal mới):**
+   ```sh
+   cd apps/web
+   npm install
+   npm run dev
+   ```
 
-Tạo nhánh từ main mới nhất, commit theo Conventional Commits, push và mở PR vào main. Review và hoàn tất DoD trước khi chủ repository/nhóm merge. Không tự merge PR thiết lập.
+---
 
-- [Chiến lược nhánh](docs/branching-strategy.md)
-- [Quy ước commit](docs/commit-convention.md)
-- [Definition of Done](docs/definition-of-done.md)
-- [Product backlog](docs/backlog/product-backlog.md)
-- [Sprint 1](docs/backlog/sprint-1.md) · [Sprint 2](docs/backlog/sprint-2.md)
-- [Hiện trạng kiến trúc](docs/architecture/README.md)
-- [Cấu hình GitHub](docs/github-setup.md)
-- [Bằng chứng Task 4.1](docs/task-4.1-verification.md)
+## 5. Kiểm Thử, Linting & Build Mã Nguồn
 
-Kiểm tra hiện tại: git diff --check, cấu trúc, liên kết và quy tắc ignore. Kiểm thử ứng dụng không áp dụng. Theo yêu cầu chủ repository, không tạo hoặc commit AGENTS.md; tệp này được ignore để chỉ dùng local nếu cần.
+Dự án áp dụng quy chuẩn kiểm soát chất lượng mã nguồn nghiêm ngặt được thực thi tự động qua CI pipeline:
+
+### 1. Kiểm tra Backend API (`apps/api`):
+```sh
+cd apps/api
+
+# Kiểm tra cú pháp và kiểu dữ liệu bằng Oxlint
+npm run lint
+
+# Chạy toàn bộ Unit Tests bằng Jest
+npm test
+
+# Build ứng dụng sang mã JavaScript phân phối
+npm run build
+```
+
+### 2. Kiểm tra Frontend Web (`apps/web`):
+```sh
+cd apps/web
+
+# Kiểm tra cú pháp bằng Next.js ESLint
+npm run lint
+
+# Chạy Unit Tests logic giỏ hàng & sản phẩm
+npm test
+
+# Build ứng dụng Next.js
+npm run build
+```
+
+---
+
+## 6. Trạng Thái Các Phân Hệ Công Việc (Assignment 2 Progress)
+
+| Hạng mục công việc | Mô tả & Tài liệu liên quan | Trạng thái Nghiệm thu | Bằng chứng kỹ thuật |
+|---|---|:---:|---|
+| **Task 1: Requirements Engineering** | SRS v1.3.2, Phạm vi nghiệp vụ, Đặc tả Use Case chi tiết (`UC-04`). | **PASS** | [SRS v1.3.2](docs/requirements/srs.md), PR #14, PR #17 |
+| **Task 2.1: Activity Diagram** | Phân định 5 swimlanes, 2 giao dịch phân tách TX1 (`PENDING`) & TX2 (`PAID`), bù trừ hoàn tiền. | **PASS** | [Activity Diagrams](docs/diagram/ActivityDiagram.puml), PR #19 |
+| **Task 2.2: Sequence Diagram** | Tương tác tuần tự các tầng, worker activation theo sự kiện `due-work`, xử lý thất bại OCC. | **PASS** | [Sequence Diagrams](docs/diagram/SequenceDiagram.puml), PR #20 |
+| **Task 2.3: Class Diagram** | Mô hình lớp miền (Domain Class Diagram) chuẩn hóa bằng cú pháp Mermaid. | **PASS** | [ClassDiagram-Conceptual.mmd](docs/diagram/ClassDiagram-Conceptual.mmd), PR #21 |
+| **Task 3.1: Architecture Decisions** | Kiến trúc Modular Monolith, tài liệu kiến trúc, hoàn thiện hệ thống ADR-001 -> ADR-005. | **IN PROGRESS** | [Tài liệu Kiến trúc](docs/architecture/README.md), Nhánh PR B |
+| **Task 3.2: Deployment Diagram** | Sơ đồ Triển khai UML, phân định môi trường Local, CI/CD và Target Production. | **IN PROGRESS** | [Deployment Diagram](docs/architecture/DeploymentDiagram.svg), Nhánh PR B |
+| **Task 4: MVP Implementation** | Nền tảng Next.js + NestJS + TypeORM trên `main`. Full-flow Prisma trên feature branch. | **BASELINE ACTIVE** | CI Run [43832699668](https://github.com/vohuunghiaah/brewlite/actions/runs/43832699668) SUCCESS |
+| **Task 5: Testing & QA** | Unit test API/Web pass 100%. Kịch bản E2E Playwright sẵn sàng cho Sprint 2. | **PARTIAL** | Hosted CI Quality Gates, `products.service.spec.ts` |
+
+---
+
+## 7. Liên Kết Tài Liệu Quan Trọng (Documentation Quick Links)
+
+- **Yêu cầu & Nghiệp vụ (Task 1):**
+  - [Đặc tả Yêu cầu Phần mềm (SRS v1.3.2)](docs/requirements/srs.md)
+  - [Bối cảnh và Phạm vi Hệ thống](docs/requirements/context-and-scope.md)
+  - [Danh mục & Đặc tả Use Cases](docs/requirements/use-cases.md)
+  - [Đặc tả chi tiết Use Case trọng tâm UC-04 (Đặt đồ uống)](docs/requirements/use-case-place-order.md)
+  - [Sơ đồ Use Case Tổng quan (PlantUML)](docs/requirements/use-case-overview.puml)
+- **Phân tích & Thiết kế UML (Task 2):**
+  - [Sơ đồ Hoạt động Tạo đơn UC-04 (PlantUML)](docs/diagram/ActivityDiagram.puml)
+  - [Sơ đồ Hoạt động Thanh toán UC-10 (PlantUML)](docs/diagram/ActivityDiagram-UC10.puml)
+  - [Sơ đồ Hoạt động Hợp nhất (PlantUML)](docs/diagram/ActivityDiagram-Unified.puml)
+  - [Sơ đồ Tuần tự Tạo đơn UC-04 (PlantUML)](docs/diagram/SequenceDiagram.puml)
+  - [Sơ đồ Tuần tự Thanh toán & OCC UC-10 (PlantUML)](docs/diagram/SequenceDiagram-UC10.puml)
+  - [Sơ đồ Tuần tự Hợp nhất (PlantUML)](docs/diagram/SequenceDiagram-Unified.puml)
+  - [Sơ đồ Lớp miền Khái niệm (Mermaid MMD)](docs/diagram/ClassDiagram-Conceptual.mmd)
+- **Kiến trúc & Kiểm toán (Task 3 & Quality):**
+  - [Ma trận Truy vết Yêu cầu (RTM v2.5.0)](docs/traceability-matrix.md)
+  - [Báo cáo Kiểm toán Khoảng hở GAP-01 -> GAP-05 & So sánh ORM](docs/audits/task2-to-task3-gap-audit.md)
+  - [Tổng quan Kiến trúc Hệ thống](docs/architecture/README.md)
+  - [Thư mục Quyết định Kiến trúc (ADRs)](docs/architecture/adr/README.md)
+  - [Chiến lược Phân nhánh Git](docs/branching-strategy.md)
+  - [Quy ước Commit (Conventional Commits)](docs/commit-convention.md)
+  - [Định nghĩa Hoàn thành (Definition of Done - DoD)](docs/definition-of-done.md)
+
+---
+
+## 8. Hiện Trạng Triển Khai Thực Tế Trên `main` & Giới Hạn Đã Biết
+
+Nhằm đảm bảo tính minh bạch và trung thực học thuật, đội ngũ phát triển công bố hiện trạng thực tế của nhánh chính `main` tại commit `ee090814`:
+
+### Hiện Trạng Mã Nguồn Trên `main`:
+1. **Đã hoạt động:**
+   - Hiển thị danh mục sản phẩm từ cơ sở dữ liệu (`GET /products`).
+   - Giao diện giỏ hàng Next.js phía client, tính toán tổng tiền tạm thời real-time.
+   - Tạo đơn hàng cơ bản (`POST /orders`) lưu vào PostgreSQL qua TypeORM transaction, thiết lập trạng thái khởi tạo `PENDING`.
+   - Pipeline CI tự động kiểm tra cú pháp, unit tests và build thành công.
+2. **Chưa có mã nguồn trên `main` (Mới có trên nhánh tính năng hoặc tài liệu thiết kế):**
+   - Chọn size, topping hoặc ghi chú từng món (`FR-02`).
+   - Module Xác thực (`AuthModule`), đăng nhập, đăng ký và bảo vệ endpoint bằng JWT (`FR-04`).
+   - Module Thanh toán (`PaymentsModule`), xử lý ví điện tử / thẻ ngân hàng mô phỏng (`FR-06`).
+   - State Machine quản lý chuyển trạng thái đơn hàng (`FR-07`).
+   - Kiểm soát tồn kho đồng thời bằng Optimistic Concurrency Control (`FR-09`).
+   - Module Khuyến mãi và tích lũy điểm Loyalty (`FR-10`).
+   - Endpoint kiểm tra sức khỏe hệ thống `GET /health` (`FR-13`).
+
+### Tóm Tắt Các Khoảng Hở Nghiệp Vụ & Kỹ Thuật (GAP Summary):
+- **GAP-01 (Hoàn tiền tự động):** Chưa có API `POST /payments/:id/refund` và background worker xử lý hoàn tiền khi giao dịch xảy ra lỗi bất thường; việc xử lý ngoại tuyến đang chờ Product Owner phê duyệt quy trình.
+- **GAP-02 (Lưu trữ Idempotency Key):** Backend có ràng buộc chống trùng lặp nhưng Client Next.js chưa lưu khóa vào `sessionStorage` để tái sử dụng khi người dùng refresh hoặc thanh toán lại.
+- **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa quy tắc nghiệp vụ SRS (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ PO.
+- **GAP-04 (Endpoint Health Check trên `main`):** `main` chưa có `GET /health` kiểm tra kết nối PostgreSQL.
+- **GAP-05 (Mất phản hồi sau COMMIT tạo đơn):** `POST /orders` chưa có cơ chế Idempotency chống tạo đơn trùng khi gặp sự cố mạng sau khi database đã lưu đơn `PENDING`.
+
+*(Chi tiết phân tích kỹ thuật và kế hoạch khắc phục được trình bày tại [Báo cáo kiểm toán GAP](docs/audits/task2-to-task3-gap-audit.md)).*
