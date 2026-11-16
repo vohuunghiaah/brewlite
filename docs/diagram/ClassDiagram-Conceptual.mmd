@@ -1,6 +1,7 @@
 ---
-title: BrewLite - Conceptual Class Diagram
+title: BrewLite - Task 2.3 Domain Class Diagram
 config:
+  htmlLabels: false
   deterministicIds: true
   deterministicIDSeed: brewlite-conceptual
   look: classic
@@ -17,10 +18,11 @@ config:
     tertiaryColor: '#ffffff'
   class:
     hideEmptyMembersBox: true
+    useMaxWidth: false
 ---
 classDiagram
-  direction LR
-  %% Presentation view; the detailed ClassDiagram.puml remains authoritative.
+  direction TB
+  %% Official Task 2.3 domain view; SRS 1.4.0 / UC-04 / UC-10.
   %% Customer/Staff are conceptual roles, not implemented subclasses.
   %% Menu is a view of existing products (FR-01), not a new persistent entity.
   class User {
@@ -50,14 +52,49 @@ classDiagram
     name
     basePrice
     isAvailable
+    stock
+    version
   }
   class Payment {
     amount
     status
     method
+    idempotencyKey
   }
   class Menu {
     viewProducts()
+  }
+
+  class Promotion {
+    code
+    discountType
+    discountValue
+    minOrderValue
+    isActive
+  }
+  class LoyaltyTransaction {
+    id
+    points
+    type
+    createdAt
+  }
+  class OrderStatus {
+    <<enumeration>>
+    PENDING
+    PAID
+    PAYMENT_FAILED
+    PREPARING
+    READY
+    COMPLETED
+    CANCELLED
+  }
+  class PaymentStatus {
+    <<enumeration>>
+    PENDING
+    SUCCESS
+    FAILED
+    REFUND_PENDING
+    REFUNDED
   }
 
   User <|-- Customer
@@ -65,6 +102,15 @@ classDiagram
   Customer "1" -- "0..*" Order : places
   Staff -- Order : updates paid orders
   Order "1" *-- "1..*" OrderItem : contains
+  %% Multiple attempts do not permit multiple successful settlements of one Order.
   Order "1" -- "0..*" Payment : payment attempts
   OrderItem "0..*" -- "1" Product : references
-  Menu o-- Product : lists
+  Menu o-- "0..*" Product : lists
+  %% Promotion is linked by promoCode in the reference schema, not an ORM FK.
+  Promotion "0..1" -- "0..*" Order : applied to
+  User "1" -- "0..*" LoyaltyTransaction : owns ledger
+  Order "0..1" -- "0..*" LoyaltyTransaction : referenced by
+  OrderStatus <.. Order : status
+  Payment ..> PaymentStatus : status
+  %% Refund states are target design (GAP-01); loyalty rate remains GAP-03.
+  %% Staff assignment and number of Menu views are unspecified, not DB cardinalities.
