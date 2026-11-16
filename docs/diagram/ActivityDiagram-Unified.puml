@@ -80,17 +80,12 @@ stop
 else ([Yêu cầu hợp lệ])
 endif
 |Backend|
-:Yêu cầu đọc giá/tồn kho trong TX1;
+:Yêu cầu đọc giá và tồn kho;
 |PostgreSQL|
-:Bắt đầu TX1
-Đọc giá và tồn kho;
+:Đọc giá và tồn kho;
 |Backend|
 :Kiểm tra khả dụng và tính lại tổng tiền;
 if () then ([Thiếu hàng])
-:Yêu cầu DB rollback TX1;
-|PostgreSQL|
-:ROLLBACK TX1;
-|Backend|
 :Trả lỗi hết hàng;
 |Frontend|
 :Nhận lỗi, hiển thị hết hàng và giữ giỏ;
@@ -100,7 +95,8 @@ endif
 |Backend|
 :Yêu cầu lưu đơn trong TX1;
 |PostgreSQL|
-:Lưu Order và OrderItem ở PENDING;
+:BEGIN TX1
+Lưu Order và OrderItem ở PENDING;
 if () then ([Lỗi ghi đơn])
 :ROLLBACK TX1;
 |Backend|
@@ -232,16 +228,16 @@ if () then ([Xung đột OCC])
 :ROLLBACK TX2
 Order và tồn kho giữ nguyên;
 :TX3 — lưu transactionId, Idempotency-Key, refundKey
-Payment REFUND_PENDING và công việc hoàn tiền
-COMMIT TX3;
-if () then ([Lưu TX3 thất bại])
+Payment REFUND_PENDING và công việc hoàn tiền;
+:Thực hiện COMMIT TX3;
+if () then ([COMMIT thất bại])
 |Backend|
 :Giữ khóa xử lý để đối soát, khôi phục TX3 trước hoàn tiền
 Trả lỗi theo API Contract;
 |Frontend|
 :Nhận lỗi, giữ đơn, chưa xác nhận hoàn tiền;
 stop
-else ([TX3 đã commit])
+else ([COMMIT thành công])
 endif
 |Backend|
 :Thử hoàn tiền một lần khi HTTP còn mở
@@ -270,14 +266,9 @@ else ([Đã commit])
 endif
 endif
 |Backend|
-if () then ([HTTP còn mở])
 :Trả 409 + trạng thái hoàn tiền đã lưu, kết thúc POST;
 |Frontend|
 :Nhận kết quả và hiển thị đang hoàn/đã hoàn tiền;
-else ([HTTP đã đóng])
-|Backend|
-:Chỉ giữ kết quả lưu trữ, không gửi phản hồi thứ hai;
-endif
 $readStatus()
 stop
 else ([Cập nhật OCC hợp lệ])

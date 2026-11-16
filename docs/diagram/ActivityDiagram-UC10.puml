@@ -128,8 +128,8 @@ endif
 |PostgreSQL|
   :ROLLBACK TX2\nOrder và tồn kho giữ nguyên;
   :TX3 — lưu transactionId, refundKey,\nREFUND_PENDING và công việc hoàn tiền;
-  :COMMIT TX3;
-  if () then ([Lưu TX3 thất bại])
+  :Thực hiện COMMIT TX3;
+  if () then ([COMMIT thất bại])
     |Backend|
     :Giữ khóa đang xử lý và công việc đối soát
 Khôi phục dữ liệu TX3 trước khi hoàn tiền;
@@ -137,7 +137,7 @@ Khôi phục dữ liệu TX3 trước khi hoàn tiền;
     |Frontend|
     :Hiển thị kết quả chưa xác định, giữ đơn;
     stop
-  else ([TX3 đã commit])
+  else ([COMMIT thành công])
   endif
   |Backend|
   :Yêu cầu hoàn tiền với refundKey đã lưu;
@@ -233,11 +233,11 @@ endif
   else ([Xung đột])
     :ROLLBACK TX2;
     :TX3 — lưu REFUND_PENDING,\ntransactionId, refundKey và công việc hoàn tiền;
-    :COMMIT TX3;
-    if () then ([Lưu TX3 thất bại])
+    :Thực hiện COMMIT TX3;
+    if () then ([COMMIT thất bại])
       |Backend|
       :Giữ khóa để đối soát\nKhôi phục TX3 trước khi hoàn tiền;
-    else ([TX3 đã commit])
+    else ([COMMIT thành công])
       |Backend|
       :Kết thúc lượt, công việc hoàn tiền chờ đến hạn;
     endif
