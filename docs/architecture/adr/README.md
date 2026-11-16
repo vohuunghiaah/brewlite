@@ -25,15 +25,14 @@ Architecture Decision Record (ADR) là tài liệu nắm bắt các quyết đ�
 | **ADR-001** | Lựa chọn kiến trúc Modular Monolith cho Backend | **Accepted** | **Implemented** | `main` (TypeORM) & Feature (Prisma) | [adr/001-modular-monolith.md](adr/001-modular-monolith.md) |
 | **ADR-002** | Lựa chọn PostgreSQL và quản lý schema bằng Migration | **Accepted** | **Partially Implemented** | `main` (`synchronize: true`) / Feature (`Prisma Migrate`) | [adr/002-postgresql-migration.md](adr/002-postgresql-migration.md) |
 | **ADR-003** | Xây dựng dịch vụ thanh toán mô phỏng (Mock Payment Service) | **Accepted** | **Design Verified** / Implemented trên Feature | Đã nghiệm thu Task 2.1 & Task 2.2; code trên `feature/sprint2-full-flow` | [adr/003-mock-payment.md](adr/003-mock-payment.md) |
-| **ADR-004** | Bổ sung Logging và Endpoint Health Check (`GET /health`) | **Accepted** | **Partially Implemented** | Logging trên `main`; Health Check trên Feature ([GAP-04](../../audits/task2-to-task3-gap-audit.md#24-gap-04-endpoint-kiểm-tra-sức-khỏe-health-check-api)) | [adr/004-logging-healthcheck.md](adr/004-logging-healthcheck.md) |
+| **ADR-004** | Bổ sung Logging và Endpoint Health Check (`GET /health`) | **Proposed** | **Partially Implemented** | Logging trên `main`; Health Check trên Feature ([GAP-04](../../audits/task2-to-task3-gap-audit.md#24-gap-04-endpoint-kiểm-tra-sức-khỏe-health-check-api)) | [adr/004-logging-healthcheck.md](adr/004-logging-healthcheck.md) |
 | **ADR-005** | Quản lý cấu hình bằng Biến Môi Trường (Environment Variables) | **Accepted** | **Implemented** | `main` & Feature (`.env`, `@nestjs/config`) | [adr/005-configuration-management.md](adr/005-configuration-management.md) |
-| **ADR-006** | Đề xuất chuyển đổi ORM sang Prisma và chuẩn hóa UUID | **Proposed** | **Implemented trên Feature** (Chưa merge) | Đang chờ PO phê duyệt chính thức cho giai đoạn Task 4 | [adr/006-orm-migration-prisma.md](adr/006-orm-migration-prisma.md) |
+| **ADR-006** | Đề xuất chuyển đổi ORM sang Prisma và chuẩn hóa UUID | **Proposed** | **Implemented trên Feature** (Chưa merge) | Đang chờ PO phê duyệt chính thức cho giai đoạn Sprint 2 (Task 5) | [adr/006-orm-migration-prisma.md](adr/006-orm-migration-prisma.md) |
 
 ---
 
 ## 3. Lưu Ý Về Tính Nhất Quán & Truy Vết Lịch Sử
 
-1. **Phân định hai baseline ADR trong quá trình phát triển:**
-   - Trong giai đoạn Sprint 1 và các nhánh tính năng độc lập, từng có tài liệu tham chiếu mã ADR với nội dung mở rộng (như ADR-002 Order Lifecycle, ADR-003 OCC, ADR-004 JWT Auth, ADR-005 Mock Payment Idempotency).
-   - Trên nhánh chính `main`, danh mục ADR chính thức được quy chuẩn thành bộ ADR-001 đến ADR-006 ở trên nhằm phản ánh đúng tiến trình kiến trúc từ nền tảng gốc đến kiến trúc mục tiêu.
-2. **Nguyên tắc không suy diễn tính năng:** Sự tồn tại của một ADR ở trạng thái `Accepted` là cơ sở thiết kế, không tự động chứng minh rằng tính năng đó đã có sẵn mã nguồn trên nhánh `main`. Mọi đối chiếu triển khai phải dựa trên chứng cứ mã nguồn thực tế và ma trận [RTM](../../traceability-matrix.md).
+1. **Khớp nối trạng thái phê duyệt:**
+   - Trạng thái trong bảng trên phản ánh chính xác trạng thái trong từng tệp ADR tương ứng (`ADR-001`, `002`, `003`, `005` là `Accepted`; `ADR-004` và `ADR-006` là `Proposed`).
+2. **Nguyên tắc không suy diễn tính năng:** Sự tồn tại của một ADR ở trạng thái `Accepted` hoặc `Proposed` là cơ sở thiết kế, không tự động chứng minh rằng tính năng đó đã có sẵn mã nguồn trên nhánh `main`. Mọi đối chiếu triển khai phải dựa trên chứng cứ mã nguồn thực tế và ma trận [RTM](../../traceability-matrix.md).
