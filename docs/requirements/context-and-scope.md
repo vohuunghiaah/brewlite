@@ -271,3 +271,5 @@ Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-
 Đã chọn BR-REFUND-OCC cho luồng UC-10: SUCCESS từ dịch vụ thanh toán, rollback TX2, lưu REFUND_PENDING trong TX3, hoàn tiền idempotent và kết thúc bằng Payment REFUNDED / Order CANCELLED. Chi tiết và tiêu chí nghiệm thu tại [UC-10 — BR-REFUND-OCC](./use-case-place-order.md#br-refund-occ--hoàn-tiền-mô-phỏng-sau-xung-đột-tồn-kho).
 
 GAP-01 vẫn ghi nhận phần triển khai backend còn thiếu. Quyết định này áp dụng cho xung đột OCC trước khi đơn đạt PAID; quy tắc hủy đơn đã PAID trong BR-REFUND-01 có phạm vi riêng.
+
+GAP-03 thuộc FR-10 Should Have: tỷ lệ Loyalty vẫn chờ PO; không chặn nghiệm thu phạm vi Must Have của Task 1.

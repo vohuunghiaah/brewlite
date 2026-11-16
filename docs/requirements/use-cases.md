@@ -404,3 +404,5 @@ Hàm kiểm soát máy trạng thái `assertTransition(currentStatus: OrderStatu
 - UC-10 thanh toán độc lập: `ActivityDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2), `SequenceDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2).
 - Bản tổng hợp đã được hoàn thiện trước khi tách được bảo toàn để tra cứu lịch sử: `ActivityDiagram-Unified.puml` (Sẽ hoàn thiện ở Task 2), `ActivityDiagram-Unified.svg` (Sẽ hoàn thiện ở Task 2). Các bản này được bảo toàn trên nhánh `docs/separate-order-payment-usecases` (PR #16), chưa được nghiệm thu trong đợt Task 1 này.
 - UC-CORE-01 tiếp tục là kịch bản tích hợp tuần tự, không thêm Use Case thứ 14. Đơn PENDING chưa giữ kho và chưa đủ điều kiện pha chế; UC-10 phải kiểm tra lại tồn kho.
+
+GAP-03 thuộc FR-10 Should Have: tỷ lệ Loyalty vẫn chờ PO; không chặn nghiệm thu phạm vi Must Have của Task 1.
