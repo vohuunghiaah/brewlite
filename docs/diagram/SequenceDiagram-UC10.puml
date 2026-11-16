@@ -1,0 +1,299 @@
+@startuml
+' Task 2.2 - UC-04 và UC-10 độc lập.
+' Based on SRS v1.4.0, use-case-place-order.md and ActivityDiagram-UC10.puml.
+' Ba operand là các lượt kích hoạt độc lập; break chỉ kết thúc lượt POST tương ứng.
+title BrewLite - UC-10: Thanh toán không tiền mặt
+hide footbox
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 25
+skinparam maxMessageSize 310
+actor "Khách hàng" as C
+boundary "Next.js UI" as UI
+control "NestJS API" as API
+database "Database\n(PostgreSQL)" as DB
+participant "Payment Service\n(Mock nội bộ)" as PAY
+participant "Tác vụ đối soát" as Worker
+note over UI, Worker #white
+  Thiết kế mục tiêu: GAP-01/GAP-02 còn mở.
+  Mỗi lần kích hoạt chọn một nhánh: POST, công việc đến hạn hoặc GET thủ công.
+  GET không chờ Worker; Worker không phụ thuộc GET và không trả vào POST đã đóng.
+end note
+alt Sự kiện: khách hàng gửi POST /payments
+== UC-10: Thanh toán không tiền mặt ==
+C -> UI: Chọn đơn đã tồn tại, chọn Ví/Thẻ và xác nhận thanh toán
+activate UI
+UI -> UI: Lần thanh toán mới: tạo khóa mới; lưu payload\nGửi lại cùng yêu cầu: dùng khóa và payload cũ
+UI -> API: POST /payments (orderId, amount, method)\nJWT + Idempotency-Key
+activate API
+API -> API: Xác thực JWT, định dạng dữ liệu và quyền sở hữu
+' Điều kiện số tiền/trạng thái cho attempt mới được kiểm tra sau đối chiếu key/payload.
+break Yêu cầu thanh toán không hợp lệ
+  API --> UI: Từ chối yêu cầu
+  UI --> C: Hiển thị lỗi; giữ đơn để xử lý
+end
+API -> DB: Tra cứu khóa theo chủ sở hữu; đối chiếu\norderId, amount, method với yêu cầu đã lưu
+activate DB
+DB --> API: Kết quả kiểm tra khóa
+deactivate DB
+break Cùng khóa nhưng payload khác
+  API --> UI: 409 - Idempotency-Key đã gắn với yêu cầu khác
+  UI --> C: Báo lỗi; không tạo giao dịch
+end
+alt Yêu cầu đã được tiếp nhận (cùng key, cùng payload)
+  API -> API: Dùng kết quả hoặc trạng thái hiện có
+else Yêu cầu thanh toán mới
+  API -> DB: Nguyên tử: kiểm tra số tiền, trạng thái và giữ quyền xử lý đơn,\nlưu khóa + payload; chống hai giao dịch đồng thời
+  activate DB
+  DB --> API: Cho phép hoặc từ chối
+  deactivate DB
+  alt Không được phép tạo giao dịch mới
+    API -> API: Kết quả từ chối theo API Contract\nSố tiền sai hoặc đơn PAID/CANCELLED hoặc giao dịch đang xử lý,\nPENDING chưa đối soát, REFUND_PENDING/REFUNDED
+  else Đơn PENDING/PAYMENT_FAILED hợp lệ; FAILED cũ đã xác minh
+  API -> DB: COMMIT trước khi gọi cổng: attempt PENDING, merchantReference,\nchủ sở hữu, orderId, amount, method, khóa, payload chuẩn hóa\nvà công việc đối soát bền vững
+  activate DB
+  DB --> API: Đã commit hoặc lỗi lưu
+  deactivate DB
+  alt Lưu attempt thất bại hoặc chưa xác nhận COMMIT
+    API -> API: Kết quả lỗi/chưa xác định theo API Contract\nChưa gọi Payment Service; giữ khóa để kiểm tra
+  else Attempt và công việc đối soát đã COMMIT
+  API -> PAY: Thanh toán mô phỏng (merchantReference, amount, method)\nKhóa cố định cho cùng attempt
+  activate PAY
+  PAY --> API: Kết quả + merchantReference + transactionId nếu có
+  deactivate PAY
+  alt SUCCESS
+    API -> DB: Bắt đầu TX2 và trừ kho có kiểm tra stock/version (OCC)
+    activate DB
+    DB --> API: Kết quả cập nhật
+    deactivate DB
+    alt Cập nhật hợp lệ
+      API -> API: Kiểm tra chuyển trạng thái sang PAID
+      API -> DB: Lưu Payment SUCCESS và Order PAID; commit TX2
+      activate DB
+      DB --> API: Kết quả COMMIT TX2
+      deactivate DB
+      alt Đã xác nhận COMMIT TX2
+        API -> API: Kết quả: 200 - Đơn đã thanh toán (PAID)
+      else COMMIT TX2 lỗi xác định hoặc chưa rõ kết quả
+        API -> API: Không trả PAID; giữ attempt và công việc đối soát\nXác minh trạng thái COMMIT trước khi áp dụng lại OCC
+        API -> API: Kết quả lỗi/chưa xác định theo API Contract
+      end
+    else Xung đột tồn kho
+      API -> DB: Rollback TX2
+      activate DB
+      DB --> API: Xác nhận hoàn tất
+      deactivate DB
+      API -> DB: TX3: lưu transactionId, Idempotency-Key, refundKey cố định,\nPayment REFUND_PENDING và công việc hoàn tiền; COMMIT
+      activate DB
+      DB --> API: Kết quả COMMIT TX3
+      deactivate DB
+      alt COMMIT TX3 thành công đã xác nhận
+        group Thử hoàn tiền một lần trong lượt xử lý hiện tại
+          API -> PAY: Hoàn giao dịch mô phỏng (transactionId, amount, refundKey đã lưu)
+          activate PAY
+          PAY --> API: REFUNDED / FAILED / PENDING / timeout
+          deactivate PAY
+          alt Hoàn tiền thành công hoặc đã hoàn với cùng refundKey
+            API -> DB: Transaction: Payment REFUNDED + Order CANCELLED; COMMIT
+            activate DB
+            DB --> API: Kết quả COMMIT bản ghi hoàn tiền
+            deactivate DB
+            alt Lưu kết quả thành công đã xác nhận
+              API -> API: Kết quả: 409 + REFUNDED; kết thúc đối soát
+            else Lỗi ghi kết quả hoặc COMMIT chưa xác định
+              API -> API: Giữ công việc đối soát và refundKey cũ\nTra cứu/gửi lại cùng refundKey, không hoàn lần hai
+              API -> API: Kết quả chưa xác định theo API Contract\nChưa xác nhận REFUNDED cho client
+            end
+          else Hoàn tiền thất bại hoặc chưa xác định
+            API -> DB: Giữ REFUND_PENDING; lưu kết quả và lịch thử lại
+            activate DB
+            DB --> API: Kết quả lưu; công việc bền vững chưa được đánh dấu hoàn tất
+            deactivate DB
+            API -> API: Kết quả: 409 + REFUND_PENDING đã lưu
+          end
+        end
+      else COMMIT TX3 thất bại xác định
+        API -> API: Không gọi hoàn tiền; giữ khóa và công việc đối soát gốc\nKhôi phục TX3 từ attempt/merchantReference/transactionId
+        API -> API: Kết quả lỗi theo API Contract; chưa xác nhận hoàn tiền
+      else Chưa xác định COMMIT TX3
+        API -> API: Không tự khẳng định rollback; không gọi hoàn tiền\nĐọc lại trạng thái bền vững, giữ cùng refundKey nếu đã lưu
+        API -> API: Kết quả chưa xác định theo API Contract; giữ khóa để đối soát
+      end
+      note over API, DB #white
+        Không tăng tồn kho: TX2 đã ROLLBACK.
+        Khi TX3 lỗi, attempt và công việc đối soát trước lời gọi cổng vẫn còn.
+      end note
+    end
+  else FAILED
+    API -> DB: Lưu Payment FAILED + Order PAYMENT_FAILED\ntrong cùng transaction; không trừ kho
+    activate DB
+    DB --> API: Xác nhận hoàn tất
+    deactivate DB
+    API -> API: Kết quả: Thanh toán thất bại
+  else PENDING / timeout
+    API -> DB: Transaction: lưu Payment PENDING, mã tham chiếu,\ncông việc đối soát; không chuyển Order sang PAID
+    activate DB
+    DB --> API: Xác nhận hoàn tất
+    deactivate DB
+    API -> API: Kết quả: 202 + PENDING; HTTP kết thúc sau phản hồi
+  end
+  end
+  end
+end
+alt Client nhận được phản hồi
+  API --> UI: Kết quả thanh toán và trạng thái đơn
+else Mất phản hồi trên mạng
+  API ->x UI: Kết quả thanh toán không đến được client
+end
+deactivate API
+opt Mất phản hồi: client gửi lại cùng yêu cầu bằng HTTP mới
+  UI -> UI: Timeout; giữ orderId, payload và Idempotency-Key
+  UI -> API: Gửi lại POST /payments với cùng payload\nJWT + cùng Idempotency-Key đã lưu
+  activate API
+  API -> API: Kiểm tra JWT và quyền sở hữu trước khi trả dữ liệu
+  alt Xác thực hoặc quyền sở hữu không hợp lệ
+    API --> UI: 401 / 403; không trả thông tin giao dịch
+  else Có quyền
+    API -> DB: Tra cứu khóa theo chủ sở hữu; đối chiếu payload
+    activate DB
+    DB --> API: Kết quả đối chiếu và trạng thái đã lưu
+    deactivate DB
+    alt Payload khác yêu cầu gốc
+      API --> UI: 409 - Khóa không khớp yêu cầu
+    else Cùng key và payload
+      API -> API: Tái sử dụng kết quả; không gọi thanh toán\nvà không trừ tồn kho lần hai
+      API --> UI: Kết quả / trạng thái hiện có
+    end
+  end
+  deactivate API
+end
+alt Phản hồi hợp lệ xác nhận Order PAID đã COMMIT
+  UI -> UI: Xóa giỏ hàng
+  UI --> C: Đặt hàng thành công + mã nhận đồ uống
+else Phản hồi hợp lệ: Payment REFUND_PENDING
+  UI --> C: Món vừa hết hàng; giao dịch đang được hoàn
+else Phản hồi hợp lệ: Payment REFUNDED đã COMMIT
+  UI --> C: Giao dịch đã được hoàn; đơn đã hủy
+else Thanh toán bị từ chối (PAYMENT_FAILED)
+  UI --> C: FAILED đã xác minh: cho phép lần thanh toán mới\ntrên cùng đơn với Idempotency-Key mới
+else Giao dịch PENDING / timeout
+  UI --> C: Kiểm tra kết quả giao dịch trước khi gửi lại
+else Xung đột tồn kho hoặc lỗi khác
+  UI --> C: Báo lỗi và giữ thông tin đơn
+end
+deactivate UI
+
+else Sự kiện: công việc đối soát đến hạn
+== Lượt tác vụ nền độc lập; không có HTTP chờ ==
+activate Worker
+Worker -> DB: Nhận công việc đến hạn; giữ quyền xử lý nguyên tử
+activate DB
+DB --> Worker: Quyền xử lý và trạng thái hiện tại
+deactivate DB
+alt Không có quyền xử lý hoặc công việc đã hoàn tất
+  Worker -> Worker: Kết thúc lượt, không xử lý trùng
+else Có quyền; Payment PENDING
+  Worker -> PAY: Tra cứu bằng merchantReference đã commit trước khi gọi cổng\nCó thể dùng transactionId nếu đã nhận được
+  activate PAY
+  PAY --> Worker: SUCCESS / FAILED / PENDING / timeout / chưa tìm thấy
+  deactivate PAY
+  alt SUCCESS
+    Worker -> DB: Kiểm tra trạng thái, giữ quyền xử lý attempt;\nTX2 áp dụng OCC đúng một lần
+    activate DB
+    DB --> Worker: Cập nhật hợp lệ hoặc xung đột
+    deactivate DB
+    alt OCC hợp lệ
+      Worker -> DB: Lưu Payment SUCCESS + Order PAID; commit TX2
+      activate DB
+      DB --> Worker: Kết quả COMMIT TX2
+      deactivate DB
+      alt Đã xác nhận COMMIT TX2
+        Worker -> Worker: Hoàn tất; không áp dụng SUCCESS lần hai
+      else COMMIT TX2 lỗi hoặc chưa xác định
+        Worker -> Worker: Giữ công việc; xác minh trạng thái TX2 trước khi áp dụng lại\nChưa xác nhận PAID, không tự suy ra rollback thành công
+      end
+    else OCC xung đột
+      Worker -> DB: ROLLBACK TX2
+      activate DB
+      DB --> Worker: Xác nhận rollback; không hoàn tồn kho thêm
+      deactivate DB
+      Worker -> DB: TX3: lưu transactionId, Idempotency-Key, refundKey cố định,\nREFUND_PENDING và công việc hoàn tiền; COMMIT
+      activate DB
+      DB --> Worker: Kết quả COMMIT TX3
+      deactivate DB
+      alt COMMIT TX3 thành công đã xác nhận
+        Worker -> Worker: Kết thúc lượt; công việc hoàn tiền chờ đến hạn
+      else COMMIT TX3 thất bại xác định
+        Worker -> Worker: Giữ khóa/công việc gốc; khôi phục TX3 trước hoàn tiền\nKhông gọi hoàn tiền và không tạo refundKey mới
+      else Chưa xác định COMMIT TX3
+        Worker -> Worker: Đọc lại trạng thái bền vững; không khẳng định rollback\nGiữ công việc, chưa gọi hoàn tiền
+      end
+    end
+  else FAILED đã xác minh
+    Worker -> DB: Transaction: Payment FAILED + Order PAYMENT_FAILED
+    activate DB
+    DB --> Worker: Đã lưu; kết thúc công việc
+    deactivate DB
+  else PENDING / timeout / chưa tìm thấy / chưa xác minh được
+    Worker -> DB: Giữ PENDING, ghi lịch kiểm tra tiếp
+    activate DB
+    DB --> Worker: Đã lưu; kết thúc lượt tác vụ hiện tại
+    deactivate DB
+  end
+else Payment REFUND_PENDING
+  Worker -> PAY: Tra cứu / hoàn tiền với cùng refundKey
+  activate PAY
+  PAY --> Worker: REFUNDED / FAILED / PENDING / timeout
+  deactivate PAY
+  alt REFUNDED hoặc đã hoàn trước đó
+    Worker -> DB: Transaction: Payment REFUNDED + Order CANCELLED; COMMIT
+    activate DB
+    DB --> Worker: Kết quả COMMIT bản ghi hoàn tiền
+    deactivate DB
+    alt Lưu kết quả thành công đã xác nhận
+      Worker -> Worker: Đánh dấu công việc hoàn tất
+    else Lỗi ghi kết quả hoặc COMMIT chưa xác định
+      Worker -> Worker: Giữ công việc đối soát và refundKey cũ\nTra cứu/gửi lại cùng refundKey, không hoàn tiền lần hai\nChưa xác nhận REFUNDED
+    end
+  else Chưa xác nhận hoàn tiền
+    Worker -> DB: Giữ REFUND_PENDING, lưu lịch thử tiếp
+    activate DB
+    DB --> Worker: Đã lưu; kết thúc lượt tác vụ hiện tại
+    deactivate DB
+  end
+end
+deactivate Worker
+
+else Sự kiện: khách hàng chủ động kiểm tra trạng thái
+== GET thủ công mới; không phụ thuộc lịch Worker ==
+C -> UI: Chọn kiểm tra trạng thái đơn
+activate UI
+UI -> API: GET /orders/:id + JWT
+activate API
+API -> API: Xác thực JWT
+alt JWT thiếu / không hợp lệ / hết hạn
+  API --> UI: 401 Unauthorized
+  UI --> C: Yêu cầu đăng nhập lại
+else JWT hợp lệ
+  API -> DB: Kiểm tra quyền sở hữu theo userId; chỉ đọc\nOrder/Payment thuộc phạm vi truy cập được phép
+  activate DB
+  DB --> API: Kết quả kiểm tra quyền và dữ liệu được phép / lỗi đọc
+  deactivate DB
+  alt Không có quyền xem đơn
+    API --> UI: 403 Forbidden; không tiết lộ Order/Payment
+    UI --> C: Không có quyền truy cập
+  else Không tìm thấy đơn hoặc lỗi đọc dữ liệu
+    API --> UI: Lỗi theo API Contract; không trả dữ liệu đơn
+    UI --> C: Không đọc được trạng thái; giữ thông tin đơn
+  else Đọc thành công trong phạm vi được phép
+    API --> UI: 200 + Order/Payment đã lưu
+    UI --> C: Hiển thị trạng thái hiện tại; chỉ xóa giỏ khi PAID\nChỉ xác nhận hoàn tiền khi REFUNDED đã COMMIT
+  end
+end
+deactivate API
+deactivate UI
+end
+@enduml
