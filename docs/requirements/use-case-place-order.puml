@@ -1,6 +1,6 @@
 @startuml brewlite-usecase-place-order
 ' BrewLite — Task 1.3 — Đặc tả Use Case Chi tiết UC-04 Đặt hàng
-' Tài liệu tham chiếu: SRS 1.3.2 và REQ-UC-04 v1.3.2
+' Tài liệu tham chiếu: SRS 1.4.0 và REQ-UC-04 v1.4.0
 ' UC-04 tạo đơn PENDING; UC-10 thanh toán độc lập trên đơn đã tồn tại.
 
 skinparam monochrome true
@@ -19,7 +19,7 @@ skinparam note {
 }
 left to right direction
 
-title BREWLITE — TASK 1.3: UC-04 ĐẶT HÀNG (PLACE ORDER)
+title BREWLITE — TASK 1.3: UC-04 ĐẶT HÀNG (PLACE ORDER)\nUC-10 và Payment Gateway: ngữ cảnh độc lập sau tạo đơn
 
 actor "Khách hàng\n(Customer)" as Customer
 

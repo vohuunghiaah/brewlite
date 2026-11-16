@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-CORE`
-- **Phiên bản:** 1.5.2 (Loyalty Standardization & Baseline Reference Alignment)
+- **Phiên bản:** 1.6.0 (Independent Use Cases — Retry & Authorization Alignment)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -20,7 +20,7 @@ Kịch bản tích hợp này bao hàm toàn bộ chuỗi mắt xích nghiệp v
 3. **Thanh toán không tiền mặt Idempotent (Idempotency-Key Header)**
 4. **Máy trạng thái đơn hàng (Order State Machine với hàm chặn `assertTransition`)**
 
-### 1.1 Vị trí kiến trúc và Quan hệ với 13 Use Cases nguyên tử (SRS 1.3.2 §5.2)
+### 1.1 Vị trí kiến trúc và Quan hệ với 13 Use Cases nguyên tử (SRS 1.4.0 §5.2)
 `UC-CORE-01` đóng vai trò là **kịch bản tích hợp end-to-end (End-to-End Integration Scenario)** xuyên suốt hành trình trải nghiệm đặt cà phê không tiền mặt của khách hàng, kết nối tuần tự các Use Case nguyên tử trong danh mục chính thức:
 - **`UC-01: Xem menu đồ uống`** (FR-01) & **`UC-02: Tùy biến size & topping`** (FR-02): Khách hàng duyệt và tùy biến sản phẩm.
 - **`UC-03: Quản lý giỏ hàng`** (FR-03): Quản lý danh mục món chọn, tính tổng tiền tạm tính.
@@ -71,6 +71,8 @@ Thành công của UC-CORE-01 được bảo đảm bởi việc tạo đơn, th
 #### Hậu điều kiện có điều kiện / Chức năng mở rộng (Conditional / Extension Postcondition — FR-10 Should Have):
 - **Tích lũy điểm thưởng Loyalty:** Hệ thống thực hiện tính toán và ghi nhận điểm thưởng vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Quy tắc quy đổi chính thức đang chờ phê duyệt tại `GAP-03`.
 - **Định hướng thiết kế mong muốn & Giới hạn triển khai hiện tại:** Về mặt nghiệp vụ, tính độc lập của Loyalty (lỗi tích điểm không làm gián đoạn thanh toán) là **yêu cầu thiết kế mong muốn** cho chức năng Should Have. Tuy nhiên, trong mã nguồn backend hiện tại trên nhánh Prisma, thao tác ghi nhận `Payment` và `LoyaltyTransaction` đang nằm chung trong cùng một `prisma.$transaction` nguyên khối; do đó nếu xảy ra lỗi chưa xử lý ở khâu tích điểm, toàn bộ transaction thanh toán có thể bị rollback. Giới hạn này được ghi nhận để đội ngũ kỹ thuật xử lý tách biệt transaction ở các Task triển khai tiếp theo nếu yêu cầu độc lập được xác định là bắt buộc.
+
+**Mất phản hồi tạo đơn (GAP-05):** Nếu TX1 đã COMMIT nhưng phản hồi `POST /orders` bị mất, đơn PENDING vẫn tồn tại. Không tự động tạo lại đơn; tra cứu đơn của chính khách hàng chỉ hỗ trợ khôi phục. Cơ chế chống tạo đơn trùng còn là khoảng hở thiết kế, xem [đặc tả UC-04](./use-case-place-order.md#41-luồng-chính-thành-công-main-success-flow).
 
 #### Hậu điều kiện thất bại / Hủy bỏ (Failure Postconditions):
 1. Số lượng tồn kho thành phẩm của các sản phẩm được hoàn nguyên nguyên vẹn (Transaction Rollback), tuyệt đối không bị trừ sai.
@@ -185,7 +187,7 @@ Thành công của UC-CORE-01 được bảo đảm bởi việc tạo đơn, th
       ```
   - **Quy tắc bảo vệ giá phía Backend (Amount Verification):**
     - Backend truy vấn đơn hàng từ CSDL theo `orderId` và bắt buộc đối chiếu tính toàn vẹn: `payload.amount === order.totalAmount`. Nếu phát hiện sai lệch, lập tức từ chối với HTTP 400 Bad Request.
-- **Bước 7:** Backend NestJS kiểm tra khóa Idempotency trong cơ sở dữ liệu:
+- **Bước 7:** Backend NestJS xác thực JWT, kiểm tra quyền sở hữu đơn/giao dịch trước khi trả dữ liệu; sau đó tra cứu khóa Idempotency trong phạm vi chủ sở hữu và đối chiếu payload:
   - Xác nhận khóa `e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b` chưa từng được sử dụng.
 - **Bước 8:** Backend gọi dịch vụ thanh toán mô phỏng (Mock Payment Service):
   - Dịch vụ xác thực tính hợp lệ của số tiền và phương thức. Phản hồi giao dịch thành công.
@@ -325,7 +327,7 @@ Thành công của UC-CORE-01 được bảo đảm bởi việc tạo đơn, th
 #### Exc-8: Gửi lại request thanh toán trùng lặp (Network Idempotency)
 - **Tình huống:** Khách hàng bấm nút thanh toán nhiều lần liên tiếp do sốt ruột hoặc do mạng chập chờn gửi lại request.
 - **Hành động hệ thống:**
-  1. Nhờ header `Idempotency-Key`, Backend kiểm tra bản ghi `Payment`.
+  1. Backend xác thực JWT và kiểm tra quyền sở hữu đơn/giao dịch trước khi trả dữ liệu; tra cứu `Payment` bằng `Idempotency-Key` trong phạm vi chủ sở hữu và đối chiếu payload.
   2. Nếu key đã được ghi nhận thành công, Backend trả về ngay kết quả giao dịch trước đó (`isDuplicate: true`).
   3. Tuyệt đối không trừ tiền lần hai, không trừ kho lặp lại và không tạo đơn trùng.
 

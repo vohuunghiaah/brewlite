@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-04`
-- **Phiên bản:** 1.3.2 (Diagram Synchronization — PUML Source & SVG Alignment)
+- **Phiên bản:** 1.4.0 (Independent UC-04 / UC-10 — Retry & Authorization Clarification)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 - **MVP do nhóm lựa chọn:** Đặt đồ uống (Drink Ordering)
 - **Use-case trọng tâm:** `UC-04 — Đặt hàng (Place Order)`
@@ -61,6 +61,8 @@ Bản chất của `UC-10` là **thực hiện giao dịch thanh toán qua dịc
 
 Mô hình Use Case chi tiết của `UC-04: Đặt hàng (Place Order)` được quản lý thống nhất tại tệp nguồn PlantUML: [use-case-place-order.puml](./use-case-place-order.puml).
 
+UC-10 và Payment Gateway được giữ để thể hiện ngữ cảnh sau tạo đơn; chúng không thuộc phạm vi thực thi của UC-04. Đặc tả UC-10 độc lập nằm tại Mục 2.2–2.4; sơ đồ này không biểu diễn quan hệ include/extend giữa UC-04 và UC-10.
+
 Bản kết xuất đồ họa chính thức được nhúng trực tiếp dưới đây:
 
 ![Sơ đồ Use Case chi tiết UC-04](./use-case-place-order.svg)
@@ -72,7 +74,7 @@ Bản kết xuất đồ họa chính thức được nhúng trực tiếp dư�
 | :--- | :--- |
 | **Actor chính / phụ** | Khách hàng (Customer) / Cổng thanh toán mô phỏng (Mock Payment Service). |
 | **Trigger** | Khách hàng chọn thanh toán một đơn đã tồn tại, chọn Ví/Thẻ và xác nhận thanh toán. |
-| **Tiền điều kiện** | Đơn tồn tại, khách hàng có quyền sở hữu; Order PENDING hoặc PAYMENT_FAILED; không có giao dịch đang xử lý, chưa xác định, đang hoàn tiền hoặc đã hoàn ngăn tạo giao dịch mới. Gửi lại cùng khóa được tra cứu trước khi kiểm tra quyền tạo giao dịch mới. |
+| **Tiền điều kiện** | Đơn tồn tại, khách hàng có quyền sở hữu; Order PENDING hoặc PAYMENT_FAILED; không có giao dịch đang xử lý, chưa xác định, đang hoàn tiền hoặc đã hoàn ngăn tạo giao dịch mới. Mọi yêu cầu, kể cả gửi lại cùng khóa, phải xác thực JWT và kiểm tra quyền sở hữu đơn/giao dịch trước khi trả dữ liệu. Sau đó mới tra cứu kết quả cũ theo chủ sở hữu, khóa và payload; Cùng khóa nhưng khác payload bị từ chối với 409; điều kiện tạo giao dịch mới chỉ áp dụng khi chưa có khóa trong phạm vi hợp lệ. Gửi lại khóa hợp lệ có thể trả kết quả cũ khi Order đã PAID. |
 | **Hậu điều kiện thành công** | Payment SUCCESS, Order PAID và tồn kho được trừ đúng một lần sau COMMIT TX2. Khách hàng nhận kết quả thanh toán. |
 | **Hậu điều kiện chưa thành công** | TX1 đã commit được bảo toàn. FAILED chuyển PAYMENT_FAILED; timeout giữ PENDING để đối soát; OCC sau SUCCESS đi theo BR-REFUND-OCC. |
 | **Truy vết** | FR-06, FR-08; FR-07 cho chuyển trạng thái và FR-09 cho OCC/trừ kho. Thiết kế mục tiêu; đối soát và hoàn tiền còn phụ thuộc GAP-01, GAP-02. |
@@ -81,7 +83,7 @@ Bản kết xuất đồ họa chính thức được nhúng trực tiếp dư�
 
 1. Khách hàng chọn thanh toán đơn đã tồn tại và phương thức Ví/Thẻ.
 2. Frontend gửi `POST /payments` kèm JWT, orderId, amount, method và Idempotency-Key.
-3. Backend kiểm tra chủ sở hữu, số tiền, khóa/payload và trạng thái; cấp quyền tạo giao dịch theo cơ chế nguyên tử.
+3. Backend xác thực JWT và kiểm tra quyền sở hữu đơn/giao dịch trước khi trả bất kỳ kết quả cũ nào; đối chiếu khóa/payload trong phạm vi chủ sở hữu. Cùng khóa nhưng khác payload bị từ chối với 409, không tạo attempt mới. Nếu chưa có khóa trong phạm vi hợp lệ, kiểm tra số tiền, trạng thái và cấp quyền tạo giao dịch theo cơ chế nguyên tử.
 4. Lưu attempt cùng merchantReference và công việc đối soát bền vững trước khi gọi Mock Payment Service.
 5. Mock Payment Service trả SUCCESS; Backend bắt đầu TX2.
 6. TX2 kiểm tra OCC, trừ kho, lưu Payment SUCCESS và chuyển Order PAID qua máy trạng thái.
@@ -102,7 +104,7 @@ ALT-01 (Ví/Thẻ), ALT-05 (thanh toán lại) và ALT-06 (Loyalty) tại Mục 
   - Đơn hàng tiếp tục duy trì ở trạng thái **`PENDING`**; bản ghi `Payment` lưu `status: 'PENDING'`.
   - Hệ thống thông báo giao dịch đang được xử lý, **không công bố UC-10 đã thành công**. Khách hàng được hướng dẫn kiểm tra lịch sử trước khi thử lại để tránh trừ tiền trùng.
 - **EX-08 (Gửi lại request thanh toán trùng lặp — Idempotency Match):**
-  - Backend phát hiện `Idempotency-Key` đã tồn tại trong CSDL và đã ở trạng thái `SUCCESS`.
+  - Backend xác thực JWT và kiểm tra quyền sở hữu đơn/giao dịch; chỉ sau đó trả kết quả `Idempotency-Key` đã tồn tại, khớp chủ sở hữu và payload, ở trạng thái `SUCCESS`. Không tiết lộ kết quả hoặc sự tồn tại của giao dịch thuộc khách hàng khác.
   - Backend trả về ngay kết quả giao dịch trước đó (`isDuplicate = true`), không trừ tiền lần hai, không trừ kho lặp lại.
 - **EX-09 (Xung đột tồn kho đồng thời khi thanh toán — OCC Conflict):**
   - Hai giao dịch thanh toán đồng thời cho ly nước cuối cùng; giao dịch thứ hai phát hiện lệch `version`.
@@ -127,6 +129,7 @@ Tiêu chí kiểm chứng: hai khách mua sản phẩm cuối cùng tạo một 
 
 ### Quy tắc retry và đối soát giao dịch
 
+- Trước mọi phản hồi giao dịch cũ, xác thực JWT và kiểm tra quyền sở hữu đơn/giao dịch; khóa idempotency không thay thế quyền truy cập.
 - Gửi lại cùng yêu cầu dùng cùng Idempotency-Key và payload. Khi FAILED đã được xác minh, lần thanh toán mới trên cùng đơn dùng khóa mới.
 - Khóa được gắn với chủ sở hữu, orderId, amount và method. Cùng khóa nhưng thông tin khác bị từ chối với 409.
 - Kiểm tra trạng thái và cấp quyền xử lý giao dịch mới theo cơ chế nguyên tử trên đơn. Chặn giao dịch mới khi đang xử lý, PENDING chưa đối soát, REFUND_PENDING, REFUNDED hoặc Order PAID/CANCELLED.
@@ -176,6 +179,8 @@ Tiêu chí kiểm chứng: hai khách mua sản phẩm cuối cùng tạo một 
 8. **Backend** phản hồi 201 Created với orderId, orderCode, totalAmount và PENDING.
 9. **Frontend** hiển thị kết quả tạo đơn và số tiền cần thanh toán. **UC-04 kết thúc thành công.**
 
+**GAP-05 — Mất phản hồi sau COMMIT TX1:** Order/OrderItem đã được lưu ở PENDING nên không được coi timeout là bằng chứng TX1 rollback. Hiện đặc tả chưa có cơ chế idempotency cho `POST /orders`; gửi lại có thể tạo thêm đơn. Idempotency-Key của `POST /payments` không chống trùng bước tạo đơn. Khi chưa rõ kết quả, client cần tra cứu các đơn của chính khách hàng trước khi cho phép xác nhận tạo đơn mới; nếu không xác định được đơn tương ứng thì thông báo kết quả chưa xác định, không tự động gửi lại `POST /orders`. Tra cứu lịch sử chỉ hỗ trợ khôi phục, không bảo đảm chống trùng trong mọi tình huống. Cần thiết kế cơ chế nhận diện yêu cầu tạo đơn bền vững và kiểm chứng retry sau mất phản hồi ở Task triển khai; chưa tuyên bố cơ chế này đã tồn tại.
+
 
 ---
 
@@ -214,7 +219,7 @@ EX-06 đến EX-09 và BR-REFUND-OCC được đặc tả tại Mục 2.4. Các 
 
 ## 7. Ma Trận Truy Vết Yêu Cầu Chức Năng (FR Traceability)
 
-| Thành phần của UC-04 / UC-10 | Mã FR Ánh Xạ | Tên Yêu Cầu Chức Năng (SRS 1.3.2) | Phân loại MoSCoW | Trách nhiệm thực thi |
+| Thành phần của UC-04 / UC-10 | Mã FR Ánh Xạ | Tên Yêu Cầu Chức Năng (SRS 1.4.0) | Phân loại MoSCoW | Trách nhiệm thực thi |
 | :--- | :---: | :--- | :---: | :--- |
 | Nguồn dữ liệu thực đơn | **FR-01** | Xem menu đồ uống | Must Have | Cung cấp danh mục sản phẩm cho giỏ hàng. |
 | Cấu hình size & topping | **FR-02** | Xem chi tiết, chọn size/topping | Must Have | Lưu snapshot kích cỡ và topping vào `OrderItem`. |

@@ -4,7 +4,7 @@
 - **Tên dự án:** BrewLite (Cashless Coffee Ordering Platform)
 - **Tài liệu tham chiếu:** Assignment 1 (BrewLite-CongNghePhanMem.pdf) & Assignment 2 (Assignment2-BrewLite.pdf)
 - **Mã tài liệu:** `REQ-SRS-01`
-- **Phiên bản:** 1.3.2 (UC-04 & UC-10 Independent Use Cases)
+- **Phiên bản:** 1.4.0 (Independent Use Cases — Retry & Authorization Clarification)
 - **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
 
 ---
@@ -360,6 +360,8 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 - **GAP-02 (Cơ chế lưu giữ Idempotency Key tại Client):** Frontend hiện tại tái tạo đơn mới và sinh key mới mỗi lần bấm; chưa lưu key vào `sessionStorage` gắn với `orderId` để chống trừ tiền trùng khi rớt mạng rồi bấm thử lại.
 - **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa đề bài Assignment 2 (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ Product Owner.
 - **GAP-04 (Endpoint Health Check trên nhánh main):** Nhánh `main` (TypeORM) hiện chỉ có `AppController` trả về chuỗi chào mừng, chưa có endpoint `GET /health` trả về trạng thái database (đã có trên nhánh feature Prisma).
+
+- **GAP-05 (Retry tạo đơn khi mất phản hồi sau COMMIT):** `POST /orders` chưa có đặc tả idempotency; retry có thể tạo đơn trùng dù TX1 đã thành công. Không tự động gửi lại khi chưa rõ kết quả; tra cứu đơn có xác thực chỉ hỗ trợ khôi phục, không bảo đảm chống trùng. Cần thiết kế và kiểm chứng cơ chế nhận diện yêu cầu bền vững ở Task triển khai; xem [UC-04 — Luồng chính](./use-case-place-order.md#41-luồng-chính-thành-công-main-success-flow).
 
 ## Bổ sung thiết kế hoàn tiền khi OCC xung đột
 
