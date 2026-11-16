@@ -7,6 +7,10 @@ config:
   look: classic
   handDrawnSeed: 42
   theme: base
+  # Explicit SVG paint avoids transparent-marker differences across renderers.
+  themeCSS: |
+    .marker.extension path, .marker.aggregation path { fill: #ffffff !important; stroke: #404040 !important; stroke-width: 1; }
+    .marker.composition path { fill: #404040 !important; stroke: #404040 !important; stroke-width: 1; }
   themeVariables:
     fontFamily: Arial
     fontSize: 18px
