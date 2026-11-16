@@ -1,0 +1,180 @@
+@startuml
+title BrewLite — UC-10: Thanh toán không tiền mặt
+skinparam defaultFontName Arial
+skinparam defaultFontSize 16
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam ActivityBackgroundColor white
+skinparam ActivityBorderColor #333333
+skinparam ActivityDiamondBackgroundColor white
+skinparam ActivityDiamondBorderColor #333333
+skinparam wrapWidth 315
+
+|Khách hàng|
+start
+:Chọn thanh toán đơn đã tồn tại\nChọn Ví/Thẻ và xác nhận;
+|Frontend|
+:Tạo khóa mới cho lần thanh toán mới\nGửi lại cùng yêu cầu giữ khóa và payload;
+:Gửi POST /payments\nJWT, orderId, amount, method, Idempotency-Key;
+|Backend|
+:Kiểm tra JWT, quyền sở hữu, số tiền và dữ liệu;
+if () then ([Không hợp lệ])
+  :Trả lỗi, giữ đơn đã tồn tại;
+  stop
+else ([Hợp lệ])
+endif
+|PostgreSQL|
+:Tra cứu khóa theo chủ sở hữu\nĐối chiếu orderId, amount, method;
+|Backend|
+if () then ([Cùng khóa, payload khác])
+  :Trả 409, từ chối yêu cầu;
+  stop
+else ([Khóa mới hoặc payload khớp])
+endif
+if () then ([Khóa đã tồn tại])
+  :Trả kết quả/trạng thái đã lưu\nKhông thu tiền hoặc trừ kho lần nữa;
+  stop
+else ([Khóa mới])
+endif
+|PostgreSQL|
+:Kiểm tra trạng thái và cấp quyền xử lý nguyên tử;
+|Backend|
+if () then ([Không được phép])
+  :Từ chối đơn PAID/CANCELLED hoặc giao dịch\nđang xử lý, PENDING chưa đối soát,\nREFUND_PENDING/REFUNDED;
+  stop
+else ([Đơn PENDING/PAYMENT_FAILED hợp lệ])
+endif
+|PostgreSQL|
+:COMMIT attempt PENDING, merchantReference,\nchủ sở hữu, orderId, amount, method,\nkhóa/payload và công việc đối soát;
+if () then ([Lỗi lưu])
+  |Backend|
+  :Trả lỗi, chưa gọi Payment Service;
+  stop
+else ([Đã commit])
+endif
+|Backend|
+:Gửi thanh toán với merchantReference\nvà khóa cố định của attempt;
+|Thanh toán mô phỏng|
+:Thực hiện thanh toán;
+|Backend|
+:Nhận kết quả, lưu transactionId nếu có;
+if () then ([FAILED])
+  :Lưu Payment FAILED và Order PAYMENT_FAILED\nKhông trừ kho;
+  :Trả lỗi thanh toán\nLần thanh toán mới sau FAILED dùng khóa mới;
+  stop
+else ([Khác FAILED])
+endif
+if () then ([PENDING / timeout])
+  :Giữ PENDING và lịch đối soát bền vững;
+  |Frontend|
+  :Nhận 202 + PENDING\nKết thúc POST /payments;
+  stop
+else ([SUCCESS])
+endif
+|PostgreSQL|
+:BEGIN TX2 — kiểm tra stock/version\nvà trừ kho bằng OCC;
+if () then ([Hợp lệ])
+  |PostgreSQL|
+  :Lưu Payment SUCCESS và Order PAID\nCOMMIT TX2;
+|Backend|
+:Trả 200 + PAID;
+|Frontend|
+if () then ([Mất phản hồi])
+  :Gửi lại POST /payments\ncùng payload và cùng khóa;
+  |Backend|
+  :Xác thực, đối chiếu khóa/payload\nTrả kết quả đã lưu hoặc 409 nếu khác;
+  |Frontend|
+else ([Đã nhận phản hồi])
+endif
+:Hiển thị kết quả\nChỉ xác nhận PAID và xóa giỏ sau COMMIT TX2;
+stop
+else ([Xung đột])
+endif
+|PostgreSQL|
+  :ROLLBACK TX2\nOrder và tồn kho giữ nguyên;
+  :TX3 — lưu transactionId, refundKey,\nREFUND_PENDING và công việc hoàn tiền;
+  :COMMIT TX3;
+  |Thanh toán mô phỏng|
+  :Thử hoàn tiền một lần với refundKey cố định;
+  |Backend|
+  if () then ([REFUNDED đã xác nhận])
+    :Transaction — lưu Payment REFUNDED\nvà Order CANCELLED;
+  else ([Lỗi / PENDING / timeout])
+    :Giữ REFUND_PENDING\nLưu lịch hoàn tiền tiếp theo;
+  endif
+  :Trả 409 + trạng thái hoàn tiền\nKết thúc POST /payments;
+  stop
+
+|Backend|
+start
+:Tác vụ nền được kích hoạt bởi công việc đến hạn\nHTTP thanh toán đã kết thúc;
+|PostgreSQL|
+:Nhận quyền xử lý nguyên tử\nĐọc attempt và trạng thái hiện tại;
+|Backend|
+if () then ([Đã xử lý hoặc bị khóa])
+  :Kết thúc lượt tác vụ, không xử lý trùng;
+  stop
+else ([Có quyền xử lý])
+endif
+if () then ([Payment REFUND_PENDING])
+  |Thanh toán mô phỏng|
+  :Tra cứu/hoàn tiền với cùng refundKey;
+  |Backend|
+  if () then ([REFUNDED đã xác nhận])
+    :Transaction — Payment REFUNDED\nvà Order CANCELLED;
+  else ([Chưa xác nhận])
+    :Giữ REFUND_PENDING\nLưu lịch thử tiếp với cùng refundKey;
+  endif
+  :Kết thúc lượt tác vụ nền\nKết quả được lưu để client đọc sau;
+  stop
+else ([Payment PENDING])
+endif
+  |Thanh toán mô phỏng|
+  :Tra cứu merchantReference đã lưu\nhoặc transactionId nếu có;
+  |Backend|
+  if () then ([FAILED đã xác minh])
+    :Transaction — lưu Payment FAILED\nvà Order PAYMENT_FAILED;
+    stop
+  else ([Khác FAILED])
+  endif
+  if () then ([PENDING / timeout / chưa tìm thấy])
+    :Giữ PENDING, lưu lịch kiểm tra tiếp;
+    stop
+  else ([SUCCESS])
+  endif
+  |PostgreSQL|
+  :BEGIN TX2 — kiểm tra trạng thái và OCC\nTrừ kho đúng một lần;
+  if () then ([Hợp lệ])
+    :Lưu Payment SUCCESS và Order PAID\nCOMMIT TX2;
+    stop
+  else ([Xung đột])
+    :ROLLBACK TX2;
+    :TX3 — lưu REFUND_PENDING,\ntransactionId, refundKey và công việc hoàn tiền;
+    :COMMIT TX3;
+    stop
+  endif
+
+|Khách hàng|
+start
+:Chọn kiểm tra trạng thái đơn\nhoặc tiếp tục theo dõi;
+|Frontend|
+:Gửi GET /orders/:id + JWT\nMột lượt HTTP mới, độc lập với tác vụ nền;
+|Backend|
+:Kiểm tra quyền sở hữu;
+if () then ([Không có quyền])
+  :Trả lỗi quyền truy cập;
+  stop
+else ([Có quyền])
+endif
+|PostgreSQL|
+:Đọc Order và Payment đã lưu;
+|Frontend|
+:Nhận 200 + trạng thái hiện tại;
+if () then ([PAID])
+  :Hiển thị thanh toán thành công\nChỉ xóa giỏ khi PAID;
+else ([Chưa PAID])
+  :Hiển thị FAILED / PENDING /\nREFUND_PENDING / REFUNDED tương ứng;
+endif
+:Kết thúc GET\nLượt kiểm tra tiếp theo là yêu cầu mới;
+stop
+@enduml

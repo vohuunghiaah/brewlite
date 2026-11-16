@@ -1,0 +1,243 @@
+@startuml
+title BrewLite — Đặt và thanh toán đồ uống
+skinparam defaultFontName Arial
+skinparam defaultFontSize 16
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam ActivityBackgroundColor white
+skinparam ActivityBorderColor #333333
+skinparam ActivityDiamondBackgroundColor white
+skinparam ActivityDiamondBorderColor #333333
+skinparam wrapWidth 315
+|Khách hàng|
+start
+:Xem menu, chọn đồ uống
+Chọn size, topping và số lượng;
+:Thêm vào giỏ và mở checkout;
+|Frontend|
+:Kiểm tra giỏ hàng;
+if () then ([Giỏ không hợp lệ])
+:Hiển thị lỗi, giữ giỏ để điều chỉnh;
+stop
+else ([Giỏ hợp lệ])
+endif
+if () then ([Chưa đăng nhập])
+:Giữ giỏ và mở màn hình đăng nhập;
+|Khách hàng|
+:Nhập tài khoản và mật khẩu;
+|Backend|
+:Xác thực tài khoản;
+if () then ([Xác thực thất bại])
+:Trả lỗi xác thực, giữ giỏ hàng;
+stop
+else ([Xác thực thành công])
+endif
+|Frontend|
+:Trở lại checkout với JWT;
+else ([Đã đăng nhập])
+endif
+:Gửi POST /orders kèm JWT và giỏ hàng;
+|Backend|
+:Kiểm tra JWT và dữ liệu đầu vào;
+if () then ([Yêu cầu sai])
+:Trả lỗi 400 / 401, giữ giỏ;
+stop
+else ([Yêu cầu hợp lệ])
+endif
+|PostgreSQL|
+:Bắt đầu TX1
+Đọc giá và tồn kho;
+|Backend|
+:Kiểm tra khả dụng và tính lại tổng tiền;
+if () then ([Thiếu hàng])
+:Yêu cầu DB rollback TX1;
+:Trả lỗi hết hàng, giữ giỏ;
+stop
+else ([Đủ hàng])
+endif
+|PostgreSQL|
+:Lưu Order và OrderItem ở PENDING;
+if () then ([Lỗi ghi đơn])
+:ROLLBACK TX1;
+:Trả lỗi ghi đơn để frontend báo lỗi và giữ giỏ;
+stop
+else ([Đã lưu đơn])
+endif
+:COMMIT TX1;
+|Frontend|
+:Nhận orderId, orderCode và tổng tiền;
+|Khách hàng|
+:Chọn Ví hoặc Thẻ
+Xác nhận thanh toán;
+|Frontend|
+:Lần thanh toán mới: tạo và lưu khóa mới
+Gửi lại cùng yêu cầu: giữ khóa và payload;
+:Gửi POST /payments (orderId, amount, method)
+JWT + Idempotency-Key;
+|Backend|
+:Ngữ cảnh ban đầu: HTTP còn mở
+Kiểm tra quyền sở hữu, số tiền và dữ liệu;
+if () then ([Yêu cầu sai])
+:Trả lỗi, giữ thông tin đơn;
+stop
+else ([Yêu cầu hợp lệ])
+endif
+|PostgreSQL|
+:Tra cứu khóa trong phạm vi chủ sở hữu
+Đối chiếu orderId, amount, method đã lưu;
+|Backend|
+if () then ([Khóa cũ, payload khác])
+:Trả 409 — khóa đã gắn với yêu cầu khác;
+stop
+else ([Khóa mới hoặc payload khớp])
+endif
+|PostgreSQL|
+:Giữ khóa mới và kiểm tra trạng thái giao dịch của đơn nguyên tử
+Chặn yêu cầu đồng thời;
+|Backend|
+if () then ([Khóa đã tồn tại])
+:Trả kết quả và trạng thái hiện có
+Không thu tiền hoặc trừ kho lần nữa;
+:Frontend xác nhận nếu PAID, hiển thị trạng thái nếu đang chờ hoặc hoàn tiền;
+stop
+else ([Khóa mới])
+endif
+if () then ([Không được phép])
+:Từ chối giao dịch mới khi đang xử lý, PENDING chưa đối soát, REFUND_PENDING, REFUNDED hoặc đơn đã PAID / CANCELLED;
+stop
+else ([Được phép])
+endif
+|PostgreSQL|
+:Trước khi gọi cổng: COMMIT attempt PENDING, merchantReference duy nhất, chủ sở hữu, orderId, amount, method, khóa và payload chuẩn hóa
+Lưu công việc đối soát bền vững;
+if () then ([Lỗi lưu dữ liệu])
+:Dừng trước khi gọi Payment Service
+Trả lỗi để client gửi lại cùng khóa;
+stop
+else ([Đã commit attempt])
+endif
+|Backend|
+:Gửi yêu cầu thanh toán kèm merchantReference
+Dùng cùng khóa khi truyền lại đến cổng;
+|Thanh toán mô phỏng|
+:Thực hiện thanh toán mô phỏng
+Hỗ trợ tra cứu bằng merchantReference;
+|Backend|
+:Nhận kết quả, lưu transactionId nếu có
+Đối chiếu merchantReference với attempt;
+if () then ([FAILED])
+:Lưu Payment FAILED và Order PAYMENT_FAILED
+Không trừ tồn kho;
+:Chỉ sau FAILED đã xác minh: cho phép lần thanh toán mới trên cùng đơn với khóa mới;
+stop
+else ([Khác FAILED])
+endif
+if () then ([PENDING / timeout])
+|PostgreSQL|
+:Giữ PENDING, lưu kết quả tạm thời và lịch đối soát
+Dữ liệu attempt đã commit trước khi gọi cổng;
+|Frontend|
+:Nhận 202 + PENDING
+Lượt POST /payments kết thúc, giữ đơn;
+|Backend|
+:Chờ công việc đến hạn
+Tác vụ nền nhận quyền xử lý nguyên tử
+Ngữ cảnh: HTTP đã đóng;
+:Tác vụ nền tra cứu Payment Service bằng merchantReference đã lưu
+Dùng transactionId khi có;
+|Thanh toán mô phỏng|
+:Tra cứu merchantReference
+Trả SUCCESS / FAILED / PENDING
+Chưa tìm thấy: tiếp tục đối soát;
+|Backend|
+if () then ([FAILED])
+:Lưu FAILED / PAYMENT_FAILED, kết thúc công việc
+HTTP đã đóng: không trả phản hồi checkout
+Client lấy kết quả qua GET /orders/:id;
+stop
+else ([Khác FAILED])
+endif
+if () then ([PENDING / timeout])
+:Giữ PENDING và lịch đối soát tiếp theo
+Chặn giao dịch mới cho đơn;
+:Kết thúc lượt tác vụ, chờ lần kích hoạt tiếp theo;
+stop
+else ([SUCCESS])
+endif
+else ([SUCCESS])
+endif
+|PostgreSQL|
+:TX2 — kiểm tra stock/version và trừ kho bằng OCC;
+if () then ([Xung đột OCC])
+:ROLLBACK TX2
+Order và tồn kho giữ nguyên;
+:TX3 — lưu transactionId, Idempotency-Key, refundKey
+Payment REFUND_PENDING
+COMMIT TX3;
+|Backend|
+:Hoàn tiền trong ngữ cảnh hiện tại
+HTTP còn mở hoặc tác vụ nền
+Dùng refundKey cố định;
+|Thanh toán mô phỏng|
+:Hoàn tiền mô phỏng
+Trùng refundKey trả kết quả cũ;
+|Backend|
+if () then ([FAILED / PENDING / timeout])
+|PostgreSQL|
+:Giữ REFUND_PENDING
+Lưu kết quả hoàn tiền;
+fork
+|Frontend|
+:HTTP còn mở: nhận 409 + REFUND_PENDING
+HTTP đã đóng: đọc trạng thái qua lượt GET mới
+Hiển thị đang hoàn tiền;
+fork again
+|Backend|
+:Ghi lịch tác vụ hoàn tiền bất đồng bộ
+Mỗi lần chạy dùng cùng refundKey;
+end fork
+stop
+else ([REFUNDED])
+|PostgreSQL|
+:Transaction — Payment REFUNDED và Order CANCELLED
+COMMIT;
+|Frontend|
+:HTTP còn mở: nhận 409 + REFUNDED
+HTTP đã đóng: đọc trạng thái qua lượt GET mới
+Hiển thị đã hoàn tiền, đơn đã hủy;
+stop
+endif
+else ([Cập nhật OCC hợp lệ])
+|PostgreSQL|
+:TX2 — lưu Payment SUCCESS và Order PAID
+COMMIT TX2;
+endif
+|Backend|
+if () then ([Tác vụ nền, HTTP đã đóng])
+:Lưu kết quả PAID, kết thúc công việc nền
+HTTP trước đã đóng, client đọc kết quả qua lượt GET /orders/:id mới;
+stop
+else ([HTTP còn mở])
+endif
+:HTTP còn mở: trả kết quả thanh toán và trạng thái đơn;
+|Frontend|
+if () then ([Mất phản hồi])
+:Gửi lại POST /payments với cùng payload và cùng Idempotency-Key;
+:Backend trả trạng thái đã lưu
+Không thanh toán hoặc trừ kho lần hai;
+else ([Đã nhận phản hồi])
+endif
+:Chỉ xóa giỏ khi Order PAID
+Hiển thị mã đơn và xác nhận;
+|Khách hàng|
+:Xem kết quả đặt hàng thành công;
+|Frontend|
+:UC-05 — yêu cầu xem tiến độ đơn;
+|Backend|
+:Kiểm tra quyền và đọc trạng thái từ DB;
+|Frontend|
+:Hiển thị PAID / PREPARING / READY / COMPLETED;
+|Khách hàng|
+:Theo dõi đơn và mã nhận món;
+stop
+@enduml

@@ -1,0 +1,225 @@
+@startuml
+' Task 2.2 - UC-04 và UC-10 độc lập.
+' Based on SRS, use-case-place-order.md and Activity diagrams.
+title BrewLite - UC-10: Thanh toán không tiền mặt
+hide footbox
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 25
+skinparam maxMessageSize 310
+actor "Khách hàng" as C
+boundary "Next.js UI" as UI
+control "NestJS API" as API
+database "Database\n(PostgreSQL)" as DB
+participant "Payment Service\n(Mock nội bộ)" as PAY
+== UC-10: Thanh toán không tiền mặt ==
+C -> UI: Chọn đơn đã tồn tại, chọn Ví/Thẻ và xác nhận thanh toán
+activate UI
+UI -> UI: Lần thanh toán mới: tạo khóa mới; lưu payload\nGửi lại cùng yêu cầu: dùng khóa và payload cũ
+UI -> API: POST /payments (orderId, amount, method)\nJWT + Idempotency-Key
+activate API
+API -> API: Kiểm tra JWT, dữ liệu, quyền sở hữu và số tiền
+break Yêu cầu thanh toán không hợp lệ
+  API --> UI: Từ chối yêu cầu
+  UI --> C: Hiển thị lỗi; giữ đơn để xử lý
+end
+API -> DB: Tra cứu khóa theo chủ sở hữu; đối chiếu\norderId, amount, method với yêu cầu đã lưu
+activate DB
+DB --> API: Kết quả kiểm tra khóa
+deactivate DB
+break Cùng khóa nhưng payload khác
+  API --> UI: 409 - Idempotency-Key đã gắn với yêu cầu khác
+  UI --> C: Báo lỗi; không tạo giao dịch
+end
+alt Yêu cầu đã được tiếp nhận (cùng key, cùng payload)
+  API -> API: Dùng kết quả hoặc trạng thái hiện có
+else Yêu cầu thanh toán mới
+  API -> DB: Nguyên tử: kiểm tra trạng thái và giữ quyền xử lý đơn,\nlưu khóa + payload; chống hai giao dịch đồng thời
+  activate DB
+  DB --> API: Cho phép hoặc từ chối
+  deactivate DB
+  break Đơn PAID / CANCELLED hoặc giao dịch đang xử lý, PENDING chưa đối soát, REFUND_PENDING / REFUNDED
+    API --> UI: Từ chối thanh toán
+    UI --> C: Báo lỗi và giữ thông tin đơn
+  end
+  API -> DB: COMMIT trước khi gọi cổng: attempt PENDING, merchantReference,\nchủ sở hữu, orderId, amount, method, khóa, payload chuẩn hóa\nvà công việc đối soát bền vững
+  activate DB
+  DB --> API: Đã commit hoặc lỗi lưu
+  deactivate DB
+  break Lưu attempt thất bại
+    API --> UI: Lỗi lưu; chưa gọi Payment Service
+  end
+  API -> PAY: Thanh toán mô phỏng (merchantReference, amount, method)\nKhóa cố định cho cùng attempt
+  activate PAY
+  PAY --> API: Kết quả + merchantReference + transactionId nếu có
+  deactivate PAY
+  alt SUCCESS
+    API -> DB: Bắt đầu TX2 và trừ kho có kiểm tra stock/version (OCC)
+    activate DB
+    DB --> API: Kết quả cập nhật
+    deactivate DB
+    alt Cập nhật hợp lệ
+      API -> API: Kiểm tra chuyển trạng thái sang PAID
+      API -> DB: Lưu Payment SUCCESS và Order PAID; commit TX2
+      activate DB
+      DB --> API: Xác nhận hoàn tất
+      deactivate DB
+      API -> API: Kết quả: 200 - Đơn đã thanh toán (PAID)
+    else Xung đột tồn kho
+      API -> DB: Rollback TX2
+      activate DB
+      DB --> API: Xác nhận hoàn tất
+      deactivate DB
+      API -> DB: TX3: lưu transactionId, Idempotency-Key, refundKey;\nPayment REFUND_PENDING; commit (Order giữ nguyên)
+      activate DB
+      DB --> API: Đã lưu yêu cầu hoàn tiền bền vững
+      deactivate DB
+      group Thử hoàn tiền một lần trong lượt xử lý hiện tại
+        API -> PAY: Hoàn giao dịch mô phỏng (transactionId, amount, refundKey)
+        activate PAY
+        PAY --> API: REFUNDED / FAILED / PENDING / timeout
+        deactivate PAY
+        alt Hoàn tiền thành công hoặc đã hoàn với cùng refundKey
+          API -> DB: Transaction: Payment REFUNDED + Order CANCELLED; commit
+          activate DB
+          DB --> API: Đã ghi nhận hoàn tiền; kết thúc đối soát
+          deactivate DB
+        else Hoàn tiền thất bại hoặc chưa xác định
+          API -> DB: Giữ REFUND_PENDING; lưu kết quả và lịch thử lại
+          activate DB
+          DB --> API: Đã lưu để tác vụ đối soát tiếp tục
+          deactivate DB
+        end
+      end
+      API -> API: Kết quả: 409 + trạng thái REFUND_PENDING / REFUNDED
+    end
+  else FAILED
+    API -> DB: Lưu Payment FAILED + Order PAYMENT_FAILED\ntrong cùng transaction; không trừ kho
+    activate DB
+    DB --> API: Xác nhận hoàn tất
+    deactivate DB
+    API -> API: Kết quả: Thanh toán thất bại
+  else PENDING / timeout
+    API -> DB: Transaction: lưu Payment PENDING, mã tham chiếu,\ncông việc đối soát; giữ Order PENDING
+    activate DB
+    DB --> API: Xác nhận hoàn tất
+    deactivate DB
+    API -> API: Kết quả: 202 + PENDING; HTTP kết thúc sau phản hồi
+  end
+end
+alt Client nhận được phản hồi
+  API --> UI: Kết quả thanh toán và trạng thái đơn
+else Mất phản hồi trên mạng
+  API ->x UI: Kết quả thanh toán không đến được client
+  UI -> UI: Timeout; giữ orderId, payload và Idempotency-Key
+  UI -> API: Gửi lại POST /payments với cùng payload\nJWT + cùng Idempotency-Key đã lưu
+  API -> API: Kiểm tra JWT, chủ sở hữu và payload đã gắn với khóa
+  break Payload khác yêu cầu gốc
+    API --> UI: 409 - Khóa không khớp yêu cầu
+  end
+  API -> DB: Tra cứu giao dịch theo cùng Idempotency-Key
+  activate DB
+  DB --> API: Kết quả đã lưu hoặc trạng thái đang xử lý
+  deactivate DB
+  API -> API: Tái sử dụng kết quả; không gọi thanh toán\nvà không trừ tồn kho lần hai
+  API --> UI: Kết quả / trạng thái hiện có
+end
+deactivate API
+alt Đơn đã PAID
+  UI -> UI: Xóa giỏ hàng
+  UI --> C: Đặt hàng thành công + mã nhận đồ uống
+else Payment REFUND_PENDING
+  UI --> C: Món vừa hết hàng; giao dịch đang được hoàn
+else Payment REFUNDED
+  UI --> C: Giao dịch đã được hoàn; đơn đã hủy
+else Thanh toán bị từ chối (PAYMENT_FAILED)
+  UI --> C: FAILED đã xác minh: cho phép lần thanh toán mới\ntrên cùng đơn với Idempotency-Key mới
+else Giao dịch PENDING / timeout
+  UI --> C: Kiểm tra kết quả giao dịch trước khi gửi lại
+else Xung đột tồn kho hoặc lỗi khác
+  UI --> C: Báo lỗi và giữ thông tin đơn
+end
+deactivate UI
+
+== Xử lý nền sau khi lượt HTTP đã kết thúc ==
+participant "Tác vụ đối soát" as Worker
+par Tác vụ nền độc lập
+opt Công việc nền đến hạn (độc lập với lượt POST và GET)
+activate Worker
+Worker -> DB: Nhận công việc đến hạn; giữ quyền xử lý nguyên tử
+activate DB
+DB --> Worker: Công việc payment PENDING hoặc REFUND_PENDING
+deactivate DB
+alt Payment PENDING
+  Worker -> PAY: Tra cứu bằng merchantReference đã commit trước khi gọi cổng\nCó thể dùng transactionId nếu đã nhận được
+  activate PAY
+  PAY --> Worker: SUCCESS / FAILED / PENDING / timeout / chưa tìm thấy
+  deactivate PAY
+  alt SUCCESS
+    Worker -> DB: Kiểm tra trạng thái, giữ quyền xử lý attempt;\nTX2 áp dụng OCC đúng một lần
+    activate DB
+    DB --> Worker: Cập nhật hợp lệ hoặc xung đột
+    deactivate DB
+    alt OCC hợp lệ
+      Worker -> DB: Lưu Payment SUCCESS + Order PAID; commit TX2
+      activate DB
+      DB --> Worker: Đã lưu; kết thúc công việc
+      deactivate DB
+    else OCC xung đột
+      Worker -> DB: Rollback TX2; TX3 lưu REFUND_PENDING,\ntransactionId, refundKey và công việc hoàn tiền; commit
+      activate DB
+      DB --> Worker: Đã lưu; kết thúc lượt tác vụ hiện tại
+      deactivate DB
+    end
+  else FAILED đã xác minh
+    Worker -> DB: Transaction: Payment FAILED + Order PAYMENT_FAILED
+    activate DB
+    DB --> Worker: Đã lưu; kết thúc công việc
+    deactivate DB
+  else PENDING / timeout / chưa tìm thấy / chưa xác minh được
+    Worker -> DB: Giữ PENDING, ghi lịch kiểm tra tiếp
+    activate DB
+    DB --> Worker: Đã lưu; kết thúc lượt tác vụ hiện tại
+    deactivate DB
+  end
+else Payment REFUND_PENDING
+  Worker -> PAY: Tra cứu / hoàn tiền với cùng refundKey
+  activate PAY
+  PAY --> Worker: REFUNDED / FAILED / PENDING / timeout
+  deactivate PAY
+  alt REFUNDED hoặc đã hoàn trước đó
+    Worker -> DB: Transaction: Payment REFUNDED + Order CANCELLED
+    activate DB
+    DB --> Worker: Đã lưu; kết thúc công việc
+    deactivate DB
+  else Chưa xác nhận hoàn tiền
+    Worker -> DB: Giữ REFUND_PENDING, lưu lịch thử tiếp
+    activate DB
+    DB --> Worker: Đã lưu; kết thúc lượt tác vụ hiện tại
+    deactivate DB
+  end
+end
+deactivate Worker
+
+end
+
+else Polling độc lập bằng lượt HTTP mới
+opt Khách kiểm tra đơn (có thể khi tác vụ vẫn đang chạy)
+  C -> UI: Xem trạng thái đơn
+  activate UI
+  UI -> API: GET /orders/:id + JWT
+  activate API
+  API -> DB: Kiểm tra chủ sở hữu, đọc Order và Payment
+  activate DB
+  DB --> API: Trạng thái đã lưu
+  deactivate DB
+  API --> UI: 200 + trạng thái đơn / thanh toán / hoàn tiền
+  deactivate API
+  UI --> C: Hiển thị kết quả hiện tại
+  deactivate UI
+end
+end
+@enduml

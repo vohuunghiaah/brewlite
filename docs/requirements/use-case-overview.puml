@@ -54,9 +54,7 @@ Customer -- UC9
 Customer -- UC10
 Customer -- UC11
 
-' Quan hệ trong sơ đồ hiện tại, giữ nguyên so với bản trước.
-' Cần xác nhận: UC-04 tạo đơn PENDING, UC-10 thanh toán sau đó.
-UC4 ..> UC10 : <<include>>
+' UC-04 tạo đơn PENDING; UC-10 được khách hàng kích hoạt độc lập trên đơn đã tồn tại.
 UC9 ..> UC4 : <<extend>>
 
 ' Các actor bên ngoài hệ thống

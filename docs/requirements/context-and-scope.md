@@ -194,7 +194,7 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
                      └─────────────────┘
 ```
 
-- **`PENDING`:** Đơn hàng được tạo thành công từ giỏ hàng, đang chờ thực hiện giao dịch thanh toán.
+- **`PENDING`:** UC-04 đã tạo đơn thành công từ giỏ hàng và COMMIT TX1. Khách hàng kích hoạt UC-10 độc lập để thanh toán. Đơn chưa giữ hoặc trừ kho, không được chuyển sang PREPARING, READY hay COMPLETED trước khi thanh toán; UC-10 kiểm tra lại tồn kho bằng OCC.
 - **`PAID`:** Giao dịch thanh toán mô phỏng thành công, hệ thống đã trừ tồn kho an toàn và cấp mã nhận nước.
 - **`PREPARING`:** Nhân viên quầy/Barista tiếp nhận đơn và bắt đầu pha chế.
 - **`READY`:** Đồ uống đã hoàn tất, sẵn sàng tại quầy đón khách.
@@ -263,3 +263,9 @@ Hệ thống tài liệu BrewLite thống nhất 4 mã định danh khoảng h�
 
 ## 6. Kết Luận & Định Hướng Giai Đoạn Tiếp Theo
 Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-and-scope.md`) phiên bản 1.2.0 đã chuẩn hóa ranh giới quản lý tồn kho thành phẩm (loại bỏ nhầm lẫn tồn kho nguyên liệu), phân định minh bạch các Business Rules đề xuất và các khoảng trống triển khai (Implementation Gaps). Toàn bộ các yêu cầu chức năng (FR) và phi chức năng (NFR) trong `docs/requirements/srs.md` cũng như kịch bản Use Case trọng tâm `docs/requirements/use-cases.md` sẽ bám sát tuyệt đối vào các ranh giới đã chuẩn hóa tại văn bản này.
+
+## Bổ sung thiết kế hoàn tiền khi OCC xung đột
+
+Đã chọn BR-REFUND-OCC cho luồng UC-10: SUCCESS từ dịch vụ thanh toán, rollback TX2, lưu REFUND_PENDING trong TX3, hoàn tiền idempotent và kết thúc bằng Payment REFUNDED / Order CANCELLED. Chi tiết và tiêu chí nghiệm thu tại [UC-10 — BR-REFUND-OCC](./use-case-place-order.md#br-refund-occ--hoàn-tiền-mô-phỏng-sau-xung-đột-tồn-kho).
+
+GAP-01 vẫn ghi nhận phần triển khai backend còn thiếu. Quyết định này áp dụng cho xung đột OCC trước khi đơn đạt PAID; quy tắc hủy đơn đã PAID trong BR-REFUND-01 có phạm vi riêng.

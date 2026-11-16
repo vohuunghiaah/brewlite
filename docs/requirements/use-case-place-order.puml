@@ -1,7 +1,7 @@
 @startuml brewlite-usecase-place-order
 ' BrewLite — Task 1.3 — Đặc tả Use Case Chi tiết UC-04 Đặt hàng
 ' Tài liệu tham chiếu: SRS 1.3.2 và REQ-UC-04 v1.3.2
-' Mô hình chuẩn UML: UC-04 bắt buộc bao gồm (<<include>>) thanh toán UC-10
+' UC-04 tạo đơn PENDING; UC-10 thanh toán độc lập trên đơn đã tồn tại.
 
 skinparam monochrome true
 skinparam shadowing false
@@ -28,17 +28,17 @@ rectangle "Hệ Thống BrewLite" {
     usecase "UC-04: Đặt hàng\n(Place Order)" as UC4
     usecase "UC-10: Thanh toán\nkhông tiền mặt" as UC10
 
-    note "UC-04 thành công khi thanh toán UC-10 hoàn tất\nvà Order đạt trạng thái PAID.\nPENDING chỉ là trạng thái trung gian." as N1
+    note "UC-04 thành công khi TX1 commit Order PENDING.\nKhách hàng kích hoạt UC-10 độc lập trên đơn đã có.\nĐơn chưa thanh toán chưa được pha chế." as N1
     UC4 .. N1
 }
 
 actor "Cổng Thanh Toán Mô Phỏng\n(Mock Payment Service)" as PaymentGateway
 
 Customer -- UC4
+Customer -- UC10
 Customer -- UC9
 
 UC9 ..> UC4 : <<extend>>
-UC4 ..> UC10 : <<include>>
 
 UC10 -- PaymentGateway
 
