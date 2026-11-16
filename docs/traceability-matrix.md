@@ -76,7 +76,7 @@
    - **GAP-02 (Lưu trữ Idempotency Key phía Client):** Backend feature branch đã có unique index; Client Next.js cần bổ sung cơ chế lưu `sessionStorage` để tái sử dụng khóa UUID khi người dùng retry/F5.
    - **GAP-03 (Công thức tích điểm thành viên - Loyalty Formula):** Mâu thuẫn giữa 10.000 VNĐ = 1 điểm (SRS) và 1.000 VNĐ = 1 điểm (mã nguồn thử nghiệm) được đánh dấu `PENDING APPROVAL` chờ Product Owner quyết định.
    - **GAP-04 (Endpoint Health Check trên baseline `main`):** Cần bổ sung `GET /health` kiểm tra kết nối PostgreSQL vào `apps/api` trên `main` để hoàn thiện NFR-05 và phục vụ Deployment Diagram Task 3.2.
-   - **GAP-05 (Mất phản hồi sau COMMIT giao dịch tạo đơn - Order Retry Idempotency):** Đã được xác nhận định nghĩa chính thức trong SRS v1.3.2 §2.3 và đặc tả UC-04 §4.1. Cơ chế chống tạo đơn trùng khi Client mất kết nối sau COMMIT TX1 là khoảng hở kỹ thuật mở (`OPEN`), cần hoàn thiện ở Task triển khai thông qua việc tra cứu lịch sử đơn hàng hoặc sinh khóa đơn hàng bền vững.
+   - **GAP-05 (Mất phản hồi sau COMMIT giao dịch tạo đơn - Order Retry Idempotency):** Đã được xác nhận định nghĩa chính thức trong SRS v1.4.0 §2.3 và đặc tả UC-04 §4.1. Cơ chế chống tạo đơn trùng khi Client mất kết nối sau COMMIT TX1 là khoảng hở kỹ thuật mở (`OPEN`), cần hoàn thiện ở Task triển khai thông qua việc tra cứu lịch sử đơn hàng hoặc sinh khóa đơn hàng bền vững.
    - Chi tiết phân tích nguyên nhân và khuyến nghị xử lý được lập thành tài liệu chuyên sâu tại [Báo cáo kiểm toán GAP & ORM](audits/task2-to-task3-gap-audit.md).
 
 3. **Hiện trạng CI/CD Quality Gate:**

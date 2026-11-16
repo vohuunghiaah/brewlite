@@ -14,13 +14,13 @@
 **BrewLite** là hệ thống phần mềm hỗ trợ đặt đồ uống trực tuyến và quản lý quy trình pha chế cho chuỗi cửa hàng cà phê / đồ uống giải khát, được thực hiện trong khuôn khổ môn học **Công nghệ Phần mềm (Software Engineering)** — Học kỳ 1 Năm học 2026-2027.
 
 ### Phân Định Giữa Assignment 1 và Assignment 2:
-- **Assignment 1 (Kỹ nghệ Yêu cầu - Requirements Engineering):** Tập trung vào khảo sát nghiệp vụ, phân tích stakeholder, xác định phạm vi hệ thống, xây dựng tài liệu Đặc tả Yêu cầu Phần mềm (SRS v1.3.2), Danh mục Use Case (`UC-01` -> `UC-13`), Ma trận truy vết yêu cầu (RTM) và giải quyết các mâu thuẫn ngữ nghĩa UML ban đầu.
-- **Assignment 2 (Phân tích, Thiết kế Kiến trúc & Triển khai MVP):** Mở rộng toàn diện các pha của vòng đời phát triển phần mềm:
-  - **Task 1:** Nghiệm thu và chuẩn hóa tài liệu yêu cầu SRS v1.3.2 và Use Case chi tiết.
+- **Assignment 1 (Kỹ nghệ Yêu cầu - Requirements Engineering):** Tập trung vào khảo sát nghiệp vụ, phân tích stakeholder, xác định phạm vi hệ thống, xây dựng tài liệu Đặc tả Yêu cầu Phần mềm (SRS v1.4.0), Danh mục Use Case (`UC-01` -> `UC-13`), Ma trận truy vết yêu cầu (RTM) và giải quyết các mâu thuẫn ngữ nghĩa UML ban đầu.
+- **Assignment 2 (Phân tích, Thiết kế Kiến trúc, Triển khai & Bàn giao):** Tuân thủ chặt chẽ theo cấu trúc đặc tả trong `Assignment2-BrewLite.pdf`:
+  - **Task 1 (Yêu cầu Phần mềm):** Chuẩn hóa tài liệu yêu cầu SRS v1.4.0 và Use Case chi tiết.
   - **Task 2 (Phân tích & Thiết kế UML):** Xây dựng sơ đồ Hoạt động Activity Diagram (Task 2.1), sơ đồ Tuần tự Sequence Diagram (Task 2.2), sơ đồ Lớp miền Class Diagram (Task 2.3).
-  - **Task 3 (Thiết kế Kiến trúc Hệ thống):** Lựa chọn phong cách kiến trúc, hệ thống các quyết định kiến trúc (ADR) và xây dựng sơ đồ Triển khai Deployment Diagram (Task 3.2).
-  - **Task 4 (Triển khai MVP & DevOps):** Hiện thực hóa mã nguồn (Next.js, NestJS, PostgreSQL), tự động hóa CI/CD với GitHub Actions và đóng gói Docker container.
-  - **Task 5 (Kiểm thử & Đảm bảo Chất lượng):** Kiểm thử đơn vị (Unit Test), kiểm thử tích hợp, kiểm thử đầu-cuối (E2E Test) và nghiệm thu kỹ thuật.
+  - **Task 3 (Thiết kế Kiến trúc Hệ thống):** Lựa chọn phong cách kiến trúc, hệ thống các quyết định kiến trúc (ADR) (Task 3.1) và xây dựng sơ đồ Triển khai Deployment Diagram (Task 3.2).
+  - **Task 4 (Triển khai Sprint 1):** Thiết lập nền tảng mã nguồn ban đầu (Next.js, NestJS, TypeORM, PostgreSQL), xây dựng các chức năng nền tảng và thiết lập pipeline CI Quality Gates qua GitHub Actions.
+  - **Task 5 (Triển khai Sprint 2 & Bàn giao - Delivery):** Hoàn thiện đầy đủ tính năng MVP (luồng thanh toán, kiểm soát đồng thời OCC, xác thực JWT), kiểm thử tích hợp & E2E, tự động hóa CD, triển khai production và bàn giao toàn diện hệ thống.
 
 ---
 
@@ -28,10 +28,11 @@
 
 Toàn bộ công nghệ dưới đây đều đã được tích hợp mã nguồn, cấu hình và kiểm chứng thành công trong pipeline GitHub Actions:
 
-- **Frontend (`apps/web`):**
+- **Frontend Client (`apps/web`):**
   - Framework: [Next.js](https://nextjs.org/) v16.4.5 (App Router, React Server Components & Client Hooks).
-  - Thư viện giao diện: [React](https://react.dev/) v19.3.0, TypeScript 5, TailwindCSS, Lucide React icons.
-  - Định hướng thiết kế: Mobile-first responsive UI (tối ưu hóa kích thước màn hình điện thoại 360px - 430px).
+  - Thư viện hiển thị: [React](https://react.dev/) v19.3.0, TypeScript 5.
+  - Định dạng kiểu dáng: CSS Modules chuẩn và CSS toàn cục (`src/app/globals.css`, `src/app/page.module.css`).
+  - *Lưu ý công nghệ:* Các thư viện giao diện như TailwindCSS, Lucide React và tính năng PWA (Progressive Web App) hiện thuộc phạm vi thiết kế mục tiêu (`TARGET / PLANNED`) hoặc có trên nhánh tính năng thử nghiệm, **chưa được cài đặt trong `apps/web/package.json` trên nhánh `main`**.
 - **Backend API (`apps/api`):**
   - Framework: [NestJS](https://nestjs.com/) v12.0.1 (Kiến trúc Modular Monolith trên nền Express Platform).
   - Cơ sở dữ liệu & ORM: [PostgreSQL](https://www.postgresql.org/) 16 với driver `pg` v8.23.1, [TypeORM](https://typeorm.io/) v1.1.2 kết hợp `@nestjs/typeorm` v12.0.3.
@@ -40,7 +41,7 @@ Toàn bộ công nghệ dưới đây đều đã được tích hợp mã ngu�
   - Linter: [Oxlint](https://oxc.rs/) v1.58.0 (Kiểm tra kiểu dữ liệu và cú pháp TypeScript siêu tốc cho API) và ESLint v9 (cho Web).
   - Test Runner: [Jest](https://jestjs.io/) v30.0.0 (API unit tests) và Node.js native test runner (`node --test` cho Web).
 - **Đóng Gói & DevOps:**
-  - Containerization: [Docker](https://www.docker.com/) và Docker Compose đa dịch vụ (`docker-compose.yml`, `docker-compose.prod.yml`).
+  - Containerization: [Docker](https://www.docker.com/) và Docker Compose (`docker-compose.yml` cho môi trường cục bộ).
   - Tự động hóa CI: GitHub Actions Quality Gates (`.github/workflows/quality.yml`) chạy tự động Install → Lint → Unit Test → Build trên môi trường Node.js 24 (Ubuntu Latest).
 
 ---
@@ -68,6 +69,7 @@ brewlite/
 │       ├── src/
 │       │   └── app/
 │       │       ├── menu/       # Trang danh mục đồ uống & giỏ hàng client
+│       │       ├── globals.css # CSS toàn cục ứng dụng
 │       │       ├── layout.tsx  # Layout gốc ứng dụng
 │       │       └── page.tsx    # Trang chủ chuyển hướng
 │       ├── tests/              # Ca kiểm thử đơn vị cho logic tính toán sản phẩm
@@ -75,7 +77,7 @@ brewlite/
 │       └── Dockerfile
 ├── docs/
 │   ├── architecture/           # Tài liệu Kiến trúc Hệ thống (Task 3)
-│   │   ├── adr/                # Architecture Decision Records (ADR-001 -> ADR-005)
+│   │   ├── adr/                # Architecture Decision Records (ADR-001 -> ADR-006)
 │   │   ├── DeploymentDiagram.svg # Sơ đồ Triển khai UML (Task 3.2)
 │   │   └── README.md           # Đặc tả kiến trúc tổng thể
 │   ├── audits/                 # Báo cáo kiểm toán kỹ thuật
@@ -85,7 +87,7 @@ brewlite/
 │   │   ├── SequenceDiagram*.{puml,svg} # Sơ đồ Tuần tự (Task 2.2)
 │   │   └── ClassDiagram-Conceptual.{mmd,svg} # Sơ đồ Lớp miền Mermaid (Task 2.3)
 │   ├── requirements/           # Tài liệu Yêu cầu Phần mềm (Task 1)
-│   │   ├── srs.md              # Software Requirements Specification (v1.3.2)
+│   │   ├── srs.md              # Software Requirements Specification (v1.4.0)
 │   │   ├── use-cases.md        # Danh mục và đặc tả tóm tắt Use Cases
 │   │   ├── use-case-place-order.md # Đặc tả chi tiết Use Case trọng tâm (UC-04)
 │   │   └── context-and-scope.md# Bối cảnh và phạm vi hệ thống
@@ -93,7 +95,6 @@ brewlite/
 ├── scripts/                    # Scripts tiện ích và công cụ tự động hóa
 │   └── render-use-case-overview.py # Script kết xuất SVG từ PlantUML
 ├── docker-compose.yml          # Cấu hình Docker Compose môi trường Development
-├── docker-compose.prod.yml     # Cấu hình Docker Compose môi trường Production
 ├── .env.example                # Khung biến môi trường mẫu chuẩn
 ├── .gitignore
 └── README.md                   # Tài liệu hướng dẫn chính của dự án
@@ -110,11 +111,14 @@ brewlite/
 - **PostgreSQL:** Phiên bản 16 (tự động khởi chạy qua Docker).
 
 ### Bước 1: Sao chép mã nguồn và thiết lập biến môi trường
-```sh
+Trên Windows PowerShell hoặc Linux/macOS terminal:
+```powershell
 git clone https://github.com/vohuunghiaah/brewlite.git
 cd brewlite
-cp .env.example .env
+Copy-Item .env.example .env
 ```
+*(Nếu trên Linux/macOS, dùng lệnh: `cp .env.example .env`)*.
+
 Chỉnh sửa file `.env` với các thông số cấu hình cơ bản (hoặc giữ giá trị mặc định để chạy thử):
 ```env
 POSTGRES_USER=brewlite
@@ -131,11 +135,11 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 
 #### Cách 1: Khởi chạy trọn gói bằng Docker Compose (Khuyến nghị)
 Chỉ với một câu lệnh, toàn bộ 3 dịch vụ cơ sở dữ liệu (`db`), backend (`api`) và frontend (`web`) sẽ được tự động đóng gói và khởi chạy:
-```sh
+```powershell
 docker compose up -d --build
 ```
 Kiểm tra trạng thái các container đang chạy:
-```sh
+```powershell
 docker compose ps
 ```
 - **Frontend Next.js:** Truy cập tại [http://localhost:3000](http://localhost:3000)
@@ -143,24 +147,24 @@ docker compose ps
 - **PostgreSQL Database:** Lắng nghe tại cổng `localhost:5432`
 
 Dừng hệ thống:
-```sh
+```powershell
 docker compose down
 ```
 
 #### Cách 2: Khởi chạy thủ công cho môi trường phát triển (Local Development)
 1. **Khởi động Database PostgreSQL bằng Docker:**
-   ```sh
+   ```powershell
    docker compose up -d db
    ```
 2. **Cài đặt và chạy Backend API:**
-   ```sh
+   ```powershell
    cd apps/api
    npm install
    npm run start:dev
    ```
    *(Backend sẽ tự động kết nối PostgreSQL và khởi tạo schema bảng dữ liệu qua TypeORM)*.
 3. **Cài đặt và chạy Frontend Web (mở terminal mới):**
-   ```sh
+   ```powershell
    cd apps/web
    npm install
    npm run dev
@@ -173,7 +177,7 @@ docker compose down
 Dự án áp dụng quy chuẩn kiểm soát chất lượng mã nguồn nghiêm ngặt được thực thi tự động qua CI pipeline:
 
 ### 1. Kiểm tra Backend API (`apps/api`):
-```sh
+```powershell
 cd apps/api
 
 # Kiểm tra cú pháp và kiểu dữ liệu bằng Oxlint
@@ -187,7 +191,7 @@ npm run build
 ```
 
 ### 2. Kiểm tra Frontend Web (`apps/web`):
-```sh
+```powershell
 cd apps/web
 
 # Kiểm tra cú pháp bằng Next.js ESLint
@@ -206,21 +210,21 @@ npm run build
 
 | Hạng mục công việc | Mô tả & Tài liệu liên quan | Trạng thái Nghiệm thu | Bằng chứng kỹ thuật |
 |---|---|:---:|---|
-| **Task 1: Requirements Engineering** | SRS v1.3.2, Phạm vi nghiệp vụ, Đặc tả Use Case chi tiết (`UC-04`). | **PASS** | [SRS v1.3.2](docs/requirements/srs.md), PR #14, PR #17 |
-| **Task 2.1: Activity Diagram** | Phân định 5 swimlanes, 2 giao dịch phân tách TX1 (`PENDING`) & TX2 (`PAID`), bù trừ hoàn tiền. | **PASS** | [Activity Diagrams](docs/diagram/ActivityDiagram.puml), PR #19 |
+| **Task 1: Requirements Engineering** | SRS v1.4.0, Phạm vi nghiệp vụ, Đặc tả Use Case chi tiết (`UC-04`). | **PASS** | [SRS v1.4.0](docs/requirements/srs.md), PR #14, PR #17 |
+| **Task 2.1: Activity Diagram** | Phân định 5 swimlanes, 2 giao dịch độc lập TX1 (`PENDING`) & TX2 (`PAID`), bù trừ hoàn tiền. | **PASS** | [Activity Diagrams](docs/diagram/ActivityDiagram.puml), PR #19 |
 | **Task 2.2: Sequence Diagram** | Tương tác tuần tự các tầng, worker activation theo sự kiện `due-work`, xử lý thất bại OCC. | **PASS** | [Sequence Diagrams](docs/diagram/SequenceDiagram.puml), PR #20 |
 | **Task 2.3: Class Diagram** | Mô hình lớp miền (Domain Class Diagram) chuẩn hóa bằng cú pháp Mermaid. | **PASS** | [ClassDiagram-Conceptual.mmd](docs/diagram/ClassDiagram-Conceptual.mmd), PR #21 |
-| **Task 3.1: Architecture Decisions** | Kiến trúc Modular Monolith, tài liệu kiến trúc, hoàn thiện hệ thống ADR-001 -> ADR-005. | **IN PROGRESS** | [Tài liệu Kiến trúc](docs/architecture/README.md), Nhánh PR B |
-| **Task 3.2: Deployment Diagram** | Sơ đồ Triển khai UML, phân định môi trường Local, CI/CD và Target Production. | **IN PROGRESS** | [Deployment Diagram](docs/architecture/DeploymentDiagram.svg), Nhánh PR B |
-| **Task 4: MVP Implementation** | Nền tảng Next.js + NestJS + TypeORM trên `main`. Full-flow Prisma trên feature branch. | **BASELINE ACTIVE** | CI Run [43832699668](https://github.com/vohuunghiaah/brewlite/actions/runs/43832699668) SUCCESS |
-| **Task 5: Testing & QA** | Unit test API/Web pass 100%. Kịch bản E2E Playwright sẵn sàng cho Sprint 2. | **PARTIAL** | Hosted CI Quality Gates, `products.service.spec.ts` |
+| **Task 3.1: Architecture Decisions** | Kiến trúc Modular Monolith, tài liệu kiến trúc, hệ thống ADR-001 -> ADR-006. | **IN PROGRESS** | [Tài liệu Kiến trúc](docs/architecture/README.md), Nhánh PR #23 |
+| **Task 3.2: Deployment Diagram** | Sơ đồ Triển khai UML, phân định môi trường Local, CI/CD và Target Production. | **DESIGN COMPLETE / FINAL ACCEPTANCE PENDING** | [Deployment Diagram](docs/architecture/DeploymentDiagram.svg), Nhánh PR #23 |
+| **Task 4: Sprint 1 Implementation** | Nền tảng mã nguồn Sprint 1: Next.js + NestJS + TypeORM trên `main`, Products & Orders cơ bản, Quality Gates CI. | **BASELINE ACTIVE** | CI Run [43832699668](https://github.com/vohuunghiaah/brewlite/actions/runs/43832699668) SUCCESS |
+| **Task 5: Sprint 2 & Delivery** | Triển khai Sprint 2 hoàn thiện tính năng MVP, thanh toán, kiểm thử E2E, CD và bàn giao. | **PENDING SPRINT 2** | Mã nguồn thử nghiệm trên `feature/sprint2-full-flow` |
 
 ---
 
 ## 7. Liên Kết Tài Liệu Quan Trọng (Documentation Quick Links)
 
 - **Yêu cầu & Nghiệp vụ (Task 1):**
-  - [Đặc tả Yêu cầu Phần mềm (SRS v1.3.2)](docs/requirements/srs.md)
+  - [Đặc tả Yêu cầu Phần mềm (SRS v1.4.0)](docs/requirements/srs.md)
   - [Bối cảnh và Phạm vi Hệ thống](docs/requirements/context-and-scope.md)
   - [Danh mục & Đặc tả Use Cases](docs/requirements/use-cases.md)
   - [Đặc tả chi tiết Use Case trọng tâm UC-04 (Đặt đồ uống)](docs/requirements/use-case-place-order.md)
