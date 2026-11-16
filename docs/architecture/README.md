@@ -78,7 +78,7 @@ flowchart TD
         ProdMod["ProductsModule"]
         OrderMod["OrdersModule (Order State Machine)"]
         PayMod["PaymentsModule (Mock Payment Engine)"]
-        HealthMod["HealthModule (Readiness/Liveness)"]
+        HealthMod["HealthModule (GET /health)"]
     end
 
     subgraph DataAccessLayer ["4. Tầng Dữ Liệu & Lưu Trữ (Data Access & Persistence)"]
@@ -166,10 +166,22 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
 - **Bảo mật:** Bộ lọc log tự động làm sạch (masking) các thông tin nhạy cảm như mật khẩu người dùng, mã băm, chuỗi JWT token hoặc số thẻ thanh toán.
 
 ### 4.7 Endpoint Kiểm Tra Sức Khỏe (Health Check API)
-- **Thiết kế:** Bổ sung `HealthModule` cung cấp endpoint `GET /health` theo chuẩn Cloud-Native Readiness / Liveness Probe.
-- **Cơ chế kiểm tra:** Thực hiện câu truy vấn `SELECT 1` tới PostgreSQL để kiểm tra kết nối sống.
-- **Mã phản hồi HTTP:** Trả về HTTP 200 OK kèm thông tin trạng thái khi hệ thống khỏe mạnh; trả về HTTP 503 Service Unavailable khi mất kết nối cơ sở dữ liệu.
-- **Tích hợp:** Đóng vai trò là probe cho Docker compose `healthcheck`.
+- **Thiết kế theo [ADR-004](adr/adr/004-logging-healthcheck.md):** Thống nhất hợp đồng kiểm tra sức khỏe hệ thống đáp ứng SRS v1.4.0 §4.13, phân định minh bạch giữa hiện trạng triển khai MVP và định hướng mục tiêu mở rộng.
+- **Hợp đồng Endpoint MVP Cốt Lõi (Đã triển khai trên feature branch Prisma — Khớp SRS v1.4.0 §4.13):**
+  - **Endpoint duy nhất:** **`GET /health`** (hợp nhất kiểm tra tiến trình ứng dụng và tình trạng kết nối tới cơ sở dữ liệu PostgreSQL).
+  - **Giao thức:** HTTP GET công khai, không yêu cầu xác thực JWT.
+  - **Cơ chế thực thi:** Gửi câu lệnh truy vấn kiểm tra `SELECT 1` tới PostgreSQL qua ORM.
+  - **Mã phản hồi HTTP thực tế:** Luôn trả về **`HTTP 200 OK`** cho cả trường hợp bình thường và khi cơ sở dữ liệu gặp sự cố suy giảm dịch vụ (Degraded).
+  - **Cấu trúc JSON phản hồi:**
+    - Khi kết nối cơ sở dữ liệu bình thường: `{"status": "ok", "service": "brewlite-api", "version": "1.0.0", "commit": "dev", "database": "connected", "timestamp": "..."}`.
+    - Khi mất kết nối hoặc truy vấn cơ sở dữ liệu thất bại: `{"status": "degraded", "service": "brewlite-api", "version": "1.0.0", "commit": "dev", "database": "error", "timestamp": "..."}`.
+    *(Lưu ý kỹ thuật: Mã nguồn MVP hiện tại trên feature branch trả HTTP 200 kèm `status: degraded` và `database: error`, chưa cấu hình trả mã lỗi HTTP 503 Service Unavailable)*.
+- **Định Hướng Mở Rộng Mục Tiêu Cho Môi Trường Cloud / Kubernetes (Proposed Target):**
+  - Khi triển khai trên các nền tảng điều phối chuyên dụng (Kubernetes, AWS ECS) và tích hợp thư viện chuyên dụng `@nestjs/terminus`:
+    - `GET /health/live` (Liveness Probe): Kiểm tra tiến trình NestJS sống, phản hồi HTTP 200 OK.
+    - `GET /health/ready` (Readiness Probe): Kiểm tra tính sẵn sàng phục vụ và kết nối PostgreSQL; phản hồi HTTP 200 OK khi sẵn sàng hoặc HTTP 503 Service Unavailable khi mất kết nối cơ sở dữ liệu.
+  - Hai endpoint phân tách này thuộc phạm vi **Đề xuất Mở rộng Mục tiêu (`Proposed Target / Future Roadmap`)**, chưa có mã nguồn trong MVP hiện tại.
+- **Tích hợp vận hành:** Đóng vai trò là probe cho Docker compose `healthcheck` và synthetic monitoring probe (`NFR-05`, `NFR-07`).
 
 ### 4.8 Quản Lý Cấu Hình & Dữ Liệu Bí Mật (Environment Variables & Secrets)
 - **Thiết kế theo [ADR-005](adr/adr/005-configuration-management.md):** Tuân thủ quy tắc **The Twelve-Factor App**.
@@ -257,7 +269,7 @@ Toàn bộ các quyết định công nghệ và kiến trúc then chốt của 
 | **Quản Lý Đơn Hàng (State Machine)** | [ADR-001](adr/adr/001-modular-monolith.md) | [ActivityDiagram.puml](../diagram/ActivityDiagram.puml) | `apps/api/src/orders/` | **Partially Implemented** | `main` tạo đơn PENDING; State Machine đầy đủ trên feature |
 | **Dịch Vụ Thanh Toán Mô Phỏng** | [ADR-003](adr/adr/003-mock-payment.md) | [ActivityDiagram-UC10.puml](../diagram/ActivityDiagram-UC10.puml)<br>[SequenceDiagram-UC10.puml](../diagram/SequenceDiagram-UC10.puml) | *(Feature: `apps/api/src/payments/`)* | **Design Verified** / Feature Implemented | Luồng thanh toán ví/thẻ và OCC đã nghiệm thu Task 2 |
 | **Kiểm Soát Tồn Kho Đồng Thời (OCC)** | [ADR-003](adr/adr/003-mock-payment.md) | [SequenceDiagram-UC10.puml](../diagram/SequenceDiagram-UC10.puml) | *(Feature: `payments.service.ts`)* | **Design Verified** / Feature Implemented | Concurrency race condition test pass trên PR #9 |
-| **Endpoint Health Check (`GET /health`)** | [ADR-004](adr/adr/004-logging-healthcheck.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | *(Feature: `apps/api/src/health/`)* | **Design Verified** / Feature Implemented | Smoke test HTTP `GET /health` pass trong CI |
+| **Endpoint Health Check (`GET /health`)** | [ADR-004](adr/adr/004-logging-healthcheck.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | *(Feature: `apps/api/src/health/`)* | **Design Verified** / Feature Implemented | HTTP 200 (ok / degraded); Smoke test `GET /health` pass trong CI |
 | **Quản Lý Cấu Hình (Env Vars)** | [ADR-005](adr/adr/005-configuration-management.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | `.env.example`, `apps/api/src/app.module.ts` | **Implemented** | `@nestjs/config` nạp biến môi trường thành công |
 | **Containerization (Docker Compose)** | [ADR-001](adr/adr/001-modular-monolith.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | `docker-compose.yml`, `Dockerfile` | **Implemented** | `docker compose up` khởi chạy 3 container thành công |
 | **Tự Động Hóa CI Quality Gates** | - | [DeploymentDiagram.svg](DeploymentDiagram.svg) | `.github/workflows/quality.yml` | **Implemented** | GitHub Actions Run [43832699668](https://github.com/vohuunghiaah/brewlite/actions/runs/43832699668) SUCCESS |
