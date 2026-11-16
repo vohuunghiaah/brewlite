@@ -18,6 +18,11 @@
    - **Nhánh `main` (commit `ee090814`):** Đóng vai trò là baseline TypeORM MVP tối thiểu. Triển khai danh mục sản phẩm (`ProductsModule`) và tạo đơn hàng cơ bản (`OrdersModule`). Các tính năng như Tùy biến size/topping (`FR-02`), Xác thực JWT (`FR-04`), Thanh toán (`FR-06`), State Machine (`FR-07`), OCC (`FR-09`), Health Check (`FR-13`) chưa có mã nguồn trên `main`.
    - **Nhánh tính năng `feature/sprint1-mvp-foundation` & `feature/sprint2-full-flow` (PR #7, PR #9):** Đã hiện thực hóa toàn diện nghiệp vụ Đặt đồ uống với Prisma ORM, kiểm soát đồng thời OCC, thanh toán idempotent và bộ test đầy đủ. Các kết quả kiểm thử trên nhánh feature được ghi nhận theo bằng chứng lịch sử và đối chiếu trong báo cáo kiểm toán [GAP & Nền tảng ORM](audits/task2-to-task3-gap-audit.md).
 
+3. **Phân định rõ ranh giới giữa Task 2, Task 3 và Triển khai chức năng:**
+   - **Task 2 (Phân tích & Thiết kế UML):** Đã hoàn thành và đạt trạng thái **DESIGN VERIFIED** thông qua bộ 14 sơ đồ chính thức trong `docs/diagram/`.
+   - **Task 3 (Thiết kế Kiến trúc Hệ thống & Deployment Diagram):** Đang trong giai đoạn hoàn thiện tại PR #23, chưa tiến hành nghiệm thu cuối (**FINAL ACCEPTANCE PENDING**).
+   - **Triển khai chức năng thực tế:** Được đánh giá và kiểm chứng độc lập theo từng FR (`FR-01` -> `FR-13`) giữa hai baseline; tuyệt đối không suy diễn việc hoàn thành thiết kế UML thành hoàn thành triển khai mã nguồn hay hoàn tất kiến trúc toàn diện.
+
 ---
 
 ## 1. Định Nghĩa Trạng Thái Kiểm Chứng (Verification Status Definitions)
@@ -67,9 +72,10 @@
 
 ## 4. Tổng Hợp & Đánh Giá Nghiệm Thu Kỹ Thuật
 
-1. **Tổng kết nghiệm thu giai đoạn Task 2:**
-   - Toàn bộ các yêu cầu chức năng cốt lõi (`FR-01` đến `FR-13`) đã hoàn thành việc mô hình hóa phân tích và thiết kế kiến trúc (**DESIGN VERIFIED 100%**).
-   - Hệ thống sơ đồ gồm 14 tệp chính thức trong `docs/diagram/` đã phân định hoàn toàn độc lập giữa việc khởi tạo đơn hàng PENDING (`UC-04`) và thanh toán có điều kiện (`UC-10`), ngăn chặn việc trừ kho hoặc quyết toán tài chính sớm.
+1. **Tổng kết nghiệm thu giai đoạn Task 2 và tiến độ Task 3:**
+   - **Nghiệm thu Task 2 (Phân tích & Thiết kế UML — DESIGN VERIFIED):** Toàn bộ các yêu cầu chức năng cốt lõi (`FR-01` đến `FR-13`) đã hoàn thành việc mô hình hóa phân tích và thiết kế chi tiết thông qua bộ 14 sơ đồ UML chính thức trong `docs/diagram/` (Activity, Sequence, Class Diagram đạt trạng thái **DESIGN VERIFIED** qua PR #19, PR #20, PR #21). Hệ thống sơ đồ phân định hoàn toàn độc lập giữa việc khởi tạo đơn hàng PENDING (`UC-04`) và thanh toán có điều kiện (`UC-10`), ngăn chặn việc trừ kho hoặc quyết toán tài chính sớm.
+   - **Tiến độ Task 3 (Thiết kế Kiến trúc Hệ thống & Deployment Diagram):** Đang trong giai đoạn hoàn thiện tại PR #23, chưa tiến hành nghiệm thu cuối (**FINAL ACCEPTANCE PENDING**) do chờ phê duyệt chính thức nền tảng triển khai Production thực tế.
+   - **Trạng thái triển khai chức năng thực tế:** Từng yêu cầu chức năng (`FR-01` đến `FR-13`) có trạng thái triển khai mã nguồn riêng biệt theo từng FR (được phân định chi tiết tại Bảng 2: `main` hiện chỉ có FR-01, FR-03, FR-05, FR-11 ở mức `PARTIAL`; các FR còn lại là `NOT IMPLEMENTED` trên `main` và đang nằm trên nhánh tính năng thử nghiệm; không suy diễn việc nghiệm thu thiết kế UML thành hoàn tất triển khai mã nguồn).
 
 2. **Các khoảng hở kỹ thuật cần đóng ở giai đoạn triển khai (Gaps Action Plan):**
    - **GAP-01 (Hoàn tiền - Refund):** Mô hình hóa trạng thái bù `REFUND_PENDING` và vòng lặp retry loop đã được đặc tả trong `docs/diagram/ActivityDiagram-UC10.puml` và `SequenceDiagram-UC10.puml`. Nghiệp vụ xử lý ngoại tuyến khi đối soát thất bại (`BR-REFUND-01`) đang ở trạng thái `PROPOSED / PENDING APPROVAL`.

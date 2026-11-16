@@ -119,22 +119,45 @@ Copy-Item .env.example .env
 ```
 *(Nếu trên Linux/macOS, dùng lệnh: `cp .env.example .env`)*.
 
-Chỉnh sửa file `.env` với các thông số cấu hình cơ bản (hoặc giữ giá trị mặc định để chạy thử):
+> [!IMPORTANT]
+> **Lưu ý quan trọng về cấu hình `DATABASE_HOST` giữa hai phương thức khởi chạy:**
+> Tệp `.env.example` cung cấp giá trị mặc định `DATABASE_HOST=db` phục vụ cho mạng container nội bộ Docker Compose.
+> - **Khi chạy qua Docker Compose (Cách 1):** Container API kết nối tới container cơ sở dữ liệu qua mạng bridge nội bộ (`brewlite-network`) bằng hostname `DATABASE_HOST=db` (được Docker Compose định tuyến và cấu hình sẵn). Lập trình viên có thể sử dụng cấu hình mặc định này khi chạy container.
+> - **Khi chạy NestJS trực tiếp trên máy trạm Windows (Cách 2):** Máy trạm không tự động phân giải được hostname `db`. Sau khi khởi chạy container PostgreSQL (cổng `5432:5432` đã ánh xạ ra máy chủ), lập trình viên **bắt buộc phải cấu hình `DATABASE_HOST=localhost`** trong tệp `.env` ở thư mục gốc (không giữ nguyên giá trị `db` của `.env.example`, nếu không NestJS sẽ báo lỗi không thể kết nối cơ sở dữ liệu `ENOTFOUND db`).
+> - **Bảo mật:** Không chỉnh sửa hoặc commit các mật khẩu thật hay secret keys vào git; giữ nguyên các giá trị mẫu cho môi trường dev cục bộ.
+
+Khung cấu hình `.env` tham chiếu:
 ```env
+# Cấu hình PostgreSQL Database
+POSTGRES_DB=brewlite
 POSTGRES_USER=brewlite
-POSTGRES_PASSWORD=brewlite_secret
-POSTGRES_DB=brewlite_db
+POSTGRES_PASSWORD=brewlite_dev_password
 POSTGRES_PORT=5432
+
+# Cấu hình kết nối Backend NestJS:
+# - Với Docker Compose: DATABASE_HOST=db (mặc định do Compose cung cấp)
+# - Với chạy trực tiếp trên máy trạm Windows: ĐỔI THÀNH DATABASE_HOST=localhost
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
+DATABASE_NAME=brewlite
+DATABASE_USER=brewlite
+DATABASE_PASSWORD=brewlite_dev_password
+
+# Cổng dịch vụ & URL Frontend
 API_PORT=3001
+WEB_PORT=3000
 NEXT_PUBLIC_API_URL=http://localhost:3001
+API_INTERNAL_URL=http://api:3001
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3000
+JWT_SECRET=replace-with-a-long-random-secret
+JWT_EXPIRES_IN=1d
 ```
 
 ### Bước 2: Khởi chạy ứng dụng
 
 #### Cách 1: Khởi chạy trọn gói bằng Docker Compose (Khuyến nghị)
-Chỉ với một câu lệnh, toàn bộ 3 dịch vụ cơ sở dữ liệu (`db`), backend (`api`) và frontend (`web`) sẽ được tự động đóng gói và khởi chạy:
+Chỉ với một câu lệnh, toàn bộ 3 dịch vụ cơ sở dữ liệu (`db`), backend (`api`) và frontend (`web`) sẽ được tự động đóng gói và khởi chạy trong mạng bridge `brewlite-network` với `DATABASE_HOST=db`:
 ```powershell
 docker compose up -d --build
 ```
@@ -151,24 +174,27 @@ Dừng hệ thống:
 docker compose down
 ```
 
-#### Cách 2: Khởi chạy thủ công cho môi trường phát triển (Local Development)
-1. **Khởi động Database PostgreSQL bằng Docker:**
+#### Cách 2: Khởi chạy thủ công cho môi trường phát triển (Local Development trên máy trạm)
+1. **Khởi động Database PostgreSQL bằng Docker (ánh xạ cổng 5432 ra localhost):**
    ```powershell
    docker compose up -d db
    ```
-2. **Cài đặt và chạy Backend API:**
+2. **Cấu hình biến môi trường cục bộ:**
+   Đảm bảo tệp `.env` ở thư mục gốc đã được thiết lập `DATABASE_HOST=localhost` (thay vì `DATABASE_HOST=db`).
+3. **Cài đặt và chạy Backend API:**
    ```powershell
    cd apps/api
    npm install
    npm run start:dev
    ```
-   *(Backend sẽ tự động kết nối PostgreSQL và khởi tạo schema bảng dữ liệu qua TypeORM)*.
-3. **Cài đặt và chạy Frontend Web (mở terminal mới):**
+   *(Backend sẽ tự động kết nối PostgreSQL tại `localhost:5432` và khởi tạo schema bảng dữ liệu qua TypeORM)*.
+4. **Cài đặt và chạy Frontend Web (mở terminal mới):**
    ```powershell
    cd apps/web
    npm install
    npm run dev
    ```
+   *(Frontend lắng nghe tại [http://localhost:3000](http://localhost:3000), kết nối tới API tại [http://localhost:3001](http://localhost:3001))*.
 
 ---
 
