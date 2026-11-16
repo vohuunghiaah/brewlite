@@ -167,15 +167,17 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
 
 ### 4.7 Endpoint Kiểm Tra Sức Khỏe (Health Check API)
 - **Thiết kế theo [ADR-004](adr/adr/004-logging-healthcheck.md):** Thống nhất hợp đồng kiểm tra sức khỏe hệ thống đáp ứng SRS v1.4.0 §4.13, phân định minh bạch giữa hiện trạng triển khai MVP và định hướng mục tiêu mở rộng.
-- **Hợp đồng Endpoint MVP Cốt Lõi (Đã triển khai trên feature branch Prisma — Khớp SRS v1.4.0 §4.13):**
-  - **Endpoint duy nhất:** **`GET /health`** (hợp nhất kiểm tra tiến trình ứng dụng và tình trạng kết nối tới cơ sở dữ liệu PostgreSQL).
-  - **Giao thức:** HTTP GET công khai, không yêu cầu xác thực JWT.
-  - **Cơ chế thực thi:** Gửi câu lệnh truy vấn kiểm tra `SELECT 1` tới PostgreSQL qua ORM.
-  - **Mã phản hồi HTTP thực tế:** Luôn trả về **`HTTP 200 OK`** cho cả trường hợp bình thường và khi cơ sở dữ liệu gặp sự cố suy giảm dịch vụ (Degraded).
-  - **Cấu trúc JSON phản hồi:**
-    - Khi kết nối cơ sở dữ liệu bình thường: `{"status": "ok", "service": "brewlite-api", "version": "1.0.0", "commit": "dev", "database": "connected", "timestamp": "..."}`.
-    - Khi mất kết nối hoặc truy vấn cơ sở dữ liệu thất bại: `{"status": "degraded", "service": "brewlite-api", "version": "1.0.0", "commit": "dev", "database": "error", "timestamp": "..."}`.
-    *(Lưu ý kỹ thuật: Mã nguồn MVP hiện tại trên feature branch trả HTTP 200 kèm `status: degraded` và `database: error`, chưa cấu hình trả mã lỗi HTTP 503 Service Unavailable)*.
+- **Đối chiếu Hợp đồng Nghiệp vụ & Hiện trạng Mã nguồn:**
+  - **Hợp đồng nghiệp vụ mục tiêu (SRS v1.4.0 §4.13):** Khi hệ thống bình thường, `GET /health` phản hồi `HTTP 200 OK` với payload: `{"status": "ok", "database": "up"}`.
+  - **Hiện trạng mã nguồn thực tế (nhánh feature `apps/api/src/health/`):**
+    - Khi bình thường: Phản hồi `HTTP 200 OK` với `{"status": "ok", "database": "connected", "service": "brewlite-api", ...}`.
+    - Khi mất kết nối cơ sở dữ liệu: Phản hồi `HTTP 200 OK` kèm `status: "degraded"` và `database: "error"`.
+  - **Khoảng sai lệch kỹ thuật được công khai (Disclosed Gap):**
+    - Trường dữ liệu trả về `database: "connected"` chưa khớp với hợp đồng `database: "up"` của SRS v1.4.0.
+    - Mã nguồn chưa cấu hình phản hồi mã lỗi `HTTP 503 Service Unavailable` khi mất kết nối cơ sở dữ liệu.
+    - Do đó, **FR-13 chưa hoàn toàn đáp ứng hợp đồng phản hồi theo đặc tả SRS**. Tuyệt đối không sửa đổi SRS để hợp thức hóa mã nguồn chưa đạt yêu cầu, và không sửa mã nguồn trong PR tài liệu này.
+    - Việc chuẩn hóa mã nguồn `HealthController` để khớp chính xác giá trị `database: "up"` và bổ sung kiểm thử tự động API contract test sẽ được thực hiện trong giai đoạn triển khai **Task 5 (Sprint 2 Delivery)**.
+    - Tuyệt đối không tuyên bố FR-13 đã hoàn thành triển khai hoặc đã PASS toàn bộ kiểm thử hợp đồng API (hiện chỉ mới đạt smoke test kiểm tra tiến trình sống).
 - **Định Hướng Mở Rộng Mục Tiêu Cho Môi Trường Cloud / Kubernetes (Proposed Target):**
   - Khi triển khai trên các nền tảng điều phối chuyên dụng (Kubernetes, AWS ECS) và tích hợp thư viện chuyên dụng `@nestjs/terminus`:
     - `GET /health/live` (Liveness Probe): Kiểm tra tiến trình NestJS sống, phản hồi HTTP 200 OK.
@@ -269,7 +271,7 @@ Toàn bộ các quyết định công nghệ và kiến trúc then chốt của 
 | **Quản Lý Đơn Hàng (State Machine)** | [ADR-001](adr/adr/001-modular-monolith.md) | [ActivityDiagram.puml](../diagram/ActivityDiagram.puml) | `apps/api/src/orders/` | **Partially Implemented** | `main` tạo đơn PENDING; State Machine đầy đủ trên feature |
 | **Dịch Vụ Thanh Toán Mô Phỏng** | [ADR-003](adr/adr/003-mock-payment.md) | [ActivityDiagram-UC10.puml](../diagram/ActivityDiagram-UC10.puml)<br>[SequenceDiagram-UC10.puml](../diagram/SequenceDiagram-UC10.puml) | *(Feature: `apps/api/src/payments/`)* | **Design Verified** / Feature Implemented | Luồng thanh toán ví/thẻ và OCC đã nghiệm thu Task 2 |
 | **Kiểm Soát Tồn Kho Đồng Thời (OCC)** | [ADR-003](adr/adr/003-mock-payment.md) | [SequenceDiagram-UC10.puml](../diagram/SequenceDiagram-UC10.puml) | *(Feature: `payments.service.ts`)* | **Design Verified** / Feature Implemented | Concurrency race condition test pass trên PR #9 |
-| **Endpoint Health Check (`GET /health`)** | [ADR-004](adr/adr/004-logging-healthcheck.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | *(Feature: `apps/api/src/health/`)* | **Design Verified** / Feature Implemented | HTTP 200 (ok / degraded); Smoke test `GET /health` pass trong CI |
+| **Endpoint Health Check (`GET /health`)** | [ADR-004](adr/adr/004-logging-healthcheck.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | *(Feature: `apps/api/src/health/`)* | **Design Verified** / Feature Partially Implemented | Chưa có trên `main`; feature trả `connected` (lệch SRS `up`, cần chuẩn hóa ở Task 5); smoke test pass |
 | **Quản Lý Cấu Hình (Env Vars)** | [ADR-005](adr/adr/005-configuration-management.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | `.env.example`, `apps/api/src/app.module.ts` | **Implemented** | `@nestjs/config` nạp biến môi trường thành công |
 | **Containerization (Docker Compose)** | [ADR-001](adr/adr/001-modular-monolith.md) | [DeploymentDiagram.svg](DeploymentDiagram.svg) | `docker-compose.yml`, `Dockerfile` | **Implemented** | `docker compose up` khởi chạy 3 container thành công |
 | **Tự Động Hóa CI Quality Gates** | - | [DeploymentDiagram.svg](DeploymentDiagram.svg) | `.github/workflows/quality.yml` | **Implemented** | GitHub Actions Run [43832699668](https://github.com/vohuunghiaah/brewlite/actions/runs/43832699668) SUCCESS |

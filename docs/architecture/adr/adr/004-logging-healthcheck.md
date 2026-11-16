@@ -11,37 +11,49 @@ Hệ thống BrewLite cần cơ chế ghi nhận nhật ký vận hành (Logging
 
 ## 2. Quyết Định Kiến Trúc (Decision)
 
-### 2.1. Hợp Đồng Health Check MVP Cốt Lõi (Đã Triển Khai trên Feature Branch — Khớp SRS v1.4.0 §4.13)
-Để đáp ứng yêu cầu kiểm tra sức khỏe của MVP tối giản và chuẩn hóa hợp đồng giao tiếp giữa API, Docker và Synthetic Monitoring:
-- **Endpoint duy nhất:** **`GET /health`** (hợp nhất kiểm tra tiến trình ứng dụng và tình trạng kết nối tới PostgreSQL).
-- **Giao thức:** HTTP GET công khai, không yêu cầu token xác thực JWT.
-- **Cơ chế thực thi:** Gửi câu lệnh truy vấn kiểm tra `SELECT 1` tới cơ sở dữ liệu PostgreSQL thông qua ORM.
-- **Mã trạng thái HTTP thực tế:** Luôn trả về **`HTTP 200 OK`** cho cả trường hợp bình thường và khi cơ sở dữ liệu gặp sự cố suy giảm dịch vụ (Degraded).
-- **Cấu trúc dữ liệu JSON phản hồi:**
-  - *Khi PostgreSQL kết nối thành công (`status: "ok"`):*
-    ```json
-    {
-      "status": "ok",
-      "timestamp": "2026-11-16T15:00:00.000Z",
-      "service": "brewlite-api",
-      "version": "1.0.0",
-      "commit": "dev",
-      "database": "connected"
-    }
-    ```
-  - *Khi PostgreSQL mất kết nối hoặc truy vấn thất bại (`status: "degraded"`):*
-    ```json
-    {
-      "status": "degraded",
-      "timestamp": "2026-11-16T15:00:00.000Z",
-      "service": "brewlite-api",
-      "version": "1.0.0",
-      "commit": "dev",
-      "database": "error"
-    }
-    ```
-  > [!NOTE]
-  > **Lưu ý kỹ thuật về mã phản hồi HTTP:** Mã nguồn MVP thực tế trên feature branch hiện không trả mã lỗi HTTP 503 mà trả về HTTP 200 kèm thuộc tính `status: "degraded"` và `database: "error"`.
+### 2.1. Hợp Đồng Health Check MVP: Đối Chiếu SRS v1.4.0 & Mã Nguồn Thực Tế
+
+Nhằm đảm bảo tính trung thực học thuật và phân định rõ ràng giữa yêu cầu nghiệp vụ và hiện trạng mã nguồn:
+
+1. **Hợp đồng nghiệp vụ mục tiêu (SRS v1.4.0 §4.13):**
+   - Kịch bản nghiệm thu FR-13 trong SRS v1.4.0 quy định rõ ràng:
+     Khi hệ thống Backend API và Database PostgreSQL hoạt động bình thường, gửi yêu cầu `GET /health` thì hệ thống phản hồi `HTTP 200 OK` với payload JSON:
+     ```json
+     {
+       "status": "ok",
+       "database": "up"
+     }
+     ```
+2. **Hiện trạng mã nguồn thực tế trên nhánh tính năng (`feature/sprint2-full-flow`):**
+   - Endpoint `GET /health` tại `apps/api/src/health/health.controller.ts` hiện đang trả về payload:
+     - *Khi PostgreSQL kết nối thành công:*
+       ```json
+       {
+         "status": "ok",
+         "timestamp": "2026-11-16T15:00:00.000Z",
+         "service": "brewlite-api",
+         "version": "1.0.0",
+         "commit": "dev",
+         "database": "connected"
+       }
+       ```
+     - *Khi PostgreSQL mất kết nối hoặc truy vấn lỗi:*
+       ```json
+       {
+         "status": "degraded",
+         "timestamp": "2026-11-16T15:00:00.000Z",
+         "service": "brewlite-api",
+         "version": "1.0.0",
+         "commit": "dev",
+         "database": "error"
+       }
+       ```
+3. **Khoảng sai lệch kỹ thuật được công khai (Disclosed Implementation Gap):**
+   - **Sai lệch giá trị trường dữ liệu:** SRS v1.4.0 §4.13 quy định giá trị mục tiêu là `database: "up"`, trong khi mã nguồn thực tế trên feature branch đang trả về `database: "connected"`.
+   - **Sai lệch mã trạng thái HTTP khi lỗi:** Mã nguồn hiện tại trả về `HTTP 200 OK` kèm `status: "degraded"` và `database: "error"`, chưa cấu hình trả mã lỗi chuẩn RESTful `HTTP 503 Service Unavailable`.
+   - **Kết luận nghiệm thu kiến trúc:** Yêu cầu chức năng **FR-13 chưa hoàn toàn đáp ứng hợp đồng phản hồi theo đặc tả SRS**. Tuyệt đối **không sửa SRS để hợp thức hóa mã nguồn chưa đạt chuẩn**, và không sửa mã nguồn ứng dụng trong PR tài liệu này.
+   - **Kế hoạch khắc phục:** Việc chuẩn hóa mã nguồn `HealthController` để khớp chính xác giá trị `database: "up"` và bổ sung bộ kiểm thử tự động API contract test sẽ được thực hiện trong giai đoạn triển khai **Task 5 (Sprint 2 Delivery)**.
+   - **Tuyên bố chất lượng:** Tuyệt đối không tuyên bố FR-13 đã hoàn thành triển khai hoặc đã PASS toàn bộ kiểm thử hợp đồng API (chỉ mới đạt smoke test kiểm tra tiến trình sống).
 
 ### 2.2. Định Hướng Mở Rộng Mục Tiêu Cho Môi Trường Cloud / Kubernetes (Proposed Target)
 Khi hệ thống mở rộng quy mô triển khai lên các nền tảng điều phối chuyên dụng (Kubernetes, AWS ECS, Google Cloud Run) và tích hợp thư viện chuyên dụng `@nestjs/terminus`:
@@ -58,7 +70,7 @@ Nhóm sử dụng `Logger` tích hợp sẵn của NestJS cho nhu cầu ghi nh�
 
 ## 3. Lý Do Lựa Chọn & Phù Hợp Nghiệp Vụ
 
-1. **Khớp nối hoàn hảo với SRS v1.4.0 §4.13:** SRS yêu cầu kịch bản kiểm tra sức khỏe hệ thống thông qua `GET /health` trả về trạng thái hoạt động của Backend và kết nối PostgreSQL.
+1. **Đối chiếu và công khai khoảng sai lệch với SRS v1.4.0 §4.13:** SRS v1.4.0 quy định hợp đồng mục tiêu là `database: "up"`, trong khi mã nguồn thực tế hiện tại trên feature branch trả về `database: "connected"`. Việc ghi nhận công khai khoảng sai lệch này giúp định hướng chính xác các ca kiểm thử và việc chuẩn hóa mã nguồn trong Task 5 mà không làm sai lệch đặc tả yêu cầu gốc.
 2. **Triển khai tinh gọn cho MVP:** Một endpoint `GET /health` duy nhất giảm độ phức tạp cho ứng dụng trong giai đoạn ban đầu, đủ để Docker compose và kịch bản synthetic monitoring kiểm tra định kỳ tính sẵn sàng (`NFR-05`, `NFR-07`).
 3. **Minh bạch hóa hiện trạng kỹ thuật:** Phân định rõ ràng giữa endpoint thực tế đã có mã nguồn (`GET /health` HTTP 200) và các endpoint mục tiêu (`/health/live`, `/health/ready` HTTP 503), ngăn chặn việc suy diễn sai lệch trong nghiệm thu kiến trúc.
 
