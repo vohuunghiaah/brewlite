@@ -71,22 +71,22 @@ rectangle "Hệ Thống BrewLite" {
 }
 
 ' Liên kết actor Khách hàng với các nghiệp vụ trực tiếp sử dụng.
-UC1 -[norank]- Customer
-UC2 -[norank]- Customer
-UC3 -[norank]- Customer
-UC7 -[norank]- Customer
-UC8 -[norank]- Customer
-UC4 -[norank]- Customer
-UC5 -[norank]- Customer
-UC6 -[norank]- Customer
-UC9 -[norank]- Customer
-UC10 -[norank]- Customer
-UC11 -[norank]- Customer
+Customer -- UC1
+Customer -- UC2
+Customer -- UC3
+Customer -- UC7
+Customer -- UC8
+Customer -- UC4
+Customer -- UC5
+Customer -- UC6
+Customer -- UC9
+Customer -- UC10
+Customer -- UC11
 
 ' UC-04 tạo đơn PENDING; UC-10 được khách hàng kích hoạt độc lập trên đơn đã tồn tại.
 UC9 -[#333333,dashed,norank]-> UC4 : <<extend>>
 
-Customer -[hidden]-> UC7
+Customer -[hidden]-> UC1
 Customer -[hidden]right-> Barista
 PaymentGateway -[hidden]right-> Monitor
 
