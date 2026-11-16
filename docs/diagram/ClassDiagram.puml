@@ -1,126 +1,208 @@
 @startuml
-title BrewLite - Domain Class Diagram (UC-01: Đặt đồ uống & Thanh toán)
-
+' Assignment 2 Task 2.3. Domain target, not an ORM implementation diagram.
+' Sources: SRS 1.4.0 FR-01..12, BR-PROMO-01, GAP-01..05;
+' use-case-place-order.md 2.2..2.4, BR-REFUND-OCC, 4.1;
+' use-cases.md 3.1, 4.1; accepted Activity/Sequence UC-04, UC-10, Unified.
+' Data reference: feature/sprint2-full-flow @ 588e3362, prisma/schema.prisma.
+' Main @ eeb51b13 has partial Product/Order/OrderItem with public fields.
+' All methods are PROPOSED allocations of specified behavior, not existing signatures.
+title BrewLite - Assignment 2 / Task 2.3\nDomain Class Diagram - UC-04, UC-10, UC-CORE-01
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
 skinparam classAttributeIconSize 0
-skinparam backgroundColor #FFFFFF
-skinparam Shadowing false
+skinparam backgroundColor white
+skinparam monochrome true
+skinparam shadowing false
+skinparam classBackgroundColor white
+skinparam packageBackgroundColor white
+skinparam noteBackgroundColor white
+skinparam nodesep 80
+skinparam ranksep 90
+hide circle
+top to bottom direction
 
-' ================= Enumerations =================
-enum OrderStatus {
-  PENDING
-  RECEIVED
-  PREPARING
-  COMPLETED
-  CANCELLED
-}
-
-enum PaymentStatus {
-  PENDING
-  SUCCESS
-  FAILED
-}
-
-enum PaymentMethod {
-  MOCK_EWALLET
-  MOCK_CARD
-  CASH
-}
-
-enum ProductStatus {
-  ACTIVE
-  INACTIVE
-  OUT_OF_STOCK
-}
-
-enum LoyaltyType {
-  EARN
-  REDEEM
-}
-
-' ================= Domain Classes =================
-class User {
-  - userId: String
+class User <<design>> {
+  - userId: UUID
   - fullName: String
-  - email: String
+  - email: String {unique}
   - passwordHash: String
-  - phoneNumber: String
-  - loyaltyPoints: Integer
+  - role: UserRole = CUSTOMER
+  - loyaltyPoints: Integer = 0
   --
-  + register(): Void
-  + login(): String
+  + getLoyaltyPoints(): Integer
 }
-
-class Product {
-  - productId: String
-  - name: String
-  - basePrice: Decimal
-  - stockQuantity: Integer
-  - status: ProductStatus
-  --
-  + isAvailable(): Boolean
-}
-
-class Order {
-  - orderId: String
+class Order <<design>> {
+  - orderId: UUID
+  - orderCode: String {unique}
+  - subtotal: Decimal
+  - discountAmount: Decimal = 0
   - totalAmount: Decimal
-  - idempotencyKey: String
-  - status: OrderStatus
+  - status: OrderStatus = PENDING
+  - note: String [0..1]
+  - promoCode: String [0..1]
   - createdAt: DateTime
   --
   + calculateTotal(): Decimal
+  + assertTransition(next: OrderStatus): Void
+  + isOwnedBy(userId: UUID): Boolean
 }
-
-class OrderItem {
-  - orderItemId: String
-  - size: String
-  - toppings: List<String>
+class OrderItem <<design>> {
+  - orderItemId: UUID
+  - size: ProductSize
+  - toppings: String [0..*] {ordered}
   - quantity: Integer
   - unitPrice: Decimal
-  - subTotal: Decimal
+  - /lineTotal: Decimal
   --
-  + calculateSubTotal(): Decimal
+  + calculateLineTotal(): Decimal
 }
-
-class Payment {
-  - paymentId: String
-  - amount: Decimal
-  - method: PaymentMethod
-  - status: PaymentStatus
-  - transactionId: String
-  - idempotencyKey: String
+class Product <<design>> {
+  - productId: UUID
+  - name: String
+  - description: String [0..1]
+  - category: String
+  - imageUrl: String [0..1]
+  - basePrice: Decimal
+  - isAvailable: Boolean = true
+  - stock: Integer
+  - version: Integer
+  --
+  + canSupply(quantity: Integer): Boolean
+}
+class Payment <<design>> {
+  - paymentId: UUID
+  - ownerId: UUID {readOnly}
+  - amount: Decimal {readOnly}
+  - method: PaymentMethod {readOnly}
+  - status: PaymentStatus = PENDING
+  - idempotencyKey: UUID {unique, readOnly}
+  - normalizedPayload: String {readOnly}
+  - merchantReference: String {unique, readOnly}
+  - transactionId: String [0..1]
+  - refundKey: String [0..1]
+  - failureReason: String [0..1]
   - createdAt: DateTime
   --
-  + processPayment(): Boolean
+  + matchesPayload(payload: String): Boolean
+  + blocksNewAttempt(): Boolean
+  + needsReconciliation(): Boolean
 }
-
-class Promotion {
-  - promotionId: String
-  - code: String
-  - discountPercent: Decimal
-  - maxDiscountAmount: Decimal
-  - startDate: DateTime
-  - endDate: DateTime
+class Promotion <<design>> {
+  - promotionId: UUID
+  - code: String {unique}
+  - discountType: DiscountType
+  - discountValue: Decimal
+  - minOrderValue: Decimal
+  - validFrom: DateTime
+  - validUntil: DateTime
   - isActive: Boolean
   --
-  + isValid(): Boolean
+  + isValid(subtotal: Decimal, at: DateTime): Boolean
+  + calculateDiscount(subtotal: Decimal): Decimal
 }
-
-class LoyaltyTransaction {
-  - transactionId: String
+class LoyaltyTransaction <<design>> {
+  - transactionId: UUID
   - points: Integer
   - type: LoyaltyType
+  - description: String
   - createdAt: DateTime
+  --
+  + getPoints(): Integer
 }
 
-' ================= Relationships & Multiplicities =================
-User "1" -- "0..*" Order : places >
-User "1" -- "0..*" LoyaltyTransaction : accumulates >
+' Domain links, not declarations of new database foreign keys.
+' Authenticated UC-04 requires one owner; no guest Order in target.
+User "1" -right- "0..*" Order : places
+Order "1" *-down- "1..*" OrderItem : contains
+OrderItem "0..*" -down- "1" Product : references
+' Failed attempts retained; a confirmed-new attempt has a new key.
+Order "1" -down- "0..*" Payment : attempts
+' One promoCode in the contract; no stacking.
+Order "0..*" -right- "0..1" Promotion : applies
+User "1" -down- "0..*" LoyaltyTransaction : owns ledger
+' Optional orderId + array in Prisma; does not prescribe reward frequency.
+Order "0..1" -down- "0..*" LoyaltyTransaction : referenced by
 
-Order "1" *-- "1..*" OrderItem : contains >
-Order "1" -- "0..1" Payment : processed by >
-Order "0..*" -- "0..1" Promotion : applies >
 
-Product "1" -- "0..*" OrderItem : ordered as >
-Order "0..1" -- "0..1" LoyaltyTransaction : generates / uses >
+' Hidden edges only control layout.
+LoyaltyTransaction -[hidden]right-> OrderItem
+OrderItem -[hidden]right-> Payment
 
+package "Domain types" {
+  enum OrderStatus {
+    PENDING
+    PAID
+    PAYMENT_FAILED
+    PREPARING
+    READY
+    COMPLETED
+    CANCELLED
+  }
+  enum PaymentStatus {
+    PENDING
+    SUCCESS
+    FAILED
+    REFUND_PENDING
+    REFUNDED
+  }
+  enum PaymentMethod {
+    E_WALLET
+    BANK_CARD
+  }
+  enum ProductSize {
+    SMALL
+    MEDIUM
+    LARGE
+  }
+  enum DiscountType {
+    PERCENTAGE
+    FIXED_AMOUNT
+  }
+  enum LoyaltyType {
+    EARN
+    REDEEM
+  }
+  enum UserRole {
+    CUSTOMER
+    STAFF
+    ADMIN
+  }
+  OrderStatus -[hidden]right-> PaymentStatus
+  PaymentStatus -[hidden]right-> PaymentMethod
+  PaymentMethod -[hidden]right-> ProductSize
+  ProductSize -[hidden]right-> DiscountType
+  DiscountType -[hidden]right-> LoyaltyType
+  LoyaltyType -[hidden]right-> UserRole
+}
+LoyaltyTransaction -[hidden]down-> OrderStatus
+Product -[hidden]down-> ProductSize
+Payment -[hidden]down-> UserRole
+
+legend bottom
+  **Phạm vi và ký hiệu**
+  <<design>>: miền mục tiêu, thuộc tính private (-), operation public (+).
+  Operations là phân bổ trách nhiệm đề xuất; chưa có các method này trên entity main.
+  UUID ánh xạ String; Decimal là tiền chính xác; [0..1] tùy chọn; / là dẫn xuất.
+  Quan hệ thể hiện tham chiếu đối tượng; không lặp lại toàn bộ thuộc tính association.
+  AuthService xử lý đăng ký/JWT; application service, repository và worker điều phối DB/cổng.
+  **UC-04 / UC-10 và bất biến giao dịch**
+  TX1 chỉ tạo Order + OrderItem PENDING; không thu tiền, giữ/trừ kho hoặc chống trùng đơn (GAP-05).
+  Payment = một attempt. ownerId = chủ Order; payload bất biến gồm orderId, amount, method.
+  JWT/quyền sở hữu trước tra cứu key. Cùng key + khác payload: 409; cùng payload: kết quả cũ.
+  FAILED đã xác minh mới cho attempt mới / key mới. Cấp quyền trên Order phải nguyên tử.
+  Chặn attempt mới khi đang xử lý, PENDING chưa đối soát, REFUND_PENDING/REFUNDED hoặc Order không hợp lệ.
+  Trước gọi cổng: COMMIT attempt PENDING + merchantReference + công việc đối soát bền vững.
+  Lịch chạy/quyền xử lý/completion thuộc công việc nền; cấu trúc lưu trữ cụ thể chưa chốt (GAP-01).
+  TX2: OCC kiểm tra stock/version, trừ kho + Payment SUCCESS + Order PAID trong cùng COMMIT.
+  OCC lỗi: rollback TX2; TX3 lưu transactionId + refundKey cố định + REFUND_PENDING + công việc hoàn tiền.
+  Chỉ gọi hoàn sau COMMIT TX3; mọi retry dùng cùng refundKey; không tăng kho sau rollback TX2.
+  REFUNDED + CANCELLED cùng COMMIT. COMMIT chưa rõ: giữ công việc, xác minh trước áp dụng lại.
+  Không xác nhận PAID/REFUNDED trước COMMIT. Worker không trả vào HTTP đã đóng; GET mới có kiểm tra quyền.
+  **Giá, tồn kho và phần mở rộng**
+  unitPrice/toppings/size là snapshot; lineTotal = quantity * unitPrice; total = max(0, subtotal - discountAmount).
+  canSupply chỉ đọc: quantity > 0, isAvailable và stock >= quantity; OCC nguyên tử thuộc repository trong TX2.
+  Promotion: một mã/đơn; BREW20 = PERCENTAGE 20, minOrderValue 50000 (BR-PROMO-01).
+  Loyalty là Should Have: EARN sau PAID, không lặp khi retry; tỷ lệ chờ PO (GAP-03).
+  0..* ledger là khả năng lưu lịch sử; REDEEM giữ theo schema, chưa khẳng định luồng đổi/hoàn điểm đã chốt.
+endlegend
 @enduml
