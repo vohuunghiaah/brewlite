@@ -7,6 +7,8 @@ skinparam monochrome true
 skinparam shadowing false
 skinparam defaultFontName Arial
 skinparam roundCorner 0
+skinparam nodesep 35
+skinparam ranksep 35
 skinparam usecase {
     BackgroundColor White
     BorderColor Black
@@ -28,17 +30,22 @@ rectangle "Hệ Thống BrewLite" {
     usecase "UC-04: Đặt hàng\n(Place Order)" as UC4
     usecase "UC-10: Thanh toán\nkhông tiền mặt" as UC10
 
-    note "UC-04 thành công khi TX1 commit Order PENDING.\nKhách hàng kích hoạt UC-10 độc lập trên đơn đã có.\nĐơn chưa thanh toán chưa được pha chế." as N1
-    UC4 .. N1
+    note "UC-04 thành công khi TX1 commit\nOrder PENDING.\nKhách hàng kích hoạt UC-10 độc lập\ntrên đơn đã có.\nĐơn chưa thanh toán chưa được pha chế." as N1
+    UC4 -[norank,dashed]- N1
+    ' Liên kết ẩn chỉ xếp ba Use Case theo trục dọc.
+    UC9 -[hidden]left-> UC4
+    UC4 -[hidden]left-> UC10
+    UC4 -[hidden]down-> N1
 }
 
 actor "Cổng Thanh Toán Mô Phỏng\n(Mock Payment Service)" as PaymentGateway
 
-Customer -- UC4
-Customer -- UC10
-Customer -- UC9
+Customer -[norank]- UC4
+Customer -[hidden]down-> UC4
+Customer -[norank]- UC10
+Customer -[norank]- UC9
 
-UC9 ..> UC4 : <<extend>>
+UC9 -[dashed,norank]-> UC4 : <color:transparent>..................................................</color><<extend>>
 
 UC10 -- PaymentGateway
 
