@@ -7,7 +7,7 @@
 skinparam monochrome true
 skinparam shadowing false
 skinparam defaultFontName Arial
-skinparam linetype ortho
+skinparam linetype spline
 skinparam roundCorner 0
 skinparam defaultFontSize 18
 skinparam titleFontSize 26
@@ -15,24 +15,45 @@ skinparam actorFontSize 18
 skinparam actorBorderColor #333333
 skinparam actorFontColor #222222
 skinparam svgDimensionStyle false
-skinparam padding 24
+skinparam padding 0
 skinparam ArrowColor #999999
 skinparam usecaseBorderThickness 1.5
-skinparam nodesep 80
-skinparam ranksep 90
+skinparam nodesep 30
+skinparam ranksep 25
 skinparam usecase {
     BackgroundColor White
     BorderColor Black
     ArrowColor #999999
 }
+skinparam noteBackgroundColor White
+skinparam noteBorderColor transparent
+skinparam noteFontName Arial
+skinparam noteFontSize 18
 left to right direction
 
 title BREWLITE — USE CASE TỔNG QUÁT
 
-actor "Khách hàng\n(Customer)" as Customer
-actor "Nhân viên quầy\n(Barista)" as Barista
-actor "Cổng Thanh Toán\n(Mock Payment)" as PaymentGateway
-actor "Hệ thống Giám sát\n(Monitoring)" as Monitor
+' Nhãn tách khỏi hộp actor để đường nối chạm sát hình người.
+actor " " as Customer
+note left of Customer
+Khách hàng
+(Customer)
+end note
+actor " " as Barista
+note right of Barista
+Nhân viên quầy
+(Barista)
+end note
+actor " " as PaymentGateway
+note right of PaymentGateway
+Cổng Thanh Toán
+(Mock Payment)
+end note
+actor " " as Monitor
+note right of Monitor
+Hệ thống Giám sát
+(Monitoring)
+end note
 
 rectangle "Hệ Thống BrewLite" {
     usecase "**UC-01: Xem menu**\nđồ uống" as UC1
@@ -51,21 +72,19 @@ rectangle "Hệ Thống BrewLite" {
 
     usecase "**UC-12: Cập nhật**\ntiến độ pha chế" as UC12
     usecase "**UC-13: Kiểm tra**\nsức khỏe hệ thống" as UC13
-    ' Năm hàng nghiệp vụ; liên kết ẩn chỉ ràng buộc bố cục.
-    UC1 -[hidden]down-> UC2
-    UC2 -[hidden]down-> UC3
-    UC7 -[hidden]down-> UC8
-    UC8 -[hidden]down-> UC11
-    UC4 -[hidden]down-> UC10
-    UC10 -[hidden]down-> UC9
-    UC5 -[hidden]down-> UC6
-    UC12 -[hidden]down-> UC13
-    UC1 -[hidden]left-> UC7
-    UC7 -[hidden]left-> UC4
-    UC4 -[hidden]left-> UC5
-    UC5 -[hidden]left-> UC12
-    UC3 -[hidden]left-> UC11
+    ' Trục nghiệp vụ dọc; khuyến mãi nằm ngay trước đặt hàng.
+    UC1 -[hidden]left-> UC2
+    UC2 -[hidden]left-> UC3
+    UC3 -[hidden]left-> UC7
+    UC7 -[hidden]left-> UC8
+    UC8 -[hidden]left-> UC11
     UC11 -[hidden]left-> UC9
+    UC9 -[hidden]left-> UC4
+    UC4 -[hidden]left-> UC10
+    UC10 -[hidden]left-> UC5
+    UC5 -[hidden]left-> UC6
+    UC6 -[hidden]left-> UC12
+    UC12 -[hidden]left-> UC13
 
 }
 
@@ -83,16 +102,17 @@ Customer -[norank]- UC10
 Customer -[norank]- UC11
 
 ' UC-04 tạo đơn PENDING; UC-10 được khách hàng kích hoạt độc lập trên đơn đã tồn tại.
-UC9 -[#333333,dashed,norank]-> UC4 : <<extend>>
+' Khoảng đệm trong suốt đặt nhãn extend bên phải đường dọc.
+UC9 -[#333333,dashed,norank]left-> UC4 : <color:transparent>........................................</color><<extend>>
 
 Customer -[hidden]down-> UC4
-UC9 -[hidden]down-> PaymentGateway
+UC10 -[hidden]down-> PaymentGateway
 UC13 -[hidden]down-> Monitor
 UC12 -[hidden]down-> Barista
 
 ' Các actor bên ngoài hệ thống
-UC10 -- PaymentGateway
-Barista -- UC12
-UC13 -- Monitor
+UC10 -[norank]- PaymentGateway
+Barista -[norank]- UC12
+UC13 -[norank]- Monitor
 
 @enduml
