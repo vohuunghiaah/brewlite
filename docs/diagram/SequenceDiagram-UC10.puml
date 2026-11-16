@@ -188,6 +188,7 @@ deactivate UI
 
 else Sự kiện: công việc đối soát đến hạn
 == Lượt tác vụ nền độc lập; không có HTTP chờ ==
+Worker -> Worker: Kích hoạt lượt công việc đến hạn
 activate Worker
 Worker -> DB: Nhận công việc đến hạn; giữ quyền xử lý nguyên tử
 activate DB
