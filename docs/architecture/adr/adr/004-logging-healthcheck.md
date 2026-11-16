@@ -6,7 +6,7 @@
 ## 1. Bối Cảnh (Context)
 
 Hệ thống BrewLite cần cơ chế ghi nhận nhật ký vận hành (Logging) và kiểm tra tình trạng sẵn sàng của dịch vụ (Health Check) nhằm phục vụ phát hiện lỗi, hỗ trợ điều phối container (Docker Compose / Cloud PaaS) và tự động hóa kiểm thử trong CI/CD pipeline:
-- Trên nhánh chính `main` (TypeORM baseline), hệ thống hiện chỉ có `AppController` với endpoint gốc `GET /` trả về chuỗi văn bản `'Hello World!'`, **chưa có endpoint kiểm tra kết nối cơ sở dữ liệu** ([GAP-04](../../audits/task2-to-task3-gap-audit.md#24-gap-04-endpoint-kiểm-tra-sức-khỏe-health-check-api)).
+- Trên nhánh chính `main` (TypeORM baseline), hệ thống hiện chỉ có `AppController` với endpoint gốc `GET /` trả về chuỗi văn bản `'Hello World!'`, **chưa có endpoint kiểm tra kết nối cơ sở dữ liệu** ([GAP-04](../../../audits/task2-to-task3-gap-audit.md#24-gap-04-endpoint-kiểm-tra-sức-khỏe-health-check-api)).
 - Trên nhánh tính năng (`feature/sprint2-full-flow`), hệ thống đã triển khai thử nghiệm `HealthModule` và `HealthController` để phục vụ giám sát container và kiểm thử tự động.
 
 ## 2. Quyết Định Kiến Trúc (Decision)
