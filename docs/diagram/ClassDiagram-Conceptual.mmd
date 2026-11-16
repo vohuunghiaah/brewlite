@@ -1,0 +1,70 @@
+---
+title: BrewLite - Conceptual Class Diagram
+config:
+  deterministicIds: true
+  deterministicIDSeed: brewlite-conceptual
+  look: classic
+  handDrawnSeed: 42
+  theme: base
+  themeVariables:
+    fontFamily: Arial
+    fontSize: 18px
+    primaryColor: '#ffffff'
+    primaryTextColor: '#202020'
+    primaryBorderColor: '#404040'
+    lineColor: '#404040'
+    secondaryColor: '#ffffff'
+    tertiaryColor: '#ffffff'
+  class:
+    hideEmptyMembersBox: true
+---
+classDiagram
+  direction LR
+  %% Presentation view; the detailed ClassDiagram.puml remains authoritative.
+  %% Customer/Staff are conceptual roles, not implemented subclasses.
+  %% Menu is a view of existing products (FR-01), not a new persistent entity.
+  class User {
+    id
+    fullName
+    email
+  }
+  class Customer {
+    loyaltyPoints
+    placeOrder()
+  }
+  class Staff {
+    updateOrderStatus()
+  }
+  class Order {
+    orderCode
+    status
+    totalAmount
+  }
+  class OrderItem {
+    quantity
+    size
+    toppings
+    unitPrice
+  }
+  class Product {
+    name
+    basePrice
+    isAvailable
+  }
+  class Payment {
+    amount
+    status
+    method
+  }
+  class Menu {
+    viewProducts()
+  }
+
+  User <|-- Customer
+  User <|-- Staff
+  Customer "1" -- "0..*" Order : places
+  Staff -- Order : updates paid orders
+  Order "1" *-- "1..*" OrderItem : contains
+  Order "1" -- "0..*" Payment : payment attempts
+  OrderItem "0..*" -- "1" Product : references
+  Menu o-- Product : lists
