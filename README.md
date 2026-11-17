@@ -240,9 +240,10 @@ npm run build
 | **Task 2.1: Activity Diagram** | Phân định 5 swimlanes, 2 giao dịch độc lập TX1 (`PENDING`) & TX2 (`PAID`), bù trừ hoàn tiền. | **PASS** | [Activity Diagrams](docs/diagram/ActivityDiagram.puml), PR #19 |
 | **Task 2.2: Sequence Diagram** | Tương tác tuần tự các tầng, worker activation theo sự kiện `due-work`, xử lý thất bại OCC. | **PASS** | [Sequence Diagrams](docs/diagram/SequenceDiagram.puml), PR #20 |
 | **Task 2.3: Class Diagram** | Mô hình lớp miền (Domain Class Diagram) chuẩn hóa bằng cú pháp Mermaid. | **PASS** | [ClassDiagram-Conceptual.mmd](docs/diagram/ClassDiagram-Conceptual.mmd), PR #21 |
-| **Task 3.1: Architecture Decisions** | Kiến trúc Modular Monolith, tài liệu kiến trúc, hệ thống ADR-001 -> ADR-006. | **IN PROGRESS** | [Tài liệu Kiến trúc](docs/architecture/README.md), Nhánh PR #23 |
-| **Task 3.2: Deployment Diagram** | Sơ đồ Triển khai UML, phân định môi trường Local, CI/CD và Target Production. | **DESIGN COMPLETE / FINAL ACCEPTANCE PENDING** | [Deployment Diagram](docs/architecture/DeploymentDiagram.svg), Nhánh PR #23 |
-| **Task 4: Sprint 1 Implementation** | Nền tảng mã nguồn Sprint 1: Next.js + NestJS + TypeORM trên `main`, Products & Orders cơ bản, Quality Gates CI. | **BASELINE ACTIVE** | CI Run [43832699668](https://github.com/vohuunghiaah/brewlite/actions/runs/43832699668) SUCCESS |
+| **Task 3.1: Architecture Decisions** | Kiến trúc Modular Monolith, tài liệu kiến trúc, hệ thống ADR-001 -> ADR-006. | **PASS** | [Tài liệu Kiến trúc](docs/architecture/README.md), PR #23 đã MERGED (commit `607c6d40`) |
+| **Task 3.2: Deployment Diagram** | Sơ đồ Triển khai UML, phân định môi trường Local, CI/CD và Target Production AWS Lightsail (ADR-007). | **PASS** | [Deployment Diagram](docs/architecture/DeploymentDiagram.svg), PR #24 đã MERGED (commit `4dd639ea`) |
+| **Task 4.1: Repository Setup & Backlog** | Cấu trúc Monorepo (`apps/web`, `apps/api`, `docs`), Git flow, DoD, Backlog Sprint 1 & 2, CI Quality Gates. | **TECHNICAL PASS / PENDING FINAL SIGN-OFF** | [Bằng chứng Task 4.1](docs/task-4.1-verification.md), PR #6 MERGED (commit `e744a143`), Issue #1 In Review |
+| **Task 4: Sprint 1 Implementation** | Nền tảng mã nguồn Sprint 1: Next.js + NestJS + TypeORM trên `main`, Products & Orders cơ bản, Quality Gates CI. | **BASELINE ACTIVE** | CI Run [44136367013](https://github.com/vohuunghiaah/brewlite/actions/runs/44136367013) SUCCESS |
 | **Task 5: Sprint 2 & Delivery** | Triển khai Sprint 2 hoàn thiện tính năng MVP, thanh toán, kiểm thử E2E, CD và bàn giao. | **PENDING SPRINT 2** | Mã nguồn thử nghiệm trên `feature/sprint2-full-flow` |
 
 ---
@@ -268,9 +269,16 @@ npm run build
   - [Báo cáo Kiểm toán Khoảng hở GAP-01 -> GAP-05 & So sánh ORM](docs/audits/task2-to-task3-gap-audit.md)
   - [Tổng quan Kiến trúc Hệ thống](docs/architecture/README.md)
   - [Thư mục Quyết định Kiến trúc (ADRs)](docs/architecture/adr/README.md)
+- **Thiết lập Repository & Quản trị Quy trình (Task 4.1):**
+  - [Bằng chứng Kiểm toán & Nghiệm thu Task 4.1](docs/task-4.1-verification.md)
+  - [Cấu hình GitHub, Branch Protection & CI Quality Gates](docs/github-setup.md)
+  - [Product Backlog Sprint 1 & Sprint 2](docs/backlog/product-backlog.md)
+  - [Kế hoạch Sprint 1](docs/backlog/sprint-1.md)
+  - [Kế hoạch Sprint 2](docs/backlog/sprint-2.md)
   - [Chiến lược Phân nhánh Git](docs/branching-strategy.md)
   - [Quy ước Commit (Conventional Commits)](docs/commit-convention.md)
   - [Định nghĩa Hoàn thành (Definition of Done - DoD)](docs/definition-of-done.md)
+
 
 ---
 

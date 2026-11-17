@@ -41,6 +41,32 @@ Kiểm thử frontend/backend, build, dependency, import, Docker: N/A vì không
 - PASS: items.totalCount=5, Issue #1–#5 xuất hiện duy nhất; #1 In Review, #2–#5 Backlog. Labels Sprint 1/Sprint 2 được giữ nguyên.
 - PASS: [PR #6](https://github.com/vohuunghiaah/brewlite/pull/6) vào main, OPEN, mergedAt=null; chứa đủ 17 tệp thiết lập. reviews=[] tại thời điểm kiểm tra.
 
-## Chưa hoàn tất
+## Trạng thái ngày 03/11/2026 (Lịch sử)
 
-Phần thiết lập kỹ thuật đã hoàn thành; review của nhóm còn chờ. Trạng thái nghiệm thu tổng thể: PARTIAL / In Review, không đánh dấu Done trước review. Không tự merge PR.
+Phần thiết lập kỹ thuật ban đầu đã hoàn thành; review của nhóm còn chờ. Trạng thái nghiệm thu tại thời điểm đó: PARTIAL / In Review.
+
+## Cập nhật kiểm toán và nghiệm thu ngày 18/11/2026
+
+Đợt kiểm toán độc lập phục vụ nghiệm thu Task 4.1 thực hiện ngày 18/11/2026 (Asia/Saigon):
+
+1. **Trạng thái PR #6:**
+   - [PR #6](https://github.com/vohuunghiaah/brewlite/pull/6) (`chore: thiết lập repository BrewLite theo Task 4.1`) đã được **MERGED** vào `main` tại merge commit `e744a14353837bdee2dd73474a20fab094a0bbbf` vào lúc `2026-11-12T13:39:24Z`.
+   - Ghi nhận trung thực: PR #6 được merge bởi chủ repository (`vohuunghiaah`), trường `reviews: []` do chưa có review chéo chính thức của thành viên khác tại thời điểm merge.
+2. **Cấu trúc repository:**
+   - Cấu trúc `apps/web`, `apps/api`, `docs` đã hoàn chỉnh và hoạt động tốt.
+   - `apps/web`: Next.js 16.4.5, React 19.3.0, TypeScript 5, UI components, tests.
+   - `apps/api`: NestJS 12, TypeORM 1.1.2, PostgreSQL 16 driver, entities, controllers, services, seed data, unit tests.
+   - `docs`: Đầy đủ tài liệu yêu cầu (Task 1 SRS v1.4.0), phân tích thiết kế UML (Task 2), kiến trúc (Task 3 ADR-001 -> ADR-007, Sơ đồ Triển khai), backlog và quy trình quản trị.
+3. **Quy tắc `.gitignore` & `.env.example`:**
+   - `.gitignore` tại root đã được cập nhật quy tắc cho dependencies (`node_modules/`), build outputs (`dist/`, `build/`, `.next/`, `*.tsbuildinfo`), test coverage (`coverage/`).
+   - `.env.example` đầy đủ cấu hình cho PostgreSQL, NestJS, Next.js và JWT mẫu mà không chứa thông tin nhạy cảm.
+4. **GitHub Branch Protection trên `main`:**
+   - Đã xác minh qua GitHub API: `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`, `required_conversation_resolution: true`.
+   - Bắt buộc Pull Request, cấm force-push và cấm xóa nhánh.
+5. **CI Quality Gates:**
+   - Workflow `.github/workflows/quality.yml` chạy tự động trên push/PR vào `main`.
+   - Kết quả CI gần nhất trên `main` (commit `4dd639ea` merge PR #24): Run #44136367013 — **SUCCESS**.
+6. **Project Board & Issues:**
+   - GitHub Project #2 ([BrewLite — Product Backlog](https://github.com/users/vohuunghiaah/projects/2)): 5 cột trạng thái (`Backlog`, `Todo`, `In Progress`, `In Review`, `Done`).
+   - 5 Issues #1–#5 gắn đúng nhãn Sprint 1 và Sprint 2, không trùng lặp.
+   - Issue #1 ([BL-00](https://github.com/vohuunghiaah/brewlite/issues/1)): Trạng thái kỹ thuật PASS 100%; trạng thái nghiệm thu quản trị: **BLOCKED — PENDING REVIEW** (chờ chủ repository / người đánh giá ký duyệt nghiệm thu chính thức trước khi chuyển sang Done và đóng Issue).

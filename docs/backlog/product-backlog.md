@@ -55,4 +55,9 @@ Tạo nền tảng chạy được sau khi chọn stack; không tạo ứng dụ
 - Tiêu chí chấp nhận: Có hợp đồng tích hợp nếu kiến trúc cần; kiểm tra luồng tối thiểu đã xác nhận; CI chạy các lệnh thực sự tồn tại; ghi kết quả và hướng dẫn tái hiện.
 - Phụ thuộc: BL-01, BL-02, BL-03
 
-Xem [Sprint 1](sprint-1.md), [Sprint 2](sprint-2.md) và [Project Board](https://github.com/users/vohuunghiaah/projects/2). Project đã có đủ năm Issues và năm trạng thái. Không chuyển BL-00 sang Done trước khi hoàn tất review. Sau merge PR, cập nhật liên kết backlog trong Issues sang main hoặc permalink commit.
+Xem [Sprint 1](sprint-1.md), [Sprint 2](sprint-2.md) và [Project Board](https://github.com/users/vohuunghiaah/projects/2). Project đã có đủ năm Issues và năm trạng thái.
+
+## Cập nhật hiện trạng nghiệm thu Task 4.1 (18/11/2026)
+
+- **BL-00 (Task 4.1):** Nền tảng kỹ thuật và cấu hình repository đã hoàn tất và được merge vào `main` qua [PR #6](https://github.com/vohuunghiaah/brewlite/pull/6) (commit `e744a14353837bdee2dd73474a20fab094a0bbbf`). Toàn bộ tiêu chí kỹ thuật đạt PASS. Trạng thái quản trị: **In Review (BLOCKED — PENDING REVIEW)** trên [Project Board](https://github.com/users/vohuunghiaah/projects/2), chờ đánh giá chính thức từ chủ repository / giảng viên trước khi chuyển Done.
+- **Liên kết tài liệu:** Các đường dẫn tham chiếu đã được chuẩn hóa về nhánh `main`.

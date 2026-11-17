@@ -24,4 +24,22 @@ temp/
 .DS_Store
 Thumbs.db
 Desktop.ini
-# No application stack selected: add dependency/build rules with actual tooling.
+
+# Dependencies
+node_modules/
+/.pnp
+.pnp.*
+
+# Build and distribution outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Test and coverage outputs
+coverage/
+test-results/
+playwright-report/
+
+# Stack tooling rules updated for Next.js, NestJS and TypeScript

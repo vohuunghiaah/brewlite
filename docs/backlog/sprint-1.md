@@ -9,5 +9,7 @@ Mục tiêu: có repository và quy trình cộng tác kiểm chứng được, 
 | 3 | [BL-02 / #3](https://github.com/vohuunghiaah/brewlite/issues/3) | P1 | BL-01 | Quyết định stack, vị trí mã nguồn và chiến lược kiểm thử được review |
 
 Tiêu chí kết thúc: các mục được nhóm nhận vào sprint đạt [DoD](../definition-of-done.md); các đề xuất chưa xác nhận không tự tính là đã hoàn thành.
-BL-00 đang In Review: [Project Board](https://github.com/users/vohuunghiaah/projects/2) đã cấu hình và liên kết đủ Issues; PR #6 chờ review. Chưa có chức năng ứng dụng để nghiệm thu.
+
+BL-00 (Task 4.1): [PR #6](https://github.com/vohuunghiaah/brewlite/pull/6) đã **MERGED** vào `main` (commit `e744a14353837bdee2dd73474a20fab094a0bbbf`). Toàn bộ tiêu chí kỹ thuật đạt PASS. Trạng thái quản trị: `In Review` (BLOCKED — PENDING REVIEW) trên [Project Board](https://github.com/users/vohuunghiaah/projects/2) chờ ký duyệt nghiệm thu chính thức.
+
 Xem [Product Backlog](product-backlog.md) cho mô tả, ước lượng và trạng thái.
