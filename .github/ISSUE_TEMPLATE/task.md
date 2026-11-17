@@ -22,6 +22,6 @@ Sprint 1 hoặc Sprint 2; gắn nhãn tương ứng.
 
 ## Tài liệu backlog
 
-https://github.com/vohuunghiaah/brewlite/blob/chore/setup-repository/docs/backlog/product-backlog.md
+https://github.com/vohuunghiaah/brewlite/blob/main/docs/backlog/product-backlog.md
 
 ## Kết quả kiểm tra

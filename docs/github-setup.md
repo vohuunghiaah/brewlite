@@ -21,10 +21,18 @@ Repository: https://github.com/vohuunghiaah/brewlite
 - Có đúng 5 items, mỗi Issue #1–#5 xuất hiện một lần. #1 ở In Review, #2–#5 ở Backlog; Sprint 1 là #1–#3, Sprint 2 là #4–#5 theo labels.
 - Lỗi quyền Projects trước đây đã được giải quyết bằng credential GitHub CLI có scope project. Không ghi token vào repository.
 
-## Thao tác chủ repository cần làm
+## Thao tác ban đầu (03/11/2026)
 
 1. Review [PR #6](https://github.com/vohuunghiaah/brewlite/pull/6); chỉ merge sau khi đạt DoD.
 2. Sau nghiệm thu, cập nhật BL-00/Issue #1 sang Done và cập nhật liên kết tài liệu trong Issues sang main hoặc permalink commit.
 3. Xác nhận phạm vi nghiệp vụ và đề xuất BL-01–BL-04 trước khi đưa vào Todo.
 
-Không tự merge PR hoặc đánh dấu review hoàn tất thay cho nhóm.
+## Cập nhật hiện trạng ngày 18/11/2026
+
+1. **PR #6:** Đã **MERGED** vào `main` tại commit `e744a14353837bdee2dd73474a20fab094a0bbbf` vào `2026-11-12T13:39:24Z`.
+2. **Branch Protection:** Nhánh `main` được bảo vệ: `enforce_admins=true`, cấm force push, cấm xóa nhánh, yêu cầu giải quyết hội thoại.
+3. **CI Quality Gates:** Đã kích hoạt pipeline `.github/workflows/quality.yml` kiểm tra tự động lint, unit test và build.
+4. **Trạng thái Issue #1 ([BL-00]):** Toàn bộ tiêu chí kỹ thuật đã hoàn thành. Hiện đang ở trạng thái **BLOCKED — PENDING REVIEW** trên GitHub Project #2.
+5. **Thao tác bàn giao cho chủ repository:**
+   - Thực hiện review chính thức Issue #1 / Task 4.1 theo biên bản nghiệm thu.
+   - Sau khi phê duyệt, chuyển trạng thái Issue #1 sang `Done` trên Project #2 và đóng Issue #1.
