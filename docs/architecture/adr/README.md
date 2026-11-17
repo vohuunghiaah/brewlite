@@ -2,7 +2,7 @@
 
 **Dự án:** BrewLite — Hệ Thống Đặt Đồ Uống Trực Tuyến (Assignment 2)
 **Phân hệ:** Task 3.1 — Phương pháp & Quyết định Kiến trúc
-**Ngày cập nhật:** 16/11/2026
+**Ngày cập nhật:** 17/11/2026
 
 ---
 
@@ -28,11 +28,12 @@ Architecture Decision Record (ADR) là tài liệu nắm bắt các quyết đ�
 | **ADR-004** | Bổ sung Logging và Endpoint Health Check (`GET /health`) | **Proposed** | **Partially Implemented** | Logging trên `main`; Health Check trên Feature (trả `connected` lệch SRS `up`, cần chuẩn hóa ở Task 5 - [GAP-04](../../audits/task2-to-task3-gap-audit.md#24-gap-04-endpoint-kiểm-tra-sức-khỏe-health-check-api)) | [adr/004-logging-healthcheck.md](adr/004-logging-healthcheck.md) |
 | **ADR-005** | Quản lý cấu hình bằng Biến Môi Trường (Environment Variables) | **Accepted** | **Implemented** | `main` & Feature (`.env`, `@nestjs/config`) | [adr/005-configuration-management.md](adr/005-configuration-management.md) |
 | **ADR-006** | Đề xuất chuyển đổi ORM sang Prisma và chuẩn hóa UUID | **Proposed** | **Implemented trên Feature** (Chưa merge) | Đang chờ PO phê duyệt chính thức cho giai đoạn Sprint 2 (Task 5) | [adr/006-orm-migration-prisma.md](adr/006-orm-migration-prisma.md) |
+| **ADR-007** | AWS Lightsail một VM cho production | **Proposed** | VM **PROVISIONED**; ứng dụng **PLANNED / NOT DEPLOYED** | Nhóm xác nhận instance; chưa xác minh runtime AWS | [adr/007-aws-lightsail-deployment.md](adr/007-aws-lightsail-deployment.md) |
 
 ---
 
 ## 3. Lưu Ý Về Tính Nhất Quán & Truy Vết Lịch Sử
 
 1. **Khớp nối trạng thái phê duyệt:**
-   - Trạng thái trong bảng trên phản ánh chính xác trạng thái trong từng tệp ADR tương ứng (`ADR-001`, `002`, `003`, `005` là `Accepted`; `ADR-004` và `ADR-006` là `Proposed`).
+   - Trạng thái trong bảng trên phản ánh chính xác trạng thái trong từng tệp ADR tương ứng (`ADR-001`, `002`, `003`, `005` là `Accepted`; `ADR-004`, `ADR-006` và `ADR-007` là `Proposed`).
 2. **Nguyên tắc không suy diễn tính năng:** Sự tồn tại của một ADR ở trạng thái `Accepted` hoặc `Proposed` là cơ sở thiết kế, không tự động chứng minh rằng tính năng đó đã có sẵn mã nguồn trên nhánh `main`. Mọi đối chiếu triển khai phải dựa trên chứng cứ mã nguồn thực tế và ma trận [RTM](../../traceability-matrix.md).

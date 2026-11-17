@@ -2,7 +2,7 @@
 
 **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
 **Phiên bản:** 2.5.0 (Task 2 Complete Handover, UML Verification & Architecture Synchronization)
-**Ngày cập nhật:** 16/11/2026
+**Ngày cập nhật:** 17/11/2026 (chỉ đồng bộ trạng thái Task 3.2; giữ baseline chức năng)
 **Mục đích:** Truy vết đa chiều từ Yêu cầu chức năng (`FR-01` -> `FR-13`) và Phi chức năng (`NFR-01` -> `NFR-07`) đến Use Case, Thiết kế phân tích UML, Kiến trúc hệ thống, Mã nguồn triển khai và Ca kiểm thử xác minh.
 
 ---
@@ -20,7 +20,7 @@
 
 3. **Phân định rõ ranh giới giữa Task 2, Task 3 và Triển khai chức năng:**
    - **Task 2 (Phân tích & Thiết kế UML):** Đã hoàn thành và đạt trạng thái **DESIGN VERIFIED** thông qua bộ 14 sơ đồ chính thức trong `docs/diagram/`.
-   - **Task 3 (Thiết kế Kiến trúc Hệ thống & Deployment Diagram):** Đang trong giai đoạn hoàn thiện tại PR #23, chưa tiến hành nghiệm thu cuối (**FINAL ACCEPTANCE PENDING**).
+   - **Task 3 (Thiết kế Kiến trúc Hệ thống & Deployment Diagram):** PR #23 đã merge; Task 3.2 cập nhật AWS Lightsail: **AWS PLATFORM SELECTED / INSTANCE PROVISIONED / APPLICATION DEPLOYMENT PENDING**. Xem [truy vết deployment](architecture/README.md#56-traceability-mapping--uml--architecture--code).
    - **Triển khai chức năng thực tế:** Được đánh giá và kiểm chứng độc lập theo từng FR (`FR-01` -> `FR-13`) giữa hai baseline; tuyệt đối không suy diễn việc hoàn thành thiết kế UML thành hoàn thành triển khai mã nguồn hay hoàn tất kiến trúc toàn diện.
 
 ---
@@ -74,7 +74,7 @@
 
 1. **Tổng kết nghiệm thu giai đoạn Task 2 và tiến độ Task 3:**
    - **Nghiệm thu Task 2 (Phân tích & Thiết kế UML — DESIGN VERIFIED):** Toàn bộ các yêu cầu chức năng cốt lõi (`FR-01` đến `FR-13`) đã hoàn thành việc mô hình hóa phân tích và thiết kế chi tiết thông qua bộ 14 sơ đồ UML chính thức trong `docs/diagram/` (Activity, Sequence, Class Diagram đạt trạng thái **DESIGN VERIFIED** qua PR #19, PR #20, PR #21). Hệ thống sơ đồ phân định hoàn toàn độc lập giữa việc khởi tạo đơn hàng PENDING (`UC-04`) và thanh toán có điều kiện (`UC-10`), ngăn chặn việc trừ kho hoặc quyết toán tài chính sớm.
-   - **Tiến độ Task 3 (Thiết kế Kiến trúc Hệ thống & Deployment Diagram):** Đang trong giai đoạn hoàn thiện tại PR #23, chưa tiến hành nghiệm thu cuối (**FINAL ACCEPTANCE PENDING**) do chờ phê duyệt chính thức nền tảng triển khai Production thực tế.
+   - **Tiến độ Task 3 (Thiết kế Kiến trúc Hệ thống & Deployment Diagram):** PR #23 đã merge. Task 3.2 chọn AWS Lightsail, instance đã provision theo xác nhận nhóm; triển khai ứng dụng production còn chờ kiểm chứng. Xem [kiến trúc deployment](architecture/README.md#5-sơ-đồ-triển-khai-hệ-thống-task-32--uml-deployment-diagram).
    - **Trạng thái triển khai chức năng thực tế:** Từng yêu cầu chức năng (`FR-01` đến `FR-13`) có trạng thái triển khai mã nguồn riêng biệt theo từng FR (được phân định chi tiết tại Bảng 2: `main` hiện chỉ có FR-01, FR-03, FR-05, FR-11 ở mức `PARTIAL`; các FR còn lại là `NOT IMPLEMENTED` trên `main` và đang nằm trên nhánh tính năng thử nghiệm; không suy diễn việc nghiệm thu thiết kế UML thành hoàn tất triển khai mã nguồn).
 
 2. **Các khoảng hở kỹ thuật cần đóng ở giai đoạn triển khai (Gaps Action Plan):**
