@@ -72,7 +72,7 @@ package "B | CI | GITHUB ACTIONS\nIMPLEMENTED / VERIFIED (linked CI evidence)" a
     Feature workflows are reference only.
   end note
 }
-package "C | AWS PRODUCTION TARGET\nApplication stack: PLANNED / NOT DEPLOYED" as Production #FFF4E8 {
+package "EXTERNAL SYSTEMS | OUTSIDE AWS" as External #F2F4F8 {
   node "User Device" <<device>> {
     node "Browser" as Browser <<executionEnvironment>> {
       artifact "PWA | PLANNED"
@@ -81,6 +81,16 @@ package "C | AWS PRODUCTION TARGET\nApplication stack: PLANNED / NOT DEPLOYED" a
   cloud "Internet" as Internet
   node "Developer PC\n(same actor as Local)" as Admin <<device>>
   node "GHCR\n(reference to panel B)\nPLANNED / NOT DEPLOYED" as RegistryRef <<containerRegistry>>
+  node "External Synthetic Monitoring\nPLANNED / NOT DEPLOYED" as Monitor <<executionEnvironment>> {
+    artifact "NFR-07 availability measurement\nEvery minute for 7 days | 10,080 samples\nTimeout: 5s per probe | PASS >=99%\nAll three probes must pass per sample\nUTC timestamp, status, latency, DB result, errors"
+  }
+note bottom of Monitor
+  Missing probes, maintenance, timeout, HTTP errors,
+  invalid data or DB failure count as unavailable.
+  main has no health endpoint: NFR-07 not verified.
+end note
+}
+package "C | AWS LIGHTSAIL PRODUCTION\nApplication stack: PLANNED / NOT DEPLOYED" as Production #FFF4E8 {
   node "AWS Lightsail | brewlite-production\nPROVISIONED (team confirmation)\nSingapore: ap-southeast-1 / ap-southeast-1a\n2 vCPU | 2 GB RAM | 60 GB SSD\nDual-stack | selected plan: USD 12/month" as VM <<virtualMachine>> #FFF0CC {
     node "Ubuntu Linux" <<operatingSystem>> {
       artifact "Production environment file (target)\nDATABASE_* / POSTGRES_*; NODE_ENV\nAPI_INTERNAL_URL; NEXT_PUBLIC_API_URL\nFRONTEND_URL; JWT_SECRET (future Auth)" as Secrets
@@ -107,19 +117,19 @@ package "C | AWS PRODUCTION TARGET\nApplication stack: PLANNED / NOT DEPLOYED" a
       }
     }
   }
-  Admin ..> VM : SSH TCP 22\nRestrict source IPs (target)\nPolicy PENDING VERIFICATION
-  RegistryRef ..> Engine : FUTURE image delivery\nVM initiates pull\nHTTPS TCP 443
-  Internet -[hidden]down-> VM
-  Internet -[hidden]down-> VM
-  RegistryRef -[hidden]down-> VM
-  Browser --> Internet : HTTPS TCP 443\nHTTP TCP 80\n(redirect target)
-  Internet ..> Proxy : HTTPS TCP 443 / HTTP TCP 80\nPLANNED public entry only
   Proxy ..> Web : HTTP TCP 3000\nUI requests
   Proxy ..> Api : HTTP TCP 3001\nStrip /api prefix
   Api ..> Db : PostgreSQL TCP 5432\nInternal only
   Db ..> Volume : File I/O: read / write
   Secrets ..> Engine : Target env injection
   Api ..> Logs : Target application output
+note right of Api
+  Selected contract: main, TCP 3001, no /api prefix.
+  Caddy strips /api (target only, not configured).
+  Sprint 2 alternative: TCP 4000, KEEP /api.
+  Switch proxy + PORT + URLs + probes together;
+  never activate both routing contracts.
+end note
   note bottom of Volume
     Volume configuration exists locally only;
     no verified volume or backup on Lightsail.
@@ -128,6 +138,11 @@ package "C | AWS PRODUCTION TARGET\nApplication stack: PLANNED / NOT DEPLOYED" a
     feature returns "connected"; not merged.
   end note
 }
+  Admin ..> VM : SSH TCP 22\nRestrict source IPs (target)\nPolicy PENDING VERIFICATION
+  RegistryRef ..> Engine : FUTURE image delivery\nVM initiates pull\nHTTPS TCP 443
+  Browser --> Internet : HTTPS TCP 443\nHTTP TCP 80\n(redirect target)
+  Internet ..> Proxy : HTTPS TCP 443 / HTTP TCP 80\nPLANNED public entry only
+Monitor ..> Internet : PLANNED HTTPS TCP 443\nGET /menu; GET /api/products\nGET /api/health (blocked until implemented)
 legend bottom
   |= Status / notation |= Meaning |
   | IMPLEMENTED / VERIFIED | Repository configuration or linked CI evidence; not production proof |

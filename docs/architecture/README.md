@@ -3,7 +3,7 @@
 **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
 **Phân hệ:** Task 3 — Thiết kế Kiến trúc (Task 3.1: Kiến trúc Hệ thống & Task 3.2: Deployment Diagram)
 **Phiên bản:** 2.2.0 (Task 3.2 — AWS Lightsail deployment baseline)
-**Ngày cập nhật:** 17/11/2026
+**Ngày cập nhật:** 18/11/2026
 **Tác giả:** Đội ngũ Kiến trúc sư Phần mềm BrewLite (Senior Software Architects)
 
 ---
@@ -124,7 +124,7 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
   - `ProductsModule`: Danh mục đồ uống, tùy biến kích thước (`SMALL`, `MEDIUM`, `LARGE`), tùy chọn topping, quản lý số lượng tồn kho `stock` và phiên bản đồng thời `version`.
   - `OrdersModule`: Quản lý vòng đời đơn hàng nghiêm ngặt bằng State Machine (`PENDING -> PAID -> PREPARING -> READY -> COMPLETED`).
   - `PaymentsModule`: Cổng thanh toán mô phỏng (Mock Payment) hỗ trợ ví điện tử và thẻ ngân hàng, kiểm tra khóa `Idempotency-Key`, thực thi trừ kho OCC atomicity trong database transaction.
-  - `HealthModule`: Endpoint giám sát `GET /health` thực hiện kiểm tra ping kết nối PostgreSQL phục vụ Container Orchestration.
+  - `HealthModule`: Endpoint giám sát `GET /api/health` trên feature (controller `health` + global prefix `api`) thực hiện kiểm tra ping kết nối PostgreSQL phục vụ Container Orchestration.
   - `Promotion & Loyalty`: Áp dụng mã giảm giá (`BREW20`) và tích lũy điểm thưởng thành viên sau khi thanh toán thành công.
 
 ---
@@ -167,7 +167,7 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
 - **Thiết kế theo [ADR-004](adr/adr/004-logging-healthcheck.md):** Thống nhất hợp đồng kiểm tra sức khỏe hệ thống đáp ứng SRS v1.4.0 §4.13, phân định minh bạch giữa hiện trạng triển khai MVP và định hướng mục tiêu mở rộng.
 - **Đối chiếu Hợp đồng Nghiệp vụ & Hiện trạng Mã nguồn:**
   - **Hợp đồng nghiệp vụ mục tiêu (SRS v1.4.0 §4.13):** Khi hệ thống bình thường, `GET /health` phản hồi `HTTP 200 OK` với payload: `{"status": "ok", "database": "up"}`.
-  - **Hiện trạng mã nguồn thực tế (nhánh feature `apps/api/src/health/`):**
+  - **Hiện trạng mã nguồn thực tế (nhánh feature `apps/api/src/health/`; URL thực tế `/api/health` do global prefix, xem §5.3):**
     - Khi bình thường: Phản hồi `HTTP 200 OK` với `{"status": "ok", "database": "connected", "service": "brewlite-api", ...}`.
     - Khi mất kết nối cơ sở dữ liệu: Phản hồi `HTTP 200 OK` kèm `status: "degraded"` và `database: "error"`.
   - **Khoảng sai lệch kỹ thuật được công khai (Disclosed Gap):**
@@ -260,7 +260,7 @@ Runner CI là `ubuntu-latest`, Node.js **24**, matrix `api`/`web`; không nhầm
 
 Chọn một VM Lightsail để vận hành stack nhỏ của nhóm, tái sử dụng cách đóng gói Compose và giới hạn số dịch vụ cần quản trị. So với ECS/RDS, phương án này đơn giản hơn trong phạm vi bài tập và phù hợp gói VM đã tạo; đổi lại nhóm tự quản DB, cập nhật hệ điều hành, backup và phục hồi. [ADR-007](adr/adr/007-aws-lightsail-deployment.md) ghi quyết định ở trạng thái **Proposed**, chờ quy trình phê duyệt; việc VM tồn tại không tự làm ADR thành Accepted.
 
-Mục tiêu: **AWS Lightsail → Ubuntu VM → Docker Engine → Caddy + Next.js + NestJS + PostgreSQL 16**. Mọi node ứng dụng, network, storage và artifact nằm trong phạm vi production đều là thiết kế, chưa xác minh triển khai. Chọn **Caddy** nhất quán; chưa có `Caddyfile` hoặc Compose production trong baseline.
+Mục tiêu: **AWS Lightsail → Ubuntu VM → Docker Engine → Caddy + Next.js + NestJS + PostgreSQL 16**. User Device, Internet, Developer PC, GHCR tham chiếu và External Synthetic Monitoring nằm trong nhóm **External Systems — Outside AWS**, tách khỏi Local Development, GitHub CI và package **AWS Lightsail Production**. Node GHCR tham chiếu là cùng registry ở panel CI, không phải registry được host trên VM. Mọi node ứng dụng, network, storage và artifact nằm trong phạm vi production đều là thiết kế, chưa xác minh triển khai. Chọn **Caddy** nhất quán; chưa có `Caddyfile` hoặc Compose production trong baseline.
 
 | Communication path | Giao thức / cổng | Ý nghĩa và trạng thái |
 |---|---|---|
@@ -268,6 +268,7 @@ Mục tiêu: **AWS Lightsail → Ubuntu VM → Docker Engine → Caddy + Next.js
 | Local browser → Web / API | HTTP TCP 3000 / 3001 | Host `localhost`; mặc định từ Compose và `.env.example` |
 | Local Web → API | HTTP TCP 3001 | `api:3001` là URL nội bộ đã cấu hình, chưa có caller trong code Web |
 | Local API → DB → volume | PostgreSQL TCP 5432; file I/O | `db:5432`; dữ liệu trong `postgres_data` |
+| External Monitor → Internet → Caddy | HTTPS TCP 443 | PLANNED: `/menu`, `/api/products`, `/api/health`; mỗi phút trong 7 ngày; health main còn thiếu |
 | User browser → Internet → Caddy | HTTPS TCP 443 | TLS termination mục tiêu; PWA riêng là PLANNED |
 | Browser HTTP → Caddy redirect | HTTP TCP 80 → HTTPS TCP 443 | Redirect mục tiêu, chưa có HTTPS/DNS được xác minh |
 | Caddy → Web | HTTP TCP 3000 | Các request UI; không publish trực tiếp ra host |
@@ -280,6 +281,34 @@ Mục tiêu: **AWS Lightsail → Ubuntu VM → Docker Engine → Caddy + Next.js
 | Environment artifact → Engine; API → logs | Nạp biến; stdout/stderr | Dependency/vận hành mục tiêu, không phải cổng public |
 
 NestJS hiện có `/products`, `/products/:id`, `/orders`, `/orders/:id`, và `/`; `main.ts` không đặt global prefix `/api`. Vì vậy mục tiêu Caddy phải chuyển `/api/products` thành `/products`, `/api/orders` thành `/orders`, và tương lai `/api/health` thành `/health`. Frontend mục tiêu dùng `NEXT_PUBLIC_API_URL=/api` tại build; `API_INTERNAL_URL=http://api:3001` chỉ dùng nếu bổ sung server-side caller. Đây là hợp đồng proxy cần triển khai/kiểm thử, không phải cấu hình đã chạy.
+
+#### Hợp đồng API được chọn và chuyển đổi Sprint 2
+
+Sơ đồ chỉ chọn **hợp đồng của `main`** làm thiết kế triển khai mục tiêu; chưa có baseline nào được xác minh chạy trên Lightsail. Đối chiếu trực tiếp các refs sau khi fetch:
+
+| Nội dung | `main` — `607c6d402a79fc5763511fb1e0409f20a02299c5` (được chọn) | `feature/sprint2-full-flow` — `588e33624d149faa6e9320d59a4488e78d6cfb08` (tham chiếu chuyển đổi) |
+|---|---|---|
+| `apps/api/src/main.ts` | Không có global prefix; `PORT ?? 3001` | `app.setGlobalPrefix('api')`; `PORT || 4000` |
+| Route nội bộ | `/products`, `/orders`; chưa có `/health` | `/api/products`, `/api/orders` (POST), `/api/orders/me`, `/api/health` |
+| Caddy mục tiêu | **Bỏ** `/api`, upstream `api:3001` | **Giữ** `/api`, upstream `api:4000` nếu giữ port feature |
+| `apps/api/Dockerfile` | Development Node.js 22, không có API healthcheck | Node.js 20 multi-stage, `ENV PORT=4000`, `EXPOSE 4000`; healthcheck `http://localhost:4000/api/health` |
+| Health | Chưa triển khai trên main | `database: "connected"`; lỗi DB trả HTTP 200 với `degraded/error`, chưa đạt SRS `up` |
+
+Khi tích hợp Sprint 2 phải chuyển cấu hình routing theo một release nhất quán: bỏ rule strip-prefix (không dùng đồng thời với rule giữ prefix), đổi upstream/PORT/healthcheck sang hợp đồng đã chọn, cập nhật `API_INTERNAL_URL` thành `http://api:4000/api` nếu caller ghép resource path, giữ public base `/api`, cập nhật CORS (`CORS_ORIGIN` trên feature thay cho `FRONTEND_URL` của main), Auth/JWT và smoke probes. Nếu chủ động override port feature về 3001 thì phải sửa đồng bộ Dockerfile healthcheck vốn hard-code 4000, upstream và các URL; override PORT đơn lẻ là không đủ. Đồng thời review Node.js image, Prisma/migration và secrets của feature. Đây là việc của PR tích hợp ứng dụng sau này; PR #24 không sửa code, Dockerfile hoặc Compose, và không tuyên bố Caddy đã hoạt động.
+
+#### Smoke test routing — kế hoạch, chưa thực thi production
+
+Thực hiện trên môi trường nghiệm thu có dữ liệu thử sau khi proxy và stack được triển khai. So sánh public response với request trực tiếp trong Docker network để tách lỗi proxy khỏi lỗi ứng dụng; không mở cổng nội bộ ra Internet.
+
+| Ca kiểm tra | Baseline main được chọn | Sau khi chuyển toàn bộ sang Sprint 2 |
+|---|---|---|
+| `GET /api/products` qua HTTPS | Forward `http://api:3001/products`; HTTP 200, JSON sản phẩm hợp lệ | Giữ path `http://api:4000/api/products`; HTTP 200, JSON hợp lệ |
+| `GET /api/orders` | Forward `/orders` tại 3001; HTTP 200, JSON danh sách | Không dùng làm smoke thành công: feature không có GET collection này; dùng `GET /api/orders/me` với JWT hợp lệ, HTTP 200 |
+| `POST /api/orders` | Forward `/orders` tại 3001; payload theo DTO main + sản phẩm thử; HTTP 201, đơn PENDING; chỉ tạo một lần, đối chiếu DB | Giữ `/api/orders` tại 4000; JWT và DTO feature hợp lệ; HTTP 201, đơn PENDING; thử thiếu JWT phải bị từ chối |
+| `GET /api/health` | Hiện forward `/health` tại 3001 phải trả 404: ghi nhận GAP-04, **không PASS readiness/NFR-07**. Khi bổ sung endpoint theo SRS: HTTP 200, `status: "ok"`, `database: "up"` | Giữ `/api/health` tại 4000; đối chiếu probe Docker cùng URL. `connected` là sai lệch contract, **không PASS FR-13** cho đến khi chuẩn hóa `up` |
+| Kiểm tra lỗi và redirect | HTTP 80 chuyển HTTPS 443; không redirect loop; upstream không có `/api/api`; thử tắt DB/API/Web và timeout để monitor ghi unavailable | Tương tự; đặc biệt thử DB lỗi vì HTTP 200 `degraded` không được tính healthy; curl `-f` một mình chưa đủ |
+
+Lưu release SHA/digest, baseline, method/URL, HTTP status, payload đã che dữ liệu nhạy cảm và kết quả DB. Smoke test xác minh routing không thay thế phép đo availability 7 ngày. Không chạy các ca tạo đơn trên dữ liệu production thật trong đợt review tài liệu.
 
 Ranh giới mạng mục tiêu: chỉ public TCP 80/443, SSH 22 giới hạn nguồn; kiểm tra đồng thời IPv4 và IPv6 trên Lightsail và host firewall. Không publish 3000, 3001, 5432 ra Internet. Caddy nằm cùng bridge network với Web/API/DB; bridge không tự cung cấp phân quyền giữa các container. Cần khóa quyền truy cập các API trước khi mở public vì baseline chưa có Auth. Không có ECS, EKS, RDS, Vercel, Railway hay Cloudflare trong topology được chọn.
 
@@ -316,6 +345,7 @@ Cần monitoring bên ngoài theo [SRS NFR-07](../requirements/srs.md): mỗi ph
 | Environment artifact | Runtime configuration | [.env.example](../../.env.example), [app.module.ts](../../apps/api/src/app.module.ts), [main.ts](../../apps/api/src/main.ts) | Local config IMPLEMENTED / VERIFIED; production PLANNED / NOT DEPLOYED |
 | Health artifact | API/DB readiness | [AppController](../../apps/api/src/app.controller.ts), [SRS](../requirements/srs.md); feature health chỉ tham chiếu | DB local probe IMPLEMENTED / VERIFIED; API main NOT IMPLEMENTED; production PLANNED / NOT DEPLOYED |
 | Logs artifact | Operations | [main.ts](../../apps/api/src/main.ts), [app.module.ts](../../apps/api/src/app.module.ts) | Log code có trên main; Docker/NestJS production logs PLANNED / NOT DEPLOYED |
+| External Synthetic Monitoring | Availability NFR-07 | [SRS §3](../requirements/srs.md#3-yêu-cầu-phi-chức-năng-non-functional-requirements---nfr); chưa có cấu hình monitor | PLANNED / NOT DEPLOYED; phép đo 7 ngày chưa thực hiện |
 | User browser / PWA | Client | [Web UI](../../apps/web/src/app/menu/page.tsx); chưa có service worker/manifest PWA | Browser là client context; PWA PLANNED / NOT DEPLOYED |
 
 Các trạng thái chức năng trong [RTM](../traceability-matrix.md) vẫn tách `main` với feature. Cấu hình production, file Caddy và release image trong sơ đồ là artifact mục tiêu, không phải đường dẫn tồn tại.
@@ -330,7 +360,7 @@ java -jar <plantuml.jar> -charset UTF-8 -tsvg docs/architecture/DeploymentDiagra
 git diff --check
 ```
 
-Kiểm tra XML SVG, mở bản render để đọc labels/communication paths và đối chiếu trạng thái với bảng trên. Khi đưa vào PDF, dùng trang landscape riêng đủ lớn hoặc chia vùng Local/CI/Production thành các hình phóng to có cùng legend; không ép sơ đồ toàn cảnh thành một hình nhỏ trong trang văn bản. Xác minh thay đổi chỉ thuộc tài liệu, không chạm `apps/`, 14 tệp `docs/diagram/` hoặc Docker Compose. CI của PR kiểm tra lint/test/build, không kiểm thử production.
+Nếu xuất PNG kiểm tra trực quan, đặt `PLANTUML_LIMIT_SIZE=10000` để không cắt hình rộng ở giới hạn mặc định 4096 px. Kiểm tra XML SVG, mở bản render để đọc labels/communication paths và đối chiếu trạng thái với bảng trên. Khi đưa vào PDF, dùng trang landscape riêng đủ lớn hoặc chia vùng Local/CI/Production thành các hình phóng to có cùng legend; không ép sơ đồ toàn cảnh thành một hình nhỏ trong trang văn bản. Xác minh thay đổi chỉ thuộc tài liệu, không chạm `apps/`, 14 tệp `docs/diagram/` hoặc Docker Compose. CI của PR kiểm tra lint/test/build, không kiểm thử production.
 
 ---
 
