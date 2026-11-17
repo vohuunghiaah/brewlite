@@ -29,7 +29,7 @@ Repository: https://github.com/vohuunghiaah/brewlite
 
 ## Cập nhật hiện trạng ngày 18/11/2026
 
-1. **PR #6:** Đã **MERGED** vào `main` tại commit `e744a14353837bdee2dd73474a20fab094a0bbbf` vào `2026-11-12T13:39:24Z`.
+1. **PR #6 & PR #25:** PR #6 (`chore: thiết lập repository`) đã merged tại commit `e744a143`. PR #25 (`docs(task4.1): finalize repository setup`) đã merged tại commit `5784317c`, hoàn tất phê duyệt kỹ thuật Task 4.1.
 2. **Branch Protection:** Nhánh `main` được bảo vệ: `enforce_admins=true`, cấm force push, cấm xóa nhánh, yêu cầu giải quyết hội thoại.
 3. **CI Quality Gates:** Đã kích hoạt pipeline `.github/workflows/quality.yml` kiểm tra tự động lint, unit test và build.
 4. **Trạng thái Issue #1 ([BL-00]):** Toàn bộ tiêu chí kỹ thuật đã hoàn thành. Hiện đang ở trạng thái **BLOCKED — PENDING REVIEW** trên GitHub Project #2.
