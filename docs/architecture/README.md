@@ -2,15 +2,13 @@
 
 **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
 **Phân hệ:** Task 3 — Thiết kế Kiến trúc (Task 3.1: Kiến trúc Hệ thống & Task 3.2: Deployment Diagram)
-**Phiên bản:** 2.1.0 (Architecture Baseline Synchronization & Review Remediation)
-**Ngày cập nhật:** 16/11/2026
+**Phiên bản:** 2.2.0 (Task 3.2 — AWS Lightsail deployment baseline)
+**Ngày cập nhật:** 18/11/2026
 **Tác giả:** Đội ngũ Kiến trúc sư Phần mềm BrewLite (Senior Software Architects)
 
 ---
 
-> [!NOTE]
-> **Thứ tự sáp nhập Pull Request (Merge Order Dependency):**
-> Tài liệu kiến trúc này phụ thuộc mặt khái niệm vào các kết quả kiểm toán và ma trận truy vết yêu cầu tại [PR #22](https://github.com/vohuunghiaah/brewlite/pull/22) (`docs/task2-handover-gap-audit`). Thứ tự sáp nhập chuẩn xác của dự án là: **PR #22 được xem xét và merge trước, sau đó mới merge PR #23**.
+> **Baseline Task 3.2:** `origin/main` tại `607c6d402a79fc5763511fb1e0409f20a02299c5`. [PR #22](https://github.com/vohuunghiaah/brewlite/pull/22) và [PR #23](https://github.com/vohuunghiaah/brewlite/pull/23) đã merge lần lượt ngày 16/11/2026. Kiểm toán này không đưa mã nguồn feature vào `main`.
 
 ---
 
@@ -126,7 +124,7 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
   - `ProductsModule`: Danh mục đồ uống, tùy biến kích thước (`SMALL`, `MEDIUM`, `LARGE`), tùy chọn topping, quản lý số lượng tồn kho `stock` và phiên bản đồng thời `version`.
   - `OrdersModule`: Quản lý vòng đời đơn hàng nghiêm ngặt bằng State Machine (`PENDING -> PAID -> PREPARING -> READY -> COMPLETED`).
   - `PaymentsModule`: Cổng thanh toán mô phỏng (Mock Payment) hỗ trợ ví điện tử và thẻ ngân hàng, kiểm tra khóa `Idempotency-Key`, thực thi trừ kho OCC atomicity trong database transaction.
-  - `HealthModule`: Endpoint giám sát `GET /health` thực hiện kiểm tra ping kết nối PostgreSQL phục vụ Container Orchestration.
+  - `HealthModule`: Endpoint giám sát `GET /api/health` trên feature (controller `health` + global prefix `api`) thực hiện kiểm tra ping kết nối PostgreSQL phục vụ Container Orchestration.
   - `Promotion & Loyalty`: Áp dụng mã giảm giá (`BREW20`) và tích lũy điểm thưởng thành viên sau khi thanh toán thành công.
 
 ---
@@ -169,7 +167,7 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
 - **Thiết kế theo [ADR-004](adr/adr/004-logging-healthcheck.md):** Thống nhất hợp đồng kiểm tra sức khỏe hệ thống đáp ứng SRS v1.4.0 §4.13, phân định minh bạch giữa hiện trạng triển khai MVP và định hướng mục tiêu mở rộng.
 - **Đối chiếu Hợp đồng Nghiệp vụ & Hiện trạng Mã nguồn:**
   - **Hợp đồng nghiệp vụ mục tiêu (SRS v1.4.0 §4.13):** Khi hệ thống bình thường, `GET /health` phản hồi `HTTP 200 OK` với payload: `{"status": "ok", "database": "up"}`.
-  - **Hiện trạng mã nguồn thực tế (nhánh feature `apps/api/src/health/`):**
+  - **Hiện trạng mã nguồn thực tế (nhánh feature `apps/api/src/health/`; URL thực tế `/api/health` do global prefix, xem §5.3):**
     - Khi bình thường: Phản hồi `HTTP 200 OK` với `{"status": "ok", "database": "connected", "service": "brewlite-api", ...}`.
     - Khi mất kết nối cơ sở dữ liệu: Phản hồi `HTTP 200 OK` kèm `status: "degraded"` và `database: "error"`.
   - **Khoảng sai lệch kỹ thuật được công khai (Disclosed Gap):**
@@ -188,7 +186,7 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
 ### 4.8 Quản Lý Cấu Hình & Dữ Liệu Bí Mật (Environment Variables & Secrets)
 - **Thiết kế theo [ADR-005](adr/adr/005-configuration-management.md):** Tuân thủ quy tắc **The Twelve-Factor App**.
 - **Cơ chế nạp:** Nạp biến môi trường toàn cục thông qua `@nestjs/config` và `ConfigService`.
-- **Bảo mật:** Tuyệt đối không lưu mật khẩu thật hoặc khóa JWT trong Git repository. Mẫu cấu hình được công khai trong `.env.example`, trong khi giá trị thực tế được tiêm tại runtime qua file `.env` cục bộ hoặc Cloud Secrets Manager trên môi trường triển khai.
+- **Bảo mật:** Tuyệt đối không lưu mật khẩu thật hoặc khóa JWT trong Git repository. Mẫu cấu hình được công khai trong `.env.example`, trong khi giá trị thực tế được tiêm tại runtime qua file `.env` cục bộ. Mục tiêu Lightsail dùng tệp environment riêng trên VM với quyền truy cập hạn chế; chưa có Cloud Secrets Manager hay cơ chế secrets production được xác minh.
 
 ### 4.9 Giao Dịch ACID, Khóa Idempotency & Kiểm Soát Đồng Thời OCC
 - **ACID Transactions:** Sử dụng transaction cấp cơ sở dữ liệu cho các luồng nghiệp vụ tạo đơn và thanh toán.
@@ -231,18 +229,138 @@ Nhằm đảm bảo tính trung thực học thuật và chuẩn xác kỹ thu�
 
 ## 5. Sơ Đồ Triển Khai Hệ Thống (Task 3.2 — UML Deployment Diagram)
 
-Sơ đồ Triển khai được thiết kế nhằm mô hình hóa trực quan sự phân bố của các thành phần phần mềm (Artifacts) lên trên các nút phần cứng và môi trường thực thi (Nodes & Execution Environments), phân định rõ ràng giữa **3 phân vùng môi trường**:
-1. **Môi trường Cục bộ (Local Development):** Chạy trên máy trạm lập trình viên qua Docker Compose (`docker-compose.yml`).
-2. **Môi trường Tự động hóa CI/CD:** Thực thi trên máy ảo Ubuntu Runner của GitHub Actions (`.github/workflows/quality.yml`). Hoạt động đóng gói Docker image lên `ghcr.io` được đánh dấu là `PROPOSED / PLANNED CD`.
-3. **Môi trường Triển khai Production Mục tiêu (Target Cloud Platform):** Được định danh rõ ràng là **`PROPOSED / TARGET DEPLOYMENT (NOT LIVE DEPLOYED)`**, phản ánh kiến trúc mục tiêu phân tán trên đám mây với các giao thức HTTPS, chứng chỉ bảo mật và cơ chế bảo vệ secrets.
+**AWS PLATFORM SELECTED / INSTANCE PROVISIONED / APPLICATION DEPLOYMENT PENDING**
 
-### Trạng Thái Nghiệm Thu Task 3.2:
-Do dự án môn học hiện tại chưa triển khai thực tế trên hạ tầng Cloud Production (chưa có quyết định lựa chọn nhà cung cấp chính thức và chưa có live URL), trạng thái nghiệm thu của Task 3.2 được xác định là:
-**`DESIGN COMPLETE / FINAL ACCEPTANCE PENDING`** *(Hoàn tất thiết kế mô hình; chờ nghiệm thu cuối cùng khi có hạ tầng live trong Task 5)*.
+Nguồn chỉnh sửa chính thức: [DeploymentDiagram.puml](DeploymentDiagram.puml). Bản vector: [DeploymentDiagram.svg](DeploymentDiagram.svg). Sơ đồ dùng UML `node`, môi trường lồng nhau, `artifact`, `database` và communication paths có giao thức/cổng. Các package chỉ nhóm ba môi trường, không thay thế node thực thi bằng flowchart.
 
-### Tệp nguồn và bản vẽ xuất bản:
-- **Tệp nguồn PlantUML chỉnh sửa được:** [DeploymentDiagram.puml](DeploymentDiagram.puml)
-- **Tệp kết xuất đồ họa vector SVG:** [DeploymentDiagram.svg](DeploymentDiagram.svg)
+### 5.1 Bằng chứng và trạng thái
+
+| Trạng thái | Ý nghĩa trong Task 3.2 |
+|---|---|
+| `IMPLEMENTED / VERIFIED` | Có cấu hình trong repository hoặc kết quả CI được dẫn chứng; ghi rõ phạm vi, không suy diễn thành production |
+| `PROVISIONED` | Máy Lightsail đã được tạo theo xác nhận của nhóm trong yêu cầu Task 3.2 |
+| `PLANNED / NOT DEPLOYED` | Thiết kế mục tiêu; chưa có bằng chứng triển khai ứng dụng |
+| `PENDING VERIFICATION` | Chưa đủ bằng chứng để kết luận cài đặt, cấu hình hay runtime |
+
+Máy `brewlite-production`: **AWS Lightsail, Ubuntu Linux, Singapore `ap-southeast-1`, AZ `ap-southeast-1a`, 2 vCPU, 2 GB RAM, SSD 60 GB, dual-stack, gói đã chọn 12 USD/tháng**. Đây là thông tin instance do nhóm cung cấp, không phải báo giá mới hay kết quả truy vấn AWS của đợt kiểm toán. Chưa có ảnh console/đầu ra SSH được lưu trong repository; cần bổ sung bằng chứng đã che thông tin nhạy cảm khi nghiệm thu vận hành. Chưa xác minh Docker Engine, firewall, DNS, HTTPS, container, volume, registry hoặc CD trên VM.
+
+CI trên baseline đã được kiểm chứng: [Quality gates run 43903472968](https://github.com/vohuunghiaah/brewlite/actions/runs/43903472968), commit `607c6d40`, cả API và Web đạt Install → Lint → Unit Test → Build. Kết quả này không chứng minh production hoạt động. `main` chỉ có `.github/workflows/quality.yml`; `ci.yml`/`cd.yml` trên `feature/sprint2-full-flow` (`588e33624d149faa6e9320d59a4488e78d6cfb08`) chỉ là tham chiếu, không phải bằng chứng GHCR/CD trên `main`.
+
+### 5.2 Local Development và CI
+
+Developer PC/Laptop Windows dùng Docker Desktop/Compose theo [README gốc](../../README.md). [docker-compose.yml](../../docker-compose.yml) cấu hình ba container `brewlite-web`, `brewlite-api`, `brewlite-db`, bridge network `brewlite-network`, volume `postgres_data` gắn `/var/lib/postgresql/data`. Tên network/volume là khóa Compose; tên Docker thực tế có thể được thêm project prefix.
+
+Hai Dockerfile đều dùng `node:22-alpine`. API chạy `npm run start:dev`; Web chạy `npm run dev -- --hostname 0.0.0.0`. Đây là development với bind mount source và volume dependencies, không phải image production. Database là `postgres:16-alpine`, `pg_isready` mỗi 5 giây, timeout 5 giây, tối đa 10 lần; API phụ thuộc `service_healthy`, Web phụ thuộc API nhưng chưa có API readiness check.
+
+Browser trên máy phát triển gọi `localhost:3001` qua `NEXT_PUBLIC_API_URL`; `API_INTERNAL_URL=http://api:3001` chỉ dành cho container cùng network. Biến internal đã có trong cấu hình nhưng chưa thấy code Web sử dụng trên baseline. Các cổng host mặc định là 3000/3001/5432 và Compose không giới hạn bind vào loopback: không sao chép cấu hình này lên Internet. `.env` được Compose dùng để nội suy; API nhận `env_file`, Web nhận các biến được khai báo. Đợt kiểm toán này xác minh cấu hình, không tái chạy Docker local.
+
+Runner CI là `ubuntu-latest`, Node.js **24**, matrix `api`/`web`; không nhầm runtime CI với Node.js **22** trong Dockerfile. Workflow chạy trên pull request và push vào `main`; chưa có publish image hay deploy production trên baseline.
+
+### 5.3 Kiến trúc Lightsail và đường giao tiếp
+
+Chọn một VM Lightsail để vận hành stack nhỏ của nhóm, tái sử dụng cách đóng gói Compose và giới hạn số dịch vụ cần quản trị. So với ECS/RDS, phương án này đơn giản hơn trong phạm vi bài tập và phù hợp gói VM đã tạo; đổi lại nhóm tự quản DB, cập nhật hệ điều hành, backup và phục hồi. [ADR-007](adr/adr/007-aws-lightsail-deployment.md) ghi quyết định ở trạng thái **Proposed**, chờ quy trình phê duyệt; việc VM tồn tại không tự làm ADR thành Accepted.
+
+Mục tiêu: **AWS Lightsail → Ubuntu VM → Docker Engine → Caddy + Next.js + NestJS + PostgreSQL 16**. User Device, Internet, Developer PC, GHCR tham chiếu và External Synthetic Monitoring nằm trong nhóm **External Systems — Outside AWS**, tách khỏi Local Development, GitHub CI và package **AWS Lightsail Production**. Node GHCR tham chiếu là cùng registry ở panel CI, không phải registry được host trên VM. Mọi node ứng dụng, network, storage và artifact nằm trong phạm vi production đều là thiết kế, chưa xác minh triển khai. Chọn **Caddy** nhất quán; chưa có `Caddyfile` hoặc Compose production trong baseline.
+
+| Communication path | Giao thức / cổng | Ý nghĩa và trạng thái |
+|---|---|---|
+| Developer → GitHub → Runner | Git/HTTPS TCP 443; workflow event/checkout | Luồng CI đã có; runner thực thi workflow artifact |
+| Local browser → Web / API | HTTP TCP 3000 / 3001 | Host `localhost`; mặc định từ Compose và `.env.example` |
+| Local Web → API | HTTP TCP 3001 | `api:3001` là URL nội bộ đã cấu hình, chưa có caller trong code Web |
+| Local API → DB → volume | PostgreSQL TCP 5432; file I/O | `db:5432`; dữ liệu trong `postgres_data` |
+| External Monitor → Internet → Caddy | HTTPS TCP 443 | PLANNED: `/menu`, `/api/products`, `/api/health`; mỗi phút trong 7 ngày; health main còn thiếu |
+| User browser → Internet → Caddy | HTTPS TCP 443 | TLS termination mục tiêu; PWA riêng là PLANNED |
+| Browser HTTP → Caddy redirect | HTTP TCP 80 → HTTPS TCP 443 | Redirect mục tiêu, chưa có HTTPS/DNS được xác minh |
+| Caddy → Web | HTTP TCP 3000 | Các request UI; không publish trực tiếp ra host |
+| Caddy → API | HTTP TCP 3001 | `/api/*` bỏ tiền tố `/api` trước khi forward |
+| API → PostgreSQL | PostgreSQL TCP 5432 | Network nội bộ, không public; không tuyên bố đã có TLS DB |
+| PostgreSQL → `postgres_data` | File I/O đọc/ghi | Persistent volume mục tiêu; chưa xác minh trên VM |
+| Developer → VM | SSH TCP 22 | Mục tiêu chỉ cho IP/CIDR quản trị; policy hiện tại PENDING VERIFICATION |
+| Runner → GHCR | HTTPS TCP 443, build/push image | PLANNED / NOT IMPLEMENTED trên `main` |
+| GHCR → Docker Engine | HTTPS TCP 443, image delivery | PLANNED; chính VM khởi tạo pull outbound, không mở cổng inbound cho registry |
+| Environment artifact → Engine; API → logs | Nạp biến; stdout/stderr | Dependency/vận hành mục tiêu, không phải cổng public |
+
+NestJS hiện có `/products`, `/products/:id`, `/orders`, `/orders/:id`, và `/`; `main.ts` không đặt global prefix `/api`. Vì vậy mục tiêu Caddy phải chuyển `/api/products` thành `/products`, `/api/orders` thành `/orders`, và tương lai `/api/health` thành `/health`. Frontend mục tiêu dùng `NEXT_PUBLIC_API_URL=/api` tại build; `API_INTERNAL_URL=http://api:3001` chỉ dùng nếu bổ sung server-side caller. Đây là hợp đồng proxy cần triển khai/kiểm thử, không phải cấu hình đã chạy.
+
+#### Hợp đồng API được chọn và chuyển đổi Sprint 2
+
+Sơ đồ chỉ chọn **hợp đồng của `main`** làm thiết kế triển khai mục tiêu; chưa có baseline nào được xác minh chạy trên Lightsail. Đối chiếu trực tiếp các refs sau khi fetch:
+
+| Nội dung | `main` — `607c6d402a79fc5763511fb1e0409f20a02299c5` (được chọn) | `feature/sprint2-full-flow` — `588e33624d149faa6e9320d59a4488e78d6cfb08` (tham chiếu chuyển đổi) |
+|---|---|---|
+| `apps/api/src/main.ts` | Không có global prefix; `PORT ?? 3001` | `app.setGlobalPrefix('api')`; `PORT || 4000` |
+| Route nội bộ | `/products`, `/orders`; chưa có `/health` | `/api/products`, `/api/orders` (POST), `/api/orders/me`, `/api/health` |
+| Caddy mục tiêu | **Bỏ** `/api`, upstream `api:3001` | **Giữ** `/api`, upstream `api:4000` nếu giữ port feature |
+| `apps/api/Dockerfile` | Development Node.js 22, không có API healthcheck | Node.js 20 multi-stage, `ENV PORT=4000`, `EXPOSE 4000`; healthcheck `http://localhost:4000/api/health` |
+| Health | Chưa triển khai trên main | `database: "connected"`; lỗi DB trả HTTP 200 với `degraded/error`, chưa đạt SRS `up` |
+
+Khi tích hợp Sprint 2 phải chuyển cấu hình routing theo một release nhất quán: bỏ rule strip-prefix (không dùng đồng thời với rule giữ prefix), đổi upstream/PORT/healthcheck sang hợp đồng đã chọn, cập nhật `API_INTERNAL_URL` thành `http://api:4000/api` nếu caller ghép resource path, giữ public base `/api`, cập nhật CORS (`CORS_ORIGIN` trên feature thay cho `FRONTEND_URL` của main), Auth/JWT và smoke probes. Nếu chủ động override port feature về 3001 thì phải sửa đồng bộ Dockerfile healthcheck vốn hard-code 4000, upstream và các URL; override PORT đơn lẻ là không đủ. Đồng thời review Node.js image, Prisma/migration và secrets của feature. Đây là việc của PR tích hợp ứng dụng sau này; PR #24 không sửa code, Dockerfile hoặc Compose, và không tuyên bố Caddy đã hoạt động.
+
+#### Smoke test routing — kế hoạch, chưa thực thi production
+
+Thực hiện trên môi trường nghiệm thu có dữ liệu thử sau khi proxy và stack được triển khai. So sánh public response với request trực tiếp trong Docker network để tách lỗi proxy khỏi lỗi ứng dụng; không mở cổng nội bộ ra Internet.
+
+| Ca kiểm tra | Baseline main được chọn | Sau khi chuyển toàn bộ sang Sprint 2 |
+|---|---|---|
+| `GET /api/products` qua HTTPS | Forward `http://api:3001/products`; HTTP 200, JSON sản phẩm hợp lệ | Giữ path `http://api:4000/api/products`; HTTP 200, JSON hợp lệ |
+| `GET /api/orders` | Forward `/orders` tại 3001; HTTP 200, JSON danh sách | Không dùng làm smoke thành công: feature không có GET collection này; dùng `GET /api/orders/me` với JWT hợp lệ, HTTP 200 |
+| `POST /api/orders` | Forward `/orders` tại 3001; payload theo DTO main + sản phẩm thử; HTTP 201, đơn PENDING; chỉ tạo một lần, đối chiếu DB | Giữ `/api/orders` tại 4000; JWT và DTO feature hợp lệ; HTTP 201, đơn PENDING; thử thiếu JWT phải bị từ chối |
+| `GET /api/health` | Hiện forward `/health` tại 3001 phải trả 404: ghi nhận GAP-04, **không PASS readiness/NFR-07**. Khi bổ sung endpoint theo SRS: HTTP 200, `status: "ok"`, `database: "up"` | Giữ `/api/health` tại 4000; đối chiếu probe Docker cùng URL. `connected` là sai lệch contract, **không PASS FR-13** cho đến khi chuẩn hóa `up` |
+| Kiểm tra lỗi và redirect | HTTP 80 chuyển HTTPS 443; không redirect loop; upstream không có `/api/api`; thử tắt DB/API/Web và timeout để monitor ghi unavailable | Tương tự; đặc biệt thử DB lỗi vì HTTP 200 `degraded` không được tính healthy; curl `-f` một mình chưa đủ |
+
+Lưu release SHA/digest, baseline, method/URL, HTTP status, payload đã che dữ liệu nhạy cảm và kết quả DB. Smoke test xác minh routing không thay thế phép đo availability 7 ngày. Không chạy các ca tạo đơn trên dữ liệu production thật trong đợt review tài liệu.
+
+Ranh giới mạng mục tiêu: chỉ public TCP 80/443, SSH 22 giới hạn nguồn; kiểm tra đồng thời IPv4 và IPv6 trên Lightsail và host firewall. Không publish 3000, 3001, 5432 ra Internet. Caddy nằm cùng bridge network với Web/API/DB; bridge không tự cung cấp phân quyền giữa các container. Cần khóa quyền truy cập các API trước khi mở public vì baseline chưa có Auth. Không có ECS, EKS, RDS, Vercel, Railway hay Cloudflare trong topology được chọn.
+
+### 5.4 Environment, health, logs và storage
+
+- **Environment:** cấu hình DB hiện dùng `DATABASE_HOST/PORT/NAME/USER/PASSWORD`, DB container dùng `POSTGRES_*`; không giả định `DATABASE_URL` của Prisma đã dùng trên `main`. Mục tiêu đặt `NODE_ENV=production`, `FRONTEND_URL` bằng public HTTPS origin, internal API bằng Docker DNS; không đặt secret vào `NEXT_PUBLIC_*`. `JWT_SECRET` có trong mẫu nhưng `main` chưa có Auth; chỉ bắt buộc khi tích hợp Auth feature. Tệp environment production nằm ngoài Git, quyền đọc hạn chế; không ghi giá trị thật trong sơ đồ.
+- **Health:** development chỉ có DB `pg_isready`. `GET /health` chưa tồn tại trên `main`. Feature Prisma trả `database: "connected"`, SRS yêu cầu `database: "up"`; feature còn trả HTTP 200 với trạng thái degraded khi lỗi DB. Cần chuẩn hóa contract và thử lỗi DB trước nghiệm thu. Artifact health mô tả endpoint trong sản phẩm API tương lai, không phải tệp endpoint độc lập đã triển khai.
+- **Logging:** Docker logs và NestJS application stdout/stderr là cơ chế mục tiêu. Baseline có log startup và TypeORM `logging: true`; chưa có chính sách rotation, retention, che secrets được xác minh trên VM. Cần giới hạn dung lượng logs, tránh SQL/credentials nhạy cảm. Không tuyên bố đã có CloudWatch hoặc logging tập trung.
+- **Storage:** `postgres_data` có trong Compose development; volume production chưa được chứng minh tồn tại. Dữ liệu cùng SSD với OS, image và log nên volume không phải backup. Caddy cũng cần lưu trạng thái/chứng chỉ bền vững trong cấu hình production tương lai; đây là yêu cầu bổ sung, chưa có volume tương ứng trong repository.
+
+### 5.5 Triển khai và vận hành còn chờ
+
+Compose production tương lai phải là cấu hình riêng được review: image release đã build ở CI, chạy lệnh production, không bind mount source, không dùng dev/watch, không publish DB/API/Web. Chuẩn bị Caddy, HTTPS/domain, biến build/runtime, healthcheck, restart/resource/log limits, volume và rollback theo image digest. Không tạo hoặc sửa Compose production trong PR tài liệu này. `synchronize: true` trên `main` phải được thay bằng cơ chế migration đã kiểm thử trước production, qua PR ứng dụng riêng.
+
+Một VM **2 GB RAM** là single point of failure: OS, Docker, Next.js, NestJS, PostgreSQL cùng chia sẻ RAM/CPU/SSD. Build ngay trên VM có thể gây hết RAM; ưu tiên build ngoài VM, đo memory/load thực tế, giới hạn connection pool/container và nâng gói khi cần. Giá 12 USD/tháng là gói đã chọn, chưa phải tổng chi phí gồm backup, domain hoặc phần sử dụng bổ sung. Không có HA hay bằng chứng đạt tải/availability của SRS.
+
+Cần monitoring bên ngoài theo [SRS NFR-07](../requirements/srs.md): mỗi phút trong 7 ngày (10.080 mẫu), timeout 5 giây, kiểm tra `/menu`, `/products` và health có DB; khi dùng public proxy, map thành `/api/products`, `/api/health`. PASS ≥99% khi cả ba probe đạt; thiếu mẫu/bảo trì/lỗi đều tính không khả dụng. Lưu timestamp UTC, URL, status, latency, kết quả DB và thử mất dịch vụ. Chưa có kết quả đo. Bổ sung backup DB nhất quán ra ngoài VM, lịch/retention/mã hóa và quyền truy cập; thống nhất RPO/RTO, thử restore và ghi bằng chứng. Snapshot/volume cùng máy không thay thế kiểm thử phục hồi.
+
+### 5.6 Traceability Mapping — UML → Architecture → Code
+
+| UML Node / Artifact | Thành phần kiến trúc | Mã nguồn / Cấu hình | Trạng thái |
+|---|---|---|---|
+| Developer / Docker Desktop | Local runtime | [README](../../README.md), [Compose](../../docker-compose.yml) | IMPLEMENTED / VERIFIED cấu hình; runtime PENDING VERIFICATION |
+| Next.js Container / artifact | Frontend | [apps/web](../../apps/web/), [Dockerfile](../../apps/web/Dockerfile) | Local config IMPLEMENTED / VERIFIED; production PLANNED / NOT DEPLOYED |
+| NestJS Container / artifact | Backend | [apps/api](../../apps/api/), [Dockerfile](../../apps/api/Dockerfile) | Local config IMPLEMENTED / VERIFIED; production PLANNED / NOT DEPLOYED |
+| PostgreSQL Container | Data Persistence | [Compose](../../docker-compose.yml), service `db` | Local config IMPLEMENTED / VERIFIED; production PLANNED / NOT DEPLOYED |
+| Caddy / Caddyfile target | Web Entry | Chưa có production configuration; thiết kế §5.3 | PLANNED / NOT DEPLOYED |
+| Docker Network | Internal Communication | [Compose](../../docker-compose.yml), `brewlite-network` | Local config IMPLEMENTED / VERIFIED; production PLANNED / NOT DEPLOYED |
+| Persistent Storage / data directory | PostgreSQL Storage | [Compose](../../docker-compose.yml), `postgres_data` | Local config IMPLEMENTED / VERIFIED; volume AWS PENDING VERIFICATION |
+| Repository / workflow / Runner | CI | [quality.yml](../../.github/workflows/quality.yml), run 43903472968 | IMPLEMENTED / VERIFIED |
+| GHCR / release image artifacts | Container Registry | Chưa có workflow publish trên `main` | PLANNED / NOT DEPLOYED; NOT IMPLEMENTED |
+| Lightsail VM / Ubuntu | Production Infrastructure | Nhóm xác nhận instance trong yêu cầu Task 3.2; thông số §5.1 | PROVISIONED; bằng chứng console/SSH cần bổ sung |
+| Docker Engine trên VM | Container runtime | Chưa có bằng chứng cài đặt trên AWS | PENDING VERIFICATION |
+| Environment artifact | Runtime configuration | [.env.example](../../.env.example), [app.module.ts](../../apps/api/src/app.module.ts), [main.ts](../../apps/api/src/main.ts) | Local config IMPLEMENTED / VERIFIED; production PLANNED / NOT DEPLOYED |
+| Health artifact | API/DB readiness | [AppController](../../apps/api/src/app.controller.ts), [SRS](../requirements/srs.md); feature health chỉ tham chiếu | DB local probe IMPLEMENTED / VERIFIED; API main NOT IMPLEMENTED; production PLANNED / NOT DEPLOYED |
+| Logs artifact | Operations | [main.ts](../../apps/api/src/main.ts), [app.module.ts](../../apps/api/src/app.module.ts) | Log code có trên main; Docker/NestJS production logs PLANNED / NOT DEPLOYED |
+| External Synthetic Monitoring | Availability NFR-07 | [SRS §3](../requirements/srs.md#3-yêu-cầu-phi-chức-năng-non-functional-requirements---nfr); chưa có cấu hình monitor | PLANNED / NOT DEPLOYED; phép đo 7 ngày chưa thực hiện |
+| User browser / PWA | Client | [Web UI](../../apps/web/src/app/menu/page.tsx); chưa có service worker/manifest PWA | Browser là client context; PWA PLANNED / NOT DEPLOYED |
+
+Các trạng thái chức năng trong [RTM](../traceability-matrix.md) vẫn tách `main` với feature. Cấu hình production, file Caddy và release image trong sơ đồ là artifact mục tiêu, không phải đường dẫn tồn tại.
+
+### 5.7 Tái tạo và kiểm tra sơ đồ
+
+Dùng Java + PlantUML **1.2025.10**, Graphviz **2.44.1**, UTF-8:
+
+```powershell
+java -jar <plantuml.jar> -charset UTF-8 -checkonly docs/architecture/DeploymentDiagram.puml
+java -jar <plantuml.jar> -charset UTF-8 -tsvg docs/architecture/DeploymentDiagram.puml
+git diff --check
+```
+
+Nếu xuất PNG kiểm tra trực quan, đặt `PLANTUML_LIMIT_SIZE=10000` để không cắt hình rộng ở giới hạn mặc định 4096 px. Kiểm tra XML SVG, mở bản render để đọc labels/communication paths và đối chiếu trạng thái với bảng trên. Khi đưa vào PDF, dùng trang landscape riêng đủ lớn hoặc chia vùng Local/CI/Production thành các hình phóng to có cùng legend; không ép sơ đồ toàn cảnh thành một hình nhỏ trong trang văn bản. Xác minh thay đổi chỉ thuộc tài liệu, không chạm `apps/`, 14 tệp `docs/diagram/` hoặc Docker Compose. CI của PR kiểm tra lint/test/build, không kiểm thử production.
 
 ---
 
@@ -256,6 +374,8 @@ Toàn bộ các quyết định công nghệ và kiến trúc then chốt của 
 4. **[ADR-004: Bổ sung Logging và Endpoint Health Check (`GET /health`)](adr/adr/004-logging-healthcheck.md)** — *Trạng thái: `Proposed` (Chờ triển khai chính thức trên `main` theo GAP-04)*
 5. **[ADR-005: Quản lý cấu hình bằng Biến Môi Trường (Environment Variables)](adr/adr/005-configuration-management.md)** — *Trạng thái: `Accepted` / `Implemented`*
 6. **[ADR-006: Đề xuất chuyển đổi ORM sang Prisma và chuẩn hóa UUID](adr/adr/006-orm-migration-prisma.md)** — *Trạng thái: `Proposed` (Chờ PO phê duyệt cho Sprint 2 - Task 5)*
+
+7. **[ADR-007: AWS Lightsail một VM](adr/adr/007-aws-lightsail-deployment.md)** — *Proposed; VM PROVISIONED, ứng dụng PLANNED / NOT DEPLOYED*
 
 ---
 

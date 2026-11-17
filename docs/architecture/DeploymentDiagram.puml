@@ -1,148 +1,157 @@
 @startuml
-skinparam linetype ortho
+' Canonical source. Evidence: README section 5. PlantUML 1.2025.10.
+top to bottom direction
 skinparam shadowing false
-skinparam packageStyle rectangle
 skinparam defaultFontName Arial
-skinparam defaultFontSize 12
+skinparam defaultFontSize 14
 skinparam defaultTextAlignment center
-skinparam roundCorner 8
-skinparam wrapWidth 260
+skinparam nodesep 25
+skinparam linetype polyline
+skinparam ranksep 30
+skinparam packageStyle rectangle
+skinparam ArrowColor #546478
+skinparam nodeBackgroundColor #FFFFFF
+skinparam artifactBackgroundColor #F5F7FA
+skinparam databaseBackgroundColor #EDF3FF
+skinparam noteBackgroundColor #FFF5D9
+title BrewLite | UML Deployment | Task 3.2\nAWS PLATFORM SELECTED / INSTANCE PROVISIONED / APPLICATION DEPLOYMENT PENDING
 
-' Palette
-skinparam node {
-  BackgroundColor #FFFFFF
-  BorderColor #455A64
-  BorderThickness 1.5
-}
-skinparam artifact {
-  BackgroundColor #F5F5F5
-  BorderColor #546E7A
-}
-skinparam database {
-  BackgroundColor #E8EAF6
-  BorderColor #3F51B5
-}
-skinparam cloud {
-  BackgroundColor #FAFAFA
-  BorderColor #9E9E9E
-}
-
-title Deployment Diagram - Hệ Thống BrewLite (Task 3.2)\nPhân Định Ranh Giới: Local Development, CI/CD Pipeline & Target Production\n[TRẠNG THÁI TASK 3.2: DESIGN COMPLETE / FINAL ACCEPTANCE PENDING]
-
-' ============================================================================
-' 1. LOCAL DEVELOPMENT ENVIRONMENT (VERIFIED VIA DOCKER COMPOSE)
-' ============================================================================
-package "1. Môi Trường Phát Triển Cục Bộ (Local Development)\n[TRẠNG THÁI: ĐÃ KIỂM CHỨNG BẰNG DOCKER COMPOSE]" #F3E5F5 {
-  node "Máy Trạm Lập Trình Viên (Developer Workstation)\n<<Device: PC / Laptop>>" as LocalWorkstation {
-
-    artifact ".env\n<<Configuration>>\nBiến môi trường cục bộ\n(PORT, DB credentials...)" as LocalEnv
-
-    node "Docker Engine / Desktop\n<<Execution Environment>>" as LocalDocker {
-
-      node "Container: brewlite-web\n<<Container>>" as LocalWebContainer {
-        artifact "Next.js Dev Server\n<<Artifact: Node.js 24>>\nCổng: :3000" as LocalWebArtifact
+package "A | LOCAL DEVELOPMENT\nIMPLEMENTED / VERIFIED (repository configuration)" as Local #EEF7F2 {
+  node "Developer PC / Laptop\nWindows (supported by README)" as Dev <<device>> {
+    node "Browser" as LocalBrowser <<executionEnvironment>>
+    artifact ".env / docker-compose.yml\nLocal configuration; no secret values" as LocalConfig
+    node "Docker Desktop / Compose" as LocalDocker <<executionEnvironment>> {
+      node "brewlite-network\nDocker bridge network" as LocalNetwork <<network>> {
+        node "brewlite-web | web:3000\nNode.js 22-alpine" as LocalWeb <<container>> {
+          artifact "Next.js\nnpm run dev -- --hostname 0.0.0.0"
+        }
+        node "brewlite-api | api:3001\nNode.js 22-alpine\nInternal URL: http://api:3001 (configured)" as LocalApi <<container>> {
+          artifact "NestJS / TypeORM\nnpm run start:dev"
+        }
+        node "brewlite-db | db:5432" as LocalDb <<container>> {
+          database "PostgreSQL 16-alpine\npg_isready healthcheck"
+        }
       }
-
-      node "Container: brewlite-api\n<<Container>>" as LocalApiContainer {
-        artifact "NestJS Modular API\n<<Artifact: Node.js 24>>\nCổng: :3001" as LocalApiArtifact
+      node "postgres_data" as LocalVolume <<persistentVolume>> {
+        artifact "/var/lib/postgresql/data" as LocalData
       }
-
-      node "Container: brewlite-db\n<<Container>>" as LocalDbContainer {
-        database "PostgreSQL 16 Engine\n<<DBMS>>\nCổng: :5432" as LocalPgEngine
-      }
-
-      storage "Docker Named Volume\n<<Storage Volume>>\npostgres_data" as LocalVolume
     }
   }
-}
-
-' ============================================================================
-' 2. CI/CD AUTOMATION ENVIRONMENT (GITHUB PLATFORM)
-' ============================================================================
-package "2. Môi Trường Tự Động Hóa CI/CD (GitHub Platform)\n[CI QUALITY GATES: IMPLEMENTED | CD IMAGE PUBLISHING: PROPOSED]" #FFF3E0 {
-
-  node "Dịch Vụ Lưu Trữ Mã Nguồn (GitHub Repository)\n<<VCS: github.com/vohuunghiaah/brewlite>>" as GitHubRepo {
-    artifact "Mã nguồn ứng dụng\n(Next.js & NestJS)" as GitSource
-    artifact "Cấu hình Dockerfile\n& docker-compose.yml" as GitDockerfiles
-    artifact "Quality Gates Workflow\n(.github/workflows/quality.yml)\n[IMPLEMENTED]" as GitWorkflow
-  }
-
-  node "GitHub Actions Hosted Runner\n<<Virtual Machine: Ubuntu Latest>>\n[IMPLEMENTED CI]" as CiRunner {
-    node "CI Execution Environment\n<<Runtime: Node.js 24.x>>" as CiNode {
-      artifact "Quality Gate: API\n(Install -> Oxlint -> Jest -> Build)" as CiApiJob
-      artifact "Quality Gate: Web\n(Install -> ESLint -> Test -> Build)" as CiWebJob
-    }
-  }
-
-  node "GitHub Packages / Registry\n<<Container Registry: ghcr.io>>\n[PROPOSED / PLANNED CD]" as ContainerRegistry {
-    artifact "Docker Image Mục Tiêu CD\n<<Image: brewlite-api:tag>>\n[PLANNED]" as ApiImage
-    artifact "Docker Image Mục Tiêu CD\n<<Image: brewlite-web:tag>>\n[PLANNED]" as WebImage
-  }
-}
-
-' ============================================================================
-' 3. TARGET PRODUCTION DEPLOYMENT ENVIRONMENT (PROPOSED / NOT LIVE DEPLOYED)
-' ============================================================================
-cloud "3. Môi Trường Triển Khai Production Mục Tiêu (Target Cloud Platform)\n[TRẠNG THÁI: PROPOSED / CHƯA TRIỂN KHAI LIVE TRÊN CLOUD]" #E3F2FD {
-
-  note as ProdNote #FFFDE7
-    <b>LƯU Ý NGHIỆM THU KIẾN TRÚC TASK 3.2:</b>
-    Hệ thống chưa triển khai thực tế trên Cloud Production.
-    Nền tảng Cloud (Vercel, Railway, AWS ECS...) đang ở trạng thái
-    <b>ĐỀ XUẤT (PROPOSED)</b>, chờ quyết định phê duyệt nền tảng chính thức.
-    Sơ đồ này mô tả <b>Kiến Trúc Triển Khai Mục Tiêu (Target Deployment)</b>.
-    Trạng thái nghiệm thu Task 3.2: <b>DESIGN COMPLETE / FINAL ACCEPTANCE PENDING</b>.
+  LocalBrowser --> LocalWeb : HTTP TCP 3000\nlocalhost:3000
+  LocalBrowser --> LocalApi : HTTP TCP 3001\nlocalhost:3001 (browser fetch)
+  LocalApi --> LocalDb : PostgreSQL TCP 5432\ndb:5432
+  LocalDb --> LocalVolume : File I/O: read / write
+  LocalConfig ..> LocalDocker : Compose / env injection
+  note bottom of LocalVolume
+    Host mappings: 3000, 3001, 5432 (defaults).
+    Compose does not restrict binds to loopback.
+    Local configuration is not a production firewall.
+    Runtime in this audit: PENDING VERIFICATION.
   end note
-
-  node "Thiết Bị Khách Hàng (Customer Client)\n<<Device: Smartphone / Tablet / PC>>" as ProdClient {
-    artifact "Trình Duyệt Web / PWA\n<<Client Artifact: TARGET/PLANNED>>\n(Chrome, Safari, Edge)" as ProdBrowser
-  }
-
-  node "Cụm Máy Chủ Frontend (Frontend Edge Hosting)\n<<PaaS / CDN Edge Node: Đề xuất Vercel / Cloudflare>>\n[PROPOSED]" as ProdFrontendNode {
-    artifact "Next.js 16 Production Build\n<<Artifact: SSR & Static Cache>>\nLắng nghe: HTTPS (Cổng 443)" as ProdNextArtifact
-  }
-
-  node "Cụm Máy Chủ Backend (Application Cloud Service)\n<<Container Service: Đề xuất Managed PaaS / AWS ECS>>\n[PROPOSED]" as ProdBackendNode {
-
-    node "Docker Production Container\n<<Container: Alpine Linux (Node.js 24)>>" as ProdApiContainer {
-      artifact "NestJS Production API\n<<Artifact: dist/main.js>>\nLắng nghe: HTTP (:3001) / HTTPS (:443)" as ProdApiArtifact
-      artifact "Endpoint Giám Sát\n<<Endpoint: GET /health>>\n(GAP-04 Target)" as ProdHealthProbe
-      artifact "Dòng Nhật Ký Vận Hành\n<<Logging: stdout / JSON Stream>>\n(NestJS Logger / Winston)" as ProdLogs
-      artifact "Dịch Vụ Thanh Toán Giả Lập\n<<Mock Payment Service>>\n(ADR-003 Sandbox)" as ProdMockPayment
-    }
-
-    artifact "Cấu Hình Bí Mật (Cloud Secrets Manager)\n<<Environment Variables>>\nDATABASE_URL, JWT_SECRET, NODE_ENV..." as ProdSecrets
-  }
-
-  database "Cụm Cơ Sở Dữ Liệu Quản Trị (Managed Database)\n<<DBaaS: Đề xuất Managed PostgreSQL 16>>\n[PROPOSED]" as ProdDbNode {
-    artifact "PostgreSQL Instance\n<<RDBMS Engine>>\nLắng nghe: TCP (:5432)" as ProdPgEngine
-    storage "Ổ Lưu Trữ Bền Vững Mã Hóa\n<<Encrypted SSD Volume>>\n(Data Persistence & Daily Backups)" as ProdPersistentStorage
-  }
 }
-
-' ============================================================================
-' MỐI QUAN HỆ & LUỒNG GIAO TIẾP (CONNECTIONS & PROTOCOLS)
-' ============================================================================
-
-' 1. Luồng Local
-LocalWebArtifact --> LocalApiArtifact : HTTP REST\n(localhost:3001)\nJSON Payload
-LocalApiArtifact --> LocalPgEngine : TCP (Cổng 5432)\nTypeORM Connection Pool
-LocalPgEngine --> LocalVolume : File I/O\n(Ghi nhận dữ liệu bền vững)
-LocalEnv ..> LocalWebContainer : Nạp biến môi trường
-LocalEnv ..> LocalApiContainer : Nạp biến môi trường
-
-' 2. Luồng CI/CD
-LocalWorkstation --> GitHubRepo : Git Push (SSH / HTTPS 443)\nNhánh: main, feature/*
-GitSource --> CiRunner : Kích hoạt workflow tự động\n(Event: push, pull_request)
-GitWorkflow --> CiRunner : Chỉ định kịch bản kiểm thử
-CiRunner ..> ContainerRegistry : Đóng gói & Push Image\n[Đề xuất quy trình CD tương lai]
-
-' 3. Luồng Production Mục Tiêu
-ProdBrowser --> ProdFrontendNode : HTTPS (Cổng 443)\nTLS 1.3 / HTTP/2\nGiao diện Next.js
-ProdBrowser --> ProdBackendNode : HTTPS (Cổng 443)\nREST API JSON Requests\n(CORS Whitelist, Bearer JWT)
-ProdFrontendNode --> ProdBackendNode : Server-Side Fetch\n(BFF Pattern / Proxy)
-ProdApiArtifact --> ProdPgEngine : TCP / TLS Encrypted (Cổng 5432)\nConnection Pool (Prisma/TypeORM)
-ProdPgEngine --> ProdPersistentStorage : Block Storage I/O\n(ACID Wal & Data Files)
-ProdSecrets ..> ProdBackendNode : Tiêm biến môi trường\nRuntime Injection
-
+package "B | CI | GITHUB ACTIONS\nIMPLEMENTED / VERIFIED (linked CI evidence)" as CI #EDF3FF {
+  node "GitHub Repository\nvohuunghiaah/brewlite" as Repo <<sourceControl>> {
+    artifact "apps/api/ + apps/web/\nDockerfiles + Compose"
+    artifact ".github/workflows/quality.yml"
+  }
+  node "GitHub Actions Runner\nubuntu-latest" as Runner <<executionEnvironment>> {
+    node "Node.js 24 | Matrix: api / web" <<executionEnvironment>> {
+      artifact "Install: npm ci\nLint: npm run lint\nUnit Test: npm test\nBuild: npm run build"
+    }
+  }
+  node "GHCR | ghcr.io\nPLANNED / NOT DEPLOYED\nPublication NOT IMPLEMENTED on main" as Registry <<containerRegistry>> {
+    artifact "Target web / api images\nImmutable release tags or digests"
+  }
+  node "Developer PC\n(same actor as Local)" as GitDev <<device>>
+  GitDev --> Repo : Git / HTTPS TCP 443
+  Repo --> Runner : Checkout + event\npull_request / push to main
+  Runner ..> Registry : FUTURE build / push\nHTTPS TCP 443
+  note bottom of Registry
+    CI proves lint / tests / builds only.
+    No image publication or production CD on main.
+    Feature workflows are reference only.
+  end note
+}
+package "EXTERNAL SYSTEMS | OUTSIDE AWS" as External #F2F4F8 {
+  node "User Device" <<device>> {
+    node "Browser" as Browser <<executionEnvironment>> {
+      artifact "PWA | PLANNED"
+    }
+  }
+  cloud "Internet" as Internet
+  node "Developer PC\n(same actor as Local)" as Admin <<device>>
+  node "GHCR\n(reference to panel B)\nPLANNED / NOT DEPLOYED" as RegistryRef <<containerRegistry>>
+  node "External Synthetic Monitoring\nPLANNED / NOT DEPLOYED" as Monitor <<executionEnvironment>> {
+    artifact "NFR-07 availability measurement\nEvery minute for 7 days | 10,080 samples\nTimeout: 5s per probe | PASS >=99%\nAll three probes must pass per sample\nUTC timestamp, status, latency, DB result, errors"
+  }
+note bottom of Monitor
+  Missing probes, maintenance, timeout, HTTP errors,
+  invalid data or DB failure count as unavailable.
+  main has no health endpoint: NFR-07 not verified.
+end note
+}
+package "C | AWS LIGHTSAIL PRODUCTION\nApplication stack: PLANNED / NOT DEPLOYED" as Production #FFF4E8 {
+  node "AWS Lightsail | brewlite-production\nPROVISIONED (team confirmation)\nSingapore: ap-southeast-1 / ap-southeast-1a\n2 vCPU | 2 GB RAM | 60 GB SSD\nDual-stack | selected plan: USD 12/month" as VM <<virtualMachine>> #FFF0CC {
+    node "Ubuntu Linux" <<operatingSystem>> {
+      artifact "Production environment file (target)\nDATABASE_* / POSTGRES_*; NODE_ENV\nAPI_INTERNAL_URL; NEXT_PUBLIC_API_URL\nFRONTEND_URL; JWT_SECRET (future Auth)" as Secrets
+      node "Docker Engine\nInstallation: PENDING VERIFICATION" as Engine <<executionEnvironment>> {
+        node "Internal Docker network\nbrewlite-network (target)" <<network>> {
+          node "Caddy reverse proxy\nPLANNED / NOT DEPLOYED" as Proxy <<container>> {
+            artifact "Caddyfile (target, absent in repo)\nTLS termination; HTTP 80 redirects to 443\n/api/* strips /api prefix"
+          }
+          node "brewlite-web | web:3000\nPLANNED / NOT DEPLOYED" as Web <<container>> {
+            artifact "Next.js production build\n.next/ + runtime (target)"
+          }
+          node "brewlite-api | api:3001\nPLANNED / NOT DEPLOYED" as Api <<container>> {
+            artifact "NestJS build | dist/ (target)"
+            artifact "Health Check | GET /health\nPLANNED; absent on main"
+          }
+          node "brewlite-db | db:5432\nPLANNED / NOT DEPLOYED" as Db <<container>> {
+            database "PostgreSQL 16\npg_isready (target)"
+          }
+        }
+        node "postgres_data\nPLANNED / NOT DEPLOYED" as Volume <<persistentVolume>> {
+          artifact "/var/lib/postgresql/data" as ProdData
+        }
+        artifact "Docker logs / NestJS stdout, stderr\nRotation and retention: PLANNED" as Logs
+      }
+    }
+  }
+  Proxy ..> Web : HTTP TCP 3000\nUI requests
+  Proxy ..> Api : HTTP TCP 3001\nStrip /api prefix
+  Api ..> Db : PostgreSQL TCP 5432\nInternal only
+  Db ..> Volume : File I/O: read / write
+  Secrets ..> Engine : Target env injection
+  Api ..> Logs : Target application output
+note right of Api
+  Selected contract: main, TCP 3001, no /api prefix.
+  Caddy strips /api (target only, not configured).
+  Sprint 2 alternative: TCP 4000, KEEP /api.
+  Switch proxy + PORT + URLs + probes together;
+  never activate both routing contracts.
+end note
+  note bottom of Volume
+    Volume configuration exists locally only;
+    no verified volume or backup on Lightsail.
+    Target firewall: never expose 3000/3001/5432.
+    Health contract: SRS database="up";
+    feature returns "connected"; not merged.
+  end note
+}
+  Admin ..> VM : SSH TCP 22\nRestrict source IPs (target)\nPolicy PENDING VERIFICATION
+  RegistryRef ..> Engine : FUTURE image delivery\nVM initiates pull\nHTTPS TCP 443
+  Browser --> Internet : HTTPS TCP 443\nHTTP TCP 80\n(redirect target)
+  Internet ..> Proxy : HTTPS TCP 443 / HTTP TCP 80\nPLANNED public entry only
+Monitor ..> Internet : PLANNED HTTPS TCP 443\nGET /menu; GET /api/products\nGET /api/health (blocked until implemented)
+legend bottom
+  |= Status / notation |= Meaning |
+  | IMPLEMENTED / VERIFIED | Repository configuration or linked CI evidence; not production proof |
+  | PROVISIONED | AWS instance created, as confirmed by the team |
+  | PLANNED / NOT DEPLOYED | Target components and future communication paths |
+  | PENDING VERIFICATION | Insufficient runtime or configuration evidence |
+  | Solid arrow | Configured communication / CI flow; client context in target panel |
+  | Dotted arrow | Configuration dependency or explicitly labelled target path |
+  | node / nested node | Device, VM, execution environment, container or network boundary |
+  | artifact / database | Deployed file or software product / DBMS |
+endlegend
 @enduml
