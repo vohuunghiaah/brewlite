@@ -40,6 +40,13 @@ export class OrderItem {
   toppings: string[];
 
   @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  note?: string | null;
+
+  @Column({
     type: 'integer',
   })
   quantity: number;

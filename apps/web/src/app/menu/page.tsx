@@ -364,12 +364,13 @@ export default function MenuPage() {
       return;
     }
 
-    // Dữ liệu chi tiết gửi đến NestJS OrdersService
+    // Dữ liệu chi tiết gửi đến NestJS OrdersService (bao gồm ghi chú món - FIX-02)
     const items = cartItems.map((item) => ({
       productId: item.productId,
       quantity: item.quantity,
       size: item.size,
       toppings: item.toppings,
+      note: item.note ? item.note.trim() : undefined,
     }));
 
     const payload = {
@@ -405,14 +406,15 @@ export default function MenuPage() {
       }
 
       const orderId = data.id;
+      const orderStatus = data.status || "PENDING";
       setOrderMessage(
         `Đặt hàng thành công! ${
-          orderId !== undefined ? `Mã đơn hàng: #${orderId}.` : ""
-        } Trạng thái: ${data.status || "PENDING"}.`
+          orderId !== undefined ? `Mã đơn hàng: #${orderId}. ` : ""
+        }Trạng thái: ${orderStatus} (Chờ thanh toán). Giỏ hàng được giữ nguyên để tiến hành thanh toán.`
       );
 
-      // Xóa giỏ hàng sau khi đặt thành công
-      setCartItems([]);
+      // FIX-03: Đơn hàng PENDING (UC-04) chưa được thanh toán (UC-10)
+      // Giữ nguyên giỏ hàng để bảo toàn thông tin cho bước thanh toán tiếp theo
       setShowCheckout(false);
       setCustomerName("");
       setCustomerPhone("");

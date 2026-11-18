@@ -110,6 +110,13 @@ export class OrdersService {
 
           // Xác thực và tính phụ thu topping
           const toppings = Array.isArray(item.toppings) ? item.toppings : [];
+          const uniqueToppings = new Set(toppings);
+          if (uniqueToppings.size !== toppings.length) {
+            throw new BadRequestException(
+              'Danh sách topping không được chứa các phần tử trùng lặp',
+            );
+          }
+
           let toppingsTotal = 0;
           for (const top of toppings) {
             if (!Object.prototype.hasOwnProperty.call(TOPPING_PRICES, top)) {
@@ -139,6 +146,7 @@ export class OrdersService {
               productName: product.name,
               size,
               toppings,
+              note: item.note?.trim() || null,
               quantity: item.quantity,
               unitPrice: unitPrice.toFixed(2),
               subtotal: subtotal.toFixed(2),

@@ -250,4 +250,48 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
     (orderRepository.findOne as jest.Mock).mockResolvedValueOnce(null);
     await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
   });
+
+  it('10. should reject order with duplicate toppings in payload (FIX-04)', async () => {
+    const dto: CreateOrderDto = {
+      customerName: 'Nguyễn Văn Hack',
+      customerPhone: '0909998877',
+      items: [
+        {
+          productId: 1,
+          size: ProductSize.MEDIUM,
+          toppings: ['Kem cheese', 'Kem cheese'],
+          quantity: 1,
+        },
+      ],
+    };
+
+    await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+    await expect(service.create(dto)).rejects.toThrow(
+      'Danh sách topping không được chứa các phần tử trùng lặp',
+    );
+  });
+
+  it('11. should preserve individual item note in OrderItem and order note in Order (FIX-02)', async () => {
+    const dto: CreateOrderDto = {
+      customerName: 'Trần Thị Chi Tiết',
+      customerPhone: '0988112233',
+      note: 'Ghi chú toàn đơn: Giao trước 9h',
+      items: [
+        {
+          productId: 1,
+          size: ProductSize.MEDIUM,
+          toppings: ['Kem cheese'],
+          note: '30% đường, không đá',
+          quantity: 1,
+        },
+      ],
+    };
+
+    const result = await service.create(dto);
+    expect(result).toBeDefined();
+    expect(result.note).toBe('Ghi chú toàn đơn: Giao trước 9h');
+    expect(result.items[0].note).toBe('30% đường, không đá');
+    expect(result.items[0].size).toBe(ProductSize.MEDIUM);
+    expect(result.items[0].unitPrice).toBe('60000.00');
+  });
 });

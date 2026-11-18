@@ -9,14 +9,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateOrderItemDto = exports.ProductSize = void 0;
+exports.CreateOrderItemDto = void 0;
 const class_validator_1 = require("class-validator");
-const order_item_entity_1 = require("../entities/order-item.entity");
-Object.defineProperty(exports, "ProductSize", { enumerable: true, get: function () { return order_item_entity_1.ProductSize; } });
 class CreateOrderItemDto {
     productId;
-    size;
-    toppings;
     quantity;
 }
 exports.CreateOrderItemDto = CreateOrderItemDto;
@@ -25,17 +21,6 @@ __decorate([
     (0, class_validator_1.IsPositive)(),
     __metadata("design:type", Number)
 ], CreateOrderItemDto.prototype, "productId", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(order_item_entity_1.ProductSize, { message: 'Kích cỡ phải là SMALL, MEDIUM hoặc LARGE' }),
-    __metadata("design:type", String)
-], CreateOrderItemDto.prototype, "size", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsArray)(),
-    (0, class_validator_1.IsString)({ each: true, message: 'Tên topping phải là chuỗi' }),
-    __metadata("design:type", Array)
-], CreateOrderItemDto.prototype, "toppings", void 0);
 __decorate([
     (0, class_validator_1.IsInt)(),
     (0, class_validator_1.IsPositive)(),

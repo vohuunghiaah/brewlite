@@ -182,9 +182,16 @@ describe('MenuPage React Component Tests', () => {
     const confirmBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
     fireEvent.click(confirmBtn);
 
-    // Expect success message with Order ID #101 and status PENDING
+    // Expect success message with Order ID #101 and status PENDING (awaiting payment)
     await waitFor(() => {
-      expect(screen.getByText(/đặt hàng thành công! mã đơn hàng: #101\. trạng thái: PENDING\./i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/đặt hàng thành công! mã đơn hàng: #101\. trạng thái: PENDING \(chờ thanh toán\)\. giỏ hàng được giữ nguyên/i)
+      ).toBeInTheDocument();
     });
+
+    // FIX-03: Giỏ hàng được bảo toàn khi đơn hàng ở trạng thái PENDING
+    const cartSection = document.getElementById('cart')!;
+    expect(cartSection).toHaveTextContent('Cà phê Latte');
+    expect(cartSection).toHaveTextContent('Size S');
   });
 });

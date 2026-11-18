@@ -24,6 +24,10 @@ export class CreateOrderItemDto {
   @IsString({ each: true, message: 'Tên topping phải là chuỗi' })
   toppings?: string[];
 
+  @IsOptional()
+  @IsString({ message: 'Ghi chú món phải là chuỗi' })
+  note?: string;
+
   @IsInt()
   @IsPositive()
   quantity: number;

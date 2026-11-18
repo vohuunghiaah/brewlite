@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
+import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1731974400000-AddCustomizationAndNoteToOrderItems';
 
 @Module({
   imports: [
@@ -38,11 +39,16 @@ import { OrdersModule } from './orders/orders.module';
         // Tự động nhận diện Entity trong các module
         autoLoadEntities: true,
 
-        // Chỉ sử dụng trong môi trường phát triển
-        synchronize: true,
+        // Chỉ sử dụng synchronize trong môi trường phát triển (tuyệt đối không bật trong production)
+        synchronize: config.get<string>('NODE_ENV') !== 'production',
+
+        // Tự động chạy migration khi khởi động ở production
+        migrationsRun: config.get<string>('NODE_ENV') === 'production',
+
+        migrations: [AddCustomizationAndNoteToOrderItems1731974400000],
 
         // Ghi log câu truy vấn SQL khi phát triển
-        logging: true,
+        logging: config.get<string>('NODE_ENV') !== 'production',
 
         // Thử kết nối lại nếu PostgreSQL chưa sẵn sàng
         retryAttempts: 5,
