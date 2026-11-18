@@ -1067,3 +1067,267 @@
     height: 36px;
   }
 }
+
+/* ================= PRODUCT CUSTOMIZATION (TASK 5.1.1) ================= */
+.customSection {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.customTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #43291f;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sizeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.sizeOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  border: 1.5px solid #e2d7ce;
+  border-radius: 12px;
+  background: #faf7f4;
+  cursor: pointer;
+  transition: all 160ms ease;
+  min-height: 44px;
+  text-align: center;
+}
+
+.sizeOption:hover {
+  border-color: #c58b52;
+  background: #fdfaf7;
+}
+
+.sizeOptionActive {
+  border-color: #43291f;
+  background: #eedfd2;
+  box-shadow: 0 2px 8px rgba(67, 41, 31, 0.12);
+}
+
+.sizeName {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2b170e;
+}
+
+.sizePriceTag {
+  font-size: 11px;
+  color: #8c6a53;
+  margin-top: 2px;
+}
+
+.toppingList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toppingOption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1.5px solid #e8ded6;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 160ms ease;
+}
+
+.toppingOption:hover {
+  border-color: #c58b52;
+}
+
+.toppingOptionActive {
+  border-color: #43291f;
+  background: #f7efe7;
+}
+
+.toppingLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3b2219;
+}
+
+.toppingCheckbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #43291f;
+  cursor: pointer;
+}
+
+.toppingSurcharge {
+  font-size: 12px;
+  font-weight: 700;
+  color: #a76e3d;
+}
+
+.itemNoteInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #ded5cc;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #333;
+  background: #faf8f5;
+  outline: none;
+  transition: border-color 160ms;
+}
+
+.itemNoteInput:focus {
+  border-color: #43291f;
+  background: #fff;
+}
+
+.modalQtyRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px dashed #e8ded6;
+}
+
+.qtyControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.qtyBtn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border: 1.5px solid #d4c4b5;
+  background: #faf6f2;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  color: #43291f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qtyBtn:hover:not(:disabled) {
+  background: #e2d0c0;
+}
+
+.qtyValue {
+  font-size: 15px;
+  font-weight: 700;
+  min-width: 24px;
+  text-align: center;
+  color: #333;
+}
+
+/* ================= CART ITEMS (TASK 5.1.1) ================= */
+.cartItemCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid #f0e6dd;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cartItemDetails {
+  flex: 1;
+  min-width: 160px;
+}
+
+.cartItemNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cartItemName {
+  font-size: 15px;
+  font-weight: 700;
+  color: #3d2314;
+}
+
+.sizeBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #43291f;
+  color: #fff;
+  border-radius: 6px;
+}
+
+.cartItemToppings {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cartToppingPill {
+  font-size: 11px;
+  background: #f4ece4;
+  color: #7a5033;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.cartItemNote {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #777;
+  font-style: italic;
+}
+
+.cartItemUnitPrice {
+  font-size: 12px;
+  color: #9c7b66;
+  margin-top: 2px;
+}
+
+.cartActionsCol {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.deleteItemBtn {
+  border: none;
+  background: transparent;
+  color: #b5493d;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 6px;
+  border-radius: 6px;
+  min-height: 40px;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 160ms;
+}
+
+.deleteItemBtn:hover {
+  background: #fdeeed;
+}

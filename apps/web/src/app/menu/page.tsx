@@ -1,11 +1,17 @@
-
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { fetchProducts } from "./products.mjs";
-import { createMenuModalController, getCategory } from "./menu-controller.mjs";
+import {
+  createMenuModalController,
+  getCategory,
+  AVAILABLE_SIZES,
+  AVAILABLE_TOPPINGS,
+  calculateItemPrice,
+  buildCartItemKey,
+} from "./menu-controller.mjs";
 import ui from "./menu.module.css";
 
 // ================= API BACKEND =================
@@ -20,6 +26,19 @@ interface Product {
   price: number | string;
   imageUrl?: string | null;
   isAvailable: boolean;
+}
+
+export interface CartItem {
+  key: string;
+  productId: number;
+  productName: string;
+  basePrice: number;
+  size: "SMALL" | "MEDIUM" | "LARGE";
+  toppings: string[];
+  note: string;
+  unitPrice: number;
+  quantity: number;
+  subtotal: number;
 }
 
 interface OrderResponse {
@@ -77,8 +96,8 @@ export default function MenuPage() {
   // Danh sách sản phẩm
   const [products, setProducts] = useState<Product[]>([]);
 
-  // Giỏ hàng: productId -> quantity
-  const [cart, setCart] = useState<Record<number, number>>({});
+  // Giỏ hàng danh sách CartItem (Task 5.1.1)
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   // Trạng thái tải dữ liệu
   const [loading, setLoading] = useState(true);
@@ -87,11 +106,17 @@ export default function MenuPage() {
   const [selectedCategory, setSelectedCategory] = useState("Tất cả");
   const [favorites, setFavorites] = useState<Record<number, boolean>>({});
 
+  // Tùy chỉnh sản phẩm trong Modal (Task 5.1.1)
+  const [selectedSize, setSelectedSize] = useState<"SMALL" | "MEDIUM" | "LARGE">("SMALL");
+  const [selectedToppings, setSelectedToppings] = useState<string[]>([]);
+  const [itemNote, setItemNote] = useState<string>("");
+  const [itemQuantity, setItemQuantity] = useState<number>(1);
+
   // Thông tin đặt hàng
   const [showCheckout, setShowCheckout] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [note, setNote] = useState("");
+  const [orderNote, setOrderNote] = useState("");
 
   // Trạng thái xử lý đơn hàng
   const [submittingOrder, setSubmittingOrder] = useState(false);
@@ -111,6 +136,18 @@ export default function MenuPage() {
   const { selectedProduct, loadingDetail, detailError, isOpen } = modalState;
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Mở modal và khởi tạo tùy chỉnh mặc định
+  const handleOpenProductModal = useCallback(
+    (product: Product) => {
+      setSelectedSize("SMALL");
+      setSelectedToppings([]);
+      setItemNote("");
+      setItemQuantity(1);
+      void modalController.openProductDetail(product);
+    },
+    [modalController]
+  );
 
   // Quản lý Focus khi mở và đóng modal
   useEffect(() => {
@@ -136,7 +173,7 @@ export default function MenuPage() {
 
       if (event.key === "Tab" && modalRef.current) {
         const focusables = modalRef.current.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), [tabindex="0"], a[href], input:not(:disabled)'
+          'button:not(:disabled), [tabindex="0"], a[href], input:not(:disabled), textarea:not(:disabled)'
         );
         if (focusables.length === 0) return;
         const first = focusables[0];
@@ -188,32 +225,84 @@ export default function MenuPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // ================= THÊM VÀO GIỎ HÀNG =================
-  function addToCart(product: Product) {
-    if (!product.isAvailable) return;
+  // ================= ĐỊNH DẠNG TIỀN =================
+  function formatPrice(price: number | string) {
+    return Number(price).toLocaleString("vi-VN") + " đ";
+  }
 
-    setCart((previous) => ({
-      ...previous,
-      [product.id]: (previous[product.id] || 0) + 1,
-    }));
+  // ================= TÍNH TOÁN GIÁ TÙY CHỈNH MODAL =================
+  const modalUnitPrice = useMemo(() => {
+    if (!selectedProduct) return 0;
+    return calculateItemPrice(Number(selectedProduct.price), selectedSize, selectedToppings);
+  }, [selectedProduct, selectedSize, selectedToppings]);
+
+  const modalSubtotal = modalUnitPrice * itemQuantity;
+
+  // ================= THÊM MÓN VÀO GIỎ HÀNG (TASK 5.1.1) =================
+  function addItemToCart(
+    product: Product,
+    size: "SMALL" | "MEDIUM" | "LARGE" = "SMALL",
+    toppings: string[] = [],
+    note: string = "",
+    quantity: number = 1
+  ) {
+    if (!product.isAvailable || quantity <= 0) return;
+
+    const sortedToppings = [...toppings].sort();
+    const key = buildCartItemKey(product.id, size, sortedToppings, note);
+    const unitPrice = calculateItemPrice(Number(product.price), size, sortedToppings);
+
+    setCartItems((prev) => {
+      const existingIndex = prev.findIndex((item) => item.key === key);
+      if (existingIndex >= 0) {
+        const next = [...prev];
+        const existing = next[existingIndex];
+        const updatedQty = existing.quantity + quantity;
+        next[existingIndex] = {
+          ...existing,
+          quantity: updatedQty,
+          subtotal: existing.unitPrice * updatedQty,
+        };
+        return next;
+      } else {
+        const newItem: CartItem = {
+          key,
+          productId: product.id,
+          productName: product.name,
+          basePrice: Number(product.price),
+          size,
+          toppings: sortedToppings,
+          note: note.trim(),
+          unitPrice,
+          quantity,
+          subtotal: unitPrice * quantity,
+        };
+        return [...prev, newItem];
+      }
+    });
 
     setOrderMessage("");
     setOrderError("");
   }
 
-  // ================= THAY ĐỔI SỐ LƯỢNG =================
-  function updateQuantity(id: number, amount: number) {
-    setCart((previous) => {
-      const next = { ...previous };
-
-      const quantity = (next[id] || 0) + amount;
-
-      if (quantity <= 0) {
-        delete next[id];
-      } else {
-        next[id] = quantity;
+  // ================= CẬP NHẬT SỐ LƯỢNG MÓN TRONG GIỎ =================
+  function updateCartItemQuantity(key: string, delta: number) {
+    setCartItems((prev) => {
+      const next: CartItem[] = [];
+      for (const item of prev) {
+        if (item.key === key) {
+          const newQty = item.quantity + delta;
+          if (newQty > 0) {
+            next.push({
+              ...item,
+              quantity: newQty,
+              subtotal: item.unitPrice * newQty,
+            });
+          }
+        } else {
+          next.push(item);
+        }
       }
-
       return next;
     });
 
@@ -221,37 +310,27 @@ export default function MenuPage() {
     setOrderError("");
   }
 
-  // ================= XÓA GIỎ HÀNG =================
+  // ================= XÓA 1 MÓN KHỎI GIỎ =================
+  function removeCartItem(key: string) {
+    setCartItems((prev) => prev.filter((item) => item.key !== key));
+    setOrderMessage("");
+    setOrderError("");
+  }
+
+  // ================= XÓA TOÀN BỘ GIỎ HÀNG =================
   function clearCart() {
-    setCart({});
+    setCartItems([]);
     setShowCheckout(false);
     setOrderMessage("");
     setOrderError("");
   }
 
-  // ================= TÍNH TỔNG SỐ LƯỢNG =================
-  const totalItems = Object.values(cart).reduce(
-    (sum, quantity) => sum + quantity,
-    0
-  );
+  // ================= TỔNG SỐ LƯỢNG & TỔNG TIỀN =================
+  const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalPrice = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
 
-  // ================= TÍNH TỔNG TIỀN =================
-  const totalPrice = products.reduce((sum, product) => {
-    return (
-      sum +
-      Number(product.price) * (cart[product.id] || 0)
-    );
-  }, 0);
-
-  // ================= ĐỊNH DẠNG TIỀN =================
-  function formatPrice(price: number | string) {
-    return Number(price).toLocaleString("vi-VN") + " đ";
-  }
-
-  // ================= ĐẶT HÀNG =================
-  async function handlePlaceOrder(
-    e: FormEvent<HTMLFormElement>
-  ) {
+  // ================= ĐẶT HÀNG (UC-04) =================
+  async function handlePlaceOrder(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     if (submittingOrder) return;
@@ -270,46 +349,39 @@ export default function MenuPage() {
       return;
     }
 
-    // Lấy các sản phẩm đang có trong giỏ
-    const selectedProducts = products.filter(
-      (product) => cart[product.id] > 0
-    );
-
-    if (selectedProducts.length === 0) {
+    if (cartItems.length === 0) {
       setOrderError("Giỏ hàng đang trống.");
       return;
     }
 
     // Kiểm tra tình trạng sản phẩm
-    const unavailableProduct = selectedProducts.find(
-      (product) => !product.isAvailable
+    const unavailableProduct = products.find(
+      (p) => !p.isAvailable && cartItems.some((item) => item.productId === p.id)
     );
 
     if (unavailableProduct) {
-      setOrderError(
-        `${unavailableProduct.name} hiện đã hết hàng.`
-      );
+      setOrderError(`${unavailableProduct.name} hiện đã hết hàng.`);
       return;
     }
 
-    // Tạo danh sách chi tiết đơn hàng
-    const items = selectedProducts.map((product) => ({
-      productId: product.id,
-      quantity: cart[product.id],
+    // Dữ liệu chi tiết gửi đến NestJS OrdersService
+    const items = cartItems.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      size: item.size,
+      toppings: item.toppings,
     }));
 
-    // Dữ liệu gửi đến NestJS
     const payload = {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
-      note: note.trim(),
+      note: orderNote.trim(),
       items,
     };
 
     try {
       setSubmittingOrder(true);
 
-      // Gọi API POST /orders
       const response = await fetch(`${API_URL}/orders`, {
         method: "POST",
         headers: {
@@ -318,62 +390,37 @@ export default function MenuPage() {
         body: JSON.stringify(payload),
       });
 
-      // Đọc phản hồi từ Backend
       const responseText = await response.text();
-
       let data: OrderResponse = {};
 
       try {
-        data = responseText
-          ? JSON.parse(responseText)
-          : {};
+        data = responseText ? JSON.parse(responseText) : {};
       } catch {
-        data = {
-          message: responseText,
-        };
+        data = { message: responseText };
       }
 
-      // Kiểm tra kết quả
       if (!response.ok) {
-        const detail =
-          data?.message || `HTTP Error: ${response.status}`;
-
-        throw new Error(
-          Array.isArray(detail)
-            ? detail.join(", ")
-            : detail
-        );
+        const detail = data?.message || `HTTP Error: ${response.status}`;
+        throw new Error(Array.isArray(detail) ? detail.join(", ") : detail);
       }
 
-      // Thông báo đặt hàng thành công
       const orderId = data.id;
-
       setOrderMessage(
         `Đặt hàng thành công! ${
-          orderId !== undefined
-            ? `Mã đơn hàng: #${orderId}.`
-            : ""
+          orderId !== undefined ? `Mã đơn hàng: #${orderId}.` : ""
         } Trạng thái: ${data.status || "PENDING"}.`
       );
 
-      // Xóa giỏ hàng sau khi đặt hàng thành công
-      setCart({});
-
-      // Đóng form đặt hàng
+      // Xóa giỏ hàng sau khi đặt thành công
+      setCartItems([]);
       setShowCheckout(false);
-
-      // Xóa thông tin biểu mẫu
       setCustomerName("");
       setCustomerPhone("");
-      setNote("");
-
+      setOrderNote("");
     } catch (err) {
       console.error("Lỗi đặt hàng:", err);
-
       setOrderError(
-        err instanceof Error
-          ? err.message
-          : "Không thể thực hiện đặt hàng."
+        err instanceof Error ? err.message : "Không thể thực hiện đặt hàng."
       );
     } finally {
       setSubmittingOrder(false);
@@ -529,11 +576,11 @@ export default function MenuPage() {
                     className={ui.productPhoto}
                     role="button"
                     tabIndex={0}
-                    onClick={() => void modalController.openProductDetail(product)}
+                    onClick={() => handleOpenProductModal(product)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        void modalController.openProductDetail(product);
+                        handleOpenProductModal(product);
                       }
                     }}
                     style={{ cursor: "pointer" }}
@@ -581,7 +628,7 @@ export default function MenuPage() {
                   <div className={ui.productContent}>
                     <div className={ui.productTitleRow}>
                       <h3
-                        onClick={() => void modalController.openProductDetail(product)}
+                        onClick={() => handleOpenProductModal(product)}
                         style={{ cursor: "pointer" }}
                         title={`Xem chi tiết ${product.name}`}
                       >
@@ -608,7 +655,7 @@ export default function MenuPage() {
                         <button
                           type="button"
                           className={ui.detailButton}
-                          onClick={() => void modalController.openProductDetail(product)}
+                          onClick={() => handleOpenProductModal(product)}
                           aria-label={`Xem chi tiết ${product.name}`}
                         >
                           Chi tiết
@@ -617,8 +664,9 @@ export default function MenuPage() {
                           type="button"
                           className={ui.addButton}
                           disabled={!product.isAvailable}
-                          onClick={() => addToCart(product)}
-                          aria-label={`Thêm ${product.name} vào giỏ`}
+                          onClick={() => addItemToCart(product, "SMALL", [], "", 1)}
+                          aria-label={`Thêm nhanh ${product.name} vào giỏ`}
+                          title="Thêm nhanh vào giỏ"
                         >
                           +
                         </button>
@@ -631,262 +679,233 @@ export default function MenuPage() {
           )}
         </section>
 
-      {/* ================= GIỎ HÀNG ================= */}
-      <section id="cart" className={ui.cartPanel} style={styles.cartSection}>
+        {/* ================= GIỎ HÀNG (TASK 5.1.1) ================= */}
+        <section id="cart" className={ui.cartPanel} style={styles.cartSection}>
+          <h2>🛒 Giỏ hàng của bạn</h2>
 
-        <h2>🛒 Giỏ hàng của bạn</h2>
-
-        {/* Thông báo thành công */}
-        {orderMessage && (
-          <div style={styles.successMessage}>
-            <strong>✓ Đặt hàng thành công!</strong>
-            <p>{orderMessage}</p>
-          </div>
-        )}
-
-        {/* Thông báo lỗi */}
-        {orderError && !showCheckout && (
-          <p style={styles.error}>
-            {orderError}
-          </p>
-        )}
-
-        {totalItems === 0 ? (
-          <p>
-            Giỏ hàng đang trống. Hãy chọn đồ uống nhé!
-          </p>
-        ) : (
-          <>
-
-            {/* Danh sách sản phẩm trong giỏ */}
-            {products
-              .filter((product) => cart[product.id] > 0)
-              .map((product) => (
-                <div
-                  key={product.id}
-                  style={styles.cartItem}
-                >
-
-                  <div style={{ flex: 1 }}>
-                    <strong>{product.name}</strong>
-
-                    <p style={styles.cartPrice}>
-                      {formatPrice(product.price)}
-                    </p>
-                  </div>
-
-                  {/* Điều chỉnh số lượng */}
-                  <div style={styles.quantity}>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateQuantity(product.id, -1)
-                      }
-                      style={styles.quantityButton}
-                    >
-                      -
-                    </button>
-
-                    <strong>{cart[product.id]}</strong>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateQuantity(product.id, 1)
-                      }
-                      disabled={!product.isAvailable}
-                      style={styles.quantityButton}
-                    >
-                      +
-                    </button>
-
-                  </div>
-
-                  {/* Thành tiền sản phẩm */}
-                  <strong>
-                    {formatPrice(
-                      Number(product.price) *
-                      cart[product.id]
-                    )}
-                  </strong>
-
-                </div>
-              ))}
-
-            {/* Tổng tiền */}
-            <div style={styles.total}>
-              <span>
-                Tổng cộng ({totalItems} sản phẩm):
-              </span>
-
-              <strong>
-                {formatPrice(totalPrice)}
-              </strong>
+          {/* Thông báo thành công */}
+          {orderMessage && (
+            <div style={styles.successMessage} role="status">
+              <strong>✓ Đặt hàng thành công!</strong>
+              <p>{orderMessage}</p>
             </div>
+          )}
 
-            {/* Nút tiếp tục đặt hàng */}
-            <button
-              type="button"
-              disabled={submittingOrder}
-              onClick={() => {
-                setOrderError("");
-                setOrderMessage("");
-                setShowCheckout(true);
-              }}
-              style={styles.orderButton}
-            >
-              Tiếp tục đặt hàng
-            </button>
+          {/* Thông báo lỗi */}
+          {orderError && !showCheckout && (
+            <p style={styles.error} role="alert">
+              {orderError}
+            </p>
+          )}
 
-            {/* Form thông tin khách hàng */}
-            {showCheckout && (
-              <div style={styles.checkoutSection}>
+          {cartItems.length === 0 ? (
+            <p>Giỏ hàng đang trống. Hãy chọn đồ uống nhé!</p>
+          ) : (
+            <>
+              {/* Danh sách CartItem chi tiết */}
+              <div>
+                {cartItems.map((item) => (
+                  <div key={item.key} className={ui.cartItemCard}>
+                    <div className={ui.cartItemDetails}>
+                      <div className={ui.cartItemNameRow}>
+                        <span className={ui.cartItemName}>{item.productName}</span>
+                        <span className={ui.sizeBadge}>
+                          {item.size === "SMALL"
+                            ? "Size S"
+                            : item.size === "MEDIUM"
+                            ? "Size M"
+                            : "Size L"}
+                        </span>
+                      </div>
 
-                <h3 style={styles.checkoutTitle}>
-                  Thông tin đặt hàng
-                </h3>
+                      {item.toppings.length > 0 && (
+                        <div className={ui.cartItemToppings}>
+                          {item.toppings.map((top) => (
+                            <span key={top} className={ui.cartToppingPill}>
+                              +{top}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
-                <form onSubmit={handlePlaceOrder}>
+                      {item.note && (
+                        <p className={ui.cartItemNote}>
+                          Ghi chú: {item.note}
+                        </p>
+                      )}
 
-                  <div style={styles.formGroup}>
+                      <p className={ui.cartItemUnitPrice}>
+                        {formatPrice(item.unitPrice)} / ly
+                      </p>
+                    </div>
 
-                    <label htmlFor="customerName">
-                      Tên khách hàng *
-                    </label>
+                    <div className={ui.cartActionsCol}>
+                      <div className={ui.qtyControl}>
+                        <button
+                          type="button"
+                          className={ui.qtyBtn}
+                          onClick={() => updateCartItemQuantity(item.key, -1)}
+                          aria-label={`Giảm số lượng ${item.productName}`}
+                        >
+                          -
+                        </button>
+                        <span className={ui.qtyValue}>{item.quantity}</span>
+                        <button
+                          type="button"
+                          className={ui.qtyBtn}
+                          onClick={() => updateCartItemQuantity(item.key, 1)}
+                          aria-label={`Tăng số lượng ${item.productName}`}
+                        >
+                          +
+                        </button>
+                      </div>
 
-                    <input
-                      id="customerName"
-                      type="text"
-                      value={customerName}
-                      onChange={(e) =>
-                        setCustomerName(e.target.value)
-                      }
-                      placeholder="Nhập họ và tên"
-                      required
-                      maxLength={100}
-                      style={styles.checkoutInput}
-                    />
+                      <strong>{formatPrice(item.subtotal)}</strong>
 
+                      <button
+                        type="button"
+                        className={ui.deleteItemBtn}
+                        onClick={() => removeCartItem(item.key)}
+                        aria-label={`Xóa ${item.productName} khỏi giỏ`}
+                        title="Xóa món"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
-
-                  <div style={styles.formGroup}>
-
-                    <label htmlFor="customerPhone">
-                      Số điện thoại *
-                    </label>
-
-                    <input
-                      id="customerPhone"
-                      type="tel"
-                      value={customerPhone}
-                      onChange={(e) =>
-                        setCustomerPhone(e.target.value)
-                      }
-                      placeholder="Nhập số điện thoại"
-                      required
-                      maxLength={20}
-                      style={styles.checkoutInput}
-                    />
-
-                  </div>
-
-                  <div style={styles.formGroup}>
-
-                    <label htmlFor="note">
-                      Ghi chú
-                    </label>
-
-                    <textarea
-                      id="note"
-                      value={note}
-                      onChange={(e) =>
-                        setNote(e.target.value)
-                      }
-                      placeholder="Ví dụ: Ít đường, ít đá..."
-                      rows={3}
-                      style={styles.checkoutInput}
-                    />
-
-                  </div>
-
-                  {/* Tổng thanh toán */}
-                  <div style={styles.checkoutTotal}>
-                    <span>Tổng thanh toán:</span>
-
-                    <strong>
-                      {formatPrice(totalPrice)}
-                    </strong>
-                  </div>
-
-                  {/* Lỗi khi đặt hàng */}
-                  {orderError && (
-                    <p style={styles.error}>
-                      {orderError}
-                    </p>
-                  )}
-
-                  {/* Nút xác nhận */}
-                  <div style={styles.checkoutActions}>
-
-                    <button
-                      type="submit"
-                      disabled={submittingOrder}
-                      style={{
-                        ...styles.confirmButton,
-                        opacity: submittingOrder ? 0.6 : 1,
-                        cursor: submittingOrder
-                          ? "not-allowed"
-                          : "pointer",
-                      }}
-                    >
-                      {submittingOrder
-                        ? "Đang xử lý..."
-                        : "✓ Xác nhận đặt hàng"}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={submittingOrder}
-                      onClick={() => {
-                        setShowCheckout(false);
-                        setOrderError("");
-                      }}
-                      style={styles.cancelButton}
-                    >
-                      Hủy
-                    </button>
-
-                  </div>
-
-                </form>
-
+                ))}
               </div>
-            )}
 
-            {/* Nút xóa giỏ hàng */}
-            <button
-              type="button"
-              disabled={submittingOrder}
-              onClick={clearCart}
-              style={styles.clearButton}
-            >
-              Xóa giỏ hàng
-            </button>
+              {/* Tổng tiền */}
+              <div style={styles.total}>
+                <span>Tổng cộng ({totalItems} món):</span>
+                <strong>{formatPrice(totalPrice)}</strong>
+              </div>
 
-          </>
-        )}
+              {/* Nút tiếp tục đặt hàng */}
+              <button
+                type="button"
+                disabled={submittingOrder}
+                onClick={() => {
+                  setOrderError("");
+                  setOrderMessage("");
+                  setShowCheckout(true);
+                }}
+                style={styles.orderButton}
+              >
+                Tiếp tục đặt hàng
+              </button>
 
-      </section>
+              {/* Form thông tin khách hàng */}
+              {showCheckout && (
+                <div style={styles.checkoutSection}>
+                  <h3 style={styles.checkoutTitle}>Thông tin đặt hàng</h3>
 
-      {/* ================= FOOTER ================= */}
+                  <form onSubmit={handlePlaceOrder}>
+                    <div style={styles.formGroup}>
+                      <label htmlFor="customerName">Tên khách hàng *</label>
+                      <input
+                        id="customerName"
+                        type="text"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Nhập họ và tên"
+                        required
+                        maxLength={100}
+                        style={styles.checkoutInput}
+                      />
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label htmlFor="customerPhone">Số điện thoại *</label>
+                      <input
+                        id="customerPhone"
+                        type="tel"
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        placeholder="Nhập số điện thoại"
+                        required
+                        maxLength={20}
+                        style={styles.checkoutInput}
+                      />
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label htmlFor="orderNote">Ghi chú đơn hàng</label>
+                      <textarea
+                        id="orderNote"
+                        value={orderNote}
+                        onChange={(e) => setOrderNote(e.target.value)}
+                        placeholder="Ví dụ: Giao trước 10h, gọi trước khi đến..."
+                        rows={3}
+                        style={styles.checkoutInput}
+                      />
+                    </div>
+
+                    {/* Tổng thanh toán */}
+                    <div style={styles.checkoutTotal}>
+                      <span>Tổng thanh toán:</span>
+                      <strong>{formatPrice(totalPrice)}</strong>
+                    </div>
+
+                    {/* Lỗi khi đặt hàng */}
+                    {orderError && (
+                      <p style={styles.error} role="alert">
+                        {orderError}
+                      </p>
+                    )}
+
+                    {/* Nút xác nhận */}
+                    <div style={styles.checkoutActions}>
+                      <button
+                        type="submit"
+                        disabled={submittingOrder}
+                        style={{
+                          ...styles.confirmButton,
+                          opacity: submittingOrder ? 0.6 : 1,
+                          cursor: submittingOrder ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {submittingOrder ? "Đang xử lý..." : "✓ Xác nhận đặt hàng"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={submittingOrder}
+                        onClick={() => {
+                          setShowCheckout(false);
+                          setOrderError("");
+                        }}
+                        style={styles.cancelButton}
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Nút xóa giỏ hàng */}
+              <button
+                type="button"
+                disabled={submittingOrder}
+                onClick={clearCart}
+                style={styles.clearButton}
+              >
+                Xóa giỏ hàng
+              </button>
+            </>
+          )}
+        </section>
+
+        {/* ================= FOOTER ================= */}
         <footer className={ui.footer}>
           <span className={ui.footerIcon} aria-hidden="true">☕</span>
           <p>BrewLite · Một ly ngon, một ngày vui.</p>
         </footer>
       </div>
 
-      {/* ================= MODAL CHI TIẾT SẢN PHẨM (TASK 4.3) ================= */}
+      {/* ================= MODAL TÙY CHỈNH & CHI TIẾT SẢN PHẨM (TASK 4.3 + TASK 5.1.1) ================= */}
       {isOpen && selectedProduct && (
         <div
           className={ui.modalOverlay}
@@ -973,6 +992,137 @@ export default function MenuPage() {
                 </div>
               )}
 
+              {/* 1. TÙY CHỌN SIZE (FR-02) */}
+              <div className={ui.customSection}>
+                <span className={ui.customTitle} id="size-label">
+                  CHỌN KÍCH CỠ (SIZE)
+                </span>
+                <div
+                  className={ui.sizeGrid}
+                  role="radiogroup"
+                  aria-labelledby="size-label"
+                >
+                  {AVAILABLE_SIZES.map((sizeOpt) => {
+                    const isSelected = selectedSize === sizeOpt.id;
+                    return (
+                      <button
+                        key={sizeOpt.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        className={`${ui.sizeOption} ${
+                          isSelected ? ui.sizeOptionActive : ""
+                        }`}
+                        onClick={() =>
+                          setSelectedSize(
+                            sizeOpt.id as "SMALL" | "MEDIUM" | "LARGE"
+                          )
+                        }
+                      >
+                        <span className={ui.sizeName}>{sizeOpt.name}</span>
+                        <span className={ui.sizePriceTag}>
+                          {sizeOpt.surcharge > 0
+                            ? `+${formatPrice(sizeOpt.surcharge)}`
+                            : "+0 đ"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. TÙY CHỌN TOPPING (FR-02) */}
+              <div className={ui.customSection}>
+                <span className={ui.customTitle} id="topping-label">
+                  TOPPING THÊM
+                </span>
+                <div
+                  className={ui.toppingList}
+                  role="group"
+                  aria-labelledby="topping-label"
+                >
+                  {AVAILABLE_TOPPINGS.map((topping) => {
+                    const isChecked = selectedToppings.includes(topping.name);
+                    return (
+                      <label
+                        key={topping.name}
+                        className={`${ui.toppingOption} ${
+                          isChecked ? ui.toppingOptionActive : ""
+                        }`}
+                      >
+                        <span className={ui.toppingLabel}>
+                          <input
+                            type="checkbox"
+                            className={ui.toppingCheckbox}
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedToppings((prev) => [
+                                  ...prev,
+                                  topping.name,
+                                ]);
+                              } else {
+                                setSelectedToppings((prev) =>
+                                  prev.filter((t) => t !== topping.name)
+                                );
+                              }
+                            }}
+                          />
+                          {topping.name}
+                        </span>
+                        <span className={ui.toppingSurcharge}>
+                          +{formatPrice(topping.price)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. GHI CHÚ MÓN (FR-02) */}
+              <div className={ui.customSection}>
+                <label className={ui.customTitle} htmlFor="modal-item-note">
+                  GHI CHÚ MÓN
+                </label>
+                <input
+                  id="modal-item-note"
+                  type="text"
+                  className={ui.itemNoteInput}
+                  value={itemNote}
+                  onChange={(e) => setItemNote(e.target.value)}
+                  placeholder="Ví dụ: 50% đường, ít đá..."
+                  maxLength={150}
+                />
+              </div>
+
+              {/* 4. ĐIỀU CHỈNH SỐ LƯỢNG */}
+              <div className={ui.modalQtyRow}>
+                <span className={ui.customTitle}>SỐ LƯỢNG</span>
+                <div className={ui.qtyControl}>
+                  <button
+                    type="button"
+                    className={ui.qtyBtn}
+                    onClick={() =>
+                      setItemQuantity((q) => Math.max(1, q - 1))
+                    }
+                    disabled={itemQuantity <= 1}
+                    aria-label="Giảm số lượng"
+                  >
+                    -
+                  </button>
+                  <span className={ui.qtyValue}>{itemQuantity}</span>
+                  <button
+                    type="button"
+                    className={ui.qtyBtn}
+                    onClick={() => setItemQuantity((q) => q + 1)}
+                    aria-label="Tăng số lượng"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* ĐƠN GIÁ & NÚT THÊM VÀO GIỎ */}
               <div className={ui.modalPriceRow}>
                 <div>
                   <span className={ui.modalPriceLabel}>Đơn giá niêm yết</span>
@@ -986,11 +1136,19 @@ export default function MenuPage() {
                     className={ui.modalAddButton}
                     disabled={!selectedProduct.isAvailable}
                     onClick={() => {
-                      addToCart(selectedProduct);
+                      addItemToCart(
+                        selectedProduct,
+                        selectedSize,
+                        selectedToppings,
+                        itemNote,
+                        itemQuantity
+                      );
                       modalController.closeProductDetail();
                     }}
                   >
-                    {selectedProduct.isAvailable ? "Thêm vào giỏ hàng" : "Hết hàng"}
+                    {selectedProduct.isAvailable
+                      ? `Thêm vào giỏ hàng • ${formatPrice(modalSubtotal)}`
+                      : "Hết hàng"}
                   </button>
                 </div>
               </div>
@@ -1002,7 +1160,7 @@ export default function MenuPage() {
   );
 }
 
-// ================= CSS GIAO DIỆN =================
+// ================= CSS GIAO DIỆN PHỤ TRỢ =================
 const styles: Record<string, React.CSSProperties> = {
   cartSection: {
     backgroundColor: "white",
@@ -1010,35 +1168,6 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: "40px",
     borderRadius: "12px",
     boxShadow: "0 3px 10px rgba(0,0,0,0.06)",
-  },
-
-  cartItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: "15px",
-    padding: "15px 0",
-    borderBottom: "1px solid #eee",
-    flexWrap: "wrap",
-  },
-
-  cartPrice: {
-    color: "#888",
-    margin: "5px 0",
-  },
-
-  quantity: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-
-  quantityButton: {
-    width: "30px",
-    height: "30px",
-    border: "none",
-    borderRadius: "5px",
-    backgroundColor: "#e8d6c4",
-    cursor: "pointer",
   },
 
   total: {
@@ -1073,7 +1202,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
 
-  // Form đặt hàng
   checkoutSection: {
     backgroundColor: "#faf7f3",
     padding: "22px",
@@ -1103,7 +1231,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #ddd",
     borderRadius: "7px",
     fontSize: "14px",
-    fontFamily: "Arial, sans-serif",
+    fontFamily: "inherit",
   },
 
   checkoutTotal: {
@@ -1145,7 +1273,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
 
-  // Thông báo
   successMessage: {
     backgroundColor: "#dcfce7",
     color: "#166534",
@@ -1157,5 +1284,4 @@ const styles: Record<string, React.CSSProperties> = {
   error: {
     color: "#b91c1c",
   },
-
 };

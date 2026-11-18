@@ -9,13 +9,21 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OrderItem = void 0;
+exports.OrderItem = exports.ProductSize = void 0;
 const typeorm_1 = require("typeorm");
 const order_entity_1 = require("./order.entity");
 const product_entity_1 = require("../../products/entities/product.entity");
+var ProductSize;
+(function (ProductSize) {
+    ProductSize["SMALL"] = "SMALL";
+    ProductSize["MEDIUM"] = "MEDIUM";
+    ProductSize["LARGE"] = "LARGE";
+})(ProductSize || (exports.ProductSize = ProductSize = {}));
 let OrderItem = class OrderItem {
     id;
     productName;
+    size;
+    toppings;
     quantity;
     unitPrice;
     subtotal;
@@ -34,6 +42,21 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], OrderItem.prototype, "productName", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: 'varchar',
+        length: 20,
+        default: ProductSize.SMALL,
+    }),
+    __metadata("design:type", String)
+], OrderItem.prototype, "size", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: 'jsonb',
+        default: () => "'[]'",
+    }),
+    __metadata("design:type", Array)
+], OrderItem.prototype, "toppings", void 0);
 __decorate([
     (0, typeorm_1.Column)({
         type: 'integer',

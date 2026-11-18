@@ -8,10 +8,24 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 
 import { Order } from './entities/order.entity';
-import { OrderItem } from './entities/order-item.entity';
+import { OrderItem, ProductSize } from './entities/order-item.entity';
 import { Product } from '../products/entities/product.entity';
 
 import { CreateOrderDto } from './dto/create-order.dto';
+
+export const SIZE_PRICE_MODIFIERS: Record<ProductSize, number> = {
+  [ProductSize.SMALL]: 0,
+  [ProductSize.MEDIUM]: 5000,
+  [ProductSize.LARGE]: 10000,
+};
+
+export const TOPPING_PRICES: Record<string, number> = {
+  'Kem cheese': 10000,
+  'Trân châu trắng': 8000,
+  'Thạch đào': 8000,
+  'Sốt caramel': 6000,
+  'Thạch sương sáo': 6000,
+};
 
 @Injectable()
 export class OrdersService {
@@ -57,7 +71,7 @@ export class OrdersService {
     return order;
   }
 
-  // Tạo đơn hàng
+  // Tạo đơn hàng (UC-04 PENDING Order Creation)
   async create(createOrderDto: CreateOrderDto) {
     return this.dataSource.transaction(
       async (manager) => {
@@ -85,14 +99,36 @@ export class OrdersService {
             );
           }
 
-          const unitPrice = Number(product.price);
+          // Xác thực và tính phụ thu kích cỡ (Size)
+          const size = item.size ?? ProductSize.SMALL;
+          if (!Object.values(ProductSize).includes(size)) {
+            throw new BadRequestException(
+              `Kích cỡ '${size}' không hợp lệ. Cho phép: SMALL, MEDIUM, LARGE`,
+            );
+          }
+          const sizeModifier = SIZE_PRICE_MODIFIERS[size] ?? 0;
 
-          if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+          // Xác thực và tính phụ thu topping
+          const toppings = Array.isArray(item.toppings) ? item.toppings : [];
+          let toppingsTotal = 0;
+          for (const top of toppings) {
+            if (!Object.prototype.hasOwnProperty.call(TOPPING_PRICES, top)) {
+              throw new BadRequestException(
+                `Topping '${top}' không hợp lệ hoặc không có trong thực đơn`,
+              );
+            }
+            toppingsTotal += TOPPING_PRICES[top];
+          }
+
+          const basePrice = Number(product.price);
+          if (!Number.isFinite(basePrice) || basePrice < 0) {
             throw new BadRequestException(
               'Giá sản phẩm không hợp lệ',
             );
           }
 
+          // Đơn giá được tính toán độc lập tại Backend (không phụ thuộc giá client)
+          const unitPrice = Math.max(0, basePrice + sizeModifier + toppingsTotal);
           const subtotal = unitPrice * item.quantity;
 
           totalAmount += subtotal;
@@ -101,6 +137,8 @@ export class OrdersService {
             .getRepository(OrderItem)
             .create({
               productName: product.name,
+              size,
+              toppings,
               quantity: item.quantity,
               unitPrice: unitPrice.toFixed(2),
               subtotal: subtotal.toFixed(2),

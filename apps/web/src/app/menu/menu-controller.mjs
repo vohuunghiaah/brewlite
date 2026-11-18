@@ -1,5 +1,44 @@
 import { fetchProducts, fetchProductById } from './products.mjs';
 
+export const AVAILABLE_SIZES = [
+  { id: 'SMALL', name: 'Nhỏ (S)', surcharge: 0 },
+  { id: 'MEDIUM', name: 'Vừa (M)', surcharge: 5000 },
+  { id: 'LARGE', name: 'Lớn (L)', surcharge: 10000 },
+];
+
+export const AVAILABLE_TOPPINGS = [
+  { name: 'Kem cheese', price: 10000 },
+  { name: 'Trân châu trắng', price: 8000 },
+  { name: 'Thạch đào', price: 8000 },
+  { name: 'Sốt caramel', price: 6000 },
+  { name: 'Thạch sương sáo', price: 6000 },
+];
+
+export const SIZE_PRICE_MODIFIERS = {
+  SMALL: 0,
+  MEDIUM: 5000,
+  LARGE: 10000,
+};
+
+export const TOPPING_PRICES = {
+  'Kem cheese': 10000,
+  'Trân châu trắng': 8000,
+  'Thạch đào': 8000,
+  'Sốt caramel': 6000,
+  'Thạch sương sáo': 6000,
+};
+
+export function calculateItemPrice(basePrice, size = 'SMALL', toppings = []) {
+  const sizeMod = SIZE_PRICE_MODIFIERS[size] ?? 0;
+  const toppingTotal = (toppings || []).reduce((sum, t) => sum + (TOPPING_PRICES[t] ?? 0), 0);
+  return Math.max(0, Number(basePrice || 0) + sizeMod + toppingTotal);
+}
+
+export function buildCartItemKey(productId, size = 'SMALL', toppings = [], note = '') {
+  const sortedTops = (toppings || []).slice().sort().join('+');
+  return `${productId}__${size}__${sortedTops}__${(note || '').trim().toLowerCase()}`;
+}
+
 /**
  * Phân loại đồ uống tự động dựa trên tên và mô tả sản phẩm
  */

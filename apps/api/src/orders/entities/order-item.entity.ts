@@ -1,4 +1,3 @@
-
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,6 +9,12 @@ import {
 import { Order } from './order.entity';
 import { Product } from '../../products/entities/product.entity';
 
+export enum ProductSize {
+  SMALL = 'SMALL',
+  MEDIUM = 'MEDIUM',
+  LARGE = 'LARGE',
+}
+
 @Entity('order_items')
 export class OrderItem {
   @PrimaryGeneratedColumn()
@@ -20,6 +25,19 @@ export class OrderItem {
     length: 150,
   })
   productName: string;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: ProductSize.SMALL,
+  })
+  size: ProductSize;
+
+  @Column({
+    type: 'jsonb',
+    default: () => "'[]'",
+  })
+  toppings: string[];
 
   @Column({
     type: 'integer',

@@ -5,6 +5,10 @@ import {
   createMenuLifecycleController,
   filterProducts,
   getCategory,
+  calculateItemPrice,
+  buildCartItemKey,
+  AVAILABLE_SIZES,
+  AVAILABLE_TOPPINGS,
 } from '../src/app/menu/menu-controller.mjs';
 
 test('1. Loading state: Menu lifecycle starts with loading true then resolves products', async () => {
@@ -226,3 +230,56 @@ test('9. Utility: getCategory categorizes products accurately', () => {
   assert.equal(getCategory({ name: 'Bánh Tiramisu' }), 'Bánh ngọt');
   assert.equal(getCategory({ name: 'Nước lọc khoáng' }), 'Khác');
 });
+
+test('10. Customization Pricing: calculateItemPrice calculates size and topping surcharges according to SRS FR-02', () => {
+  // Verify SRS options metadata
+  assert.equal(AVAILABLE_SIZES.length, 3);
+  assert.equal(AVAILABLE_TOPPINGS.length, 5);
+
+  const base = 45000;
+
+  // Sizes: SMALL (+0), MEDIUM (+5.000), LARGE (+10.000)
+  assert.equal(calculateItemPrice(base, 'SMALL', []), 45000);
+  assert.equal(calculateItemPrice(base, 'MEDIUM', []), 50000);
+  assert.equal(calculateItemPrice(base, 'LARGE', []), 55000);
+
+  // Single Toppings
+  assert.equal(calculateItemPrice(base, 'SMALL', ['Kem cheese']), 55000); // 45k + 10k
+  assert.equal(calculateItemPrice(base, 'SMALL', ['Trân châu trắng']), 53000); // 45k + 8k
+  assert.equal(calculateItemPrice(base, 'SMALL', ['Thạch đào']), 53000); // 45k + 8k
+  assert.equal(calculateItemPrice(base, 'SMALL', ['Sốt caramel']), 51000); // 45k + 6k
+  assert.equal(calculateItemPrice(base, 'SMALL', ['Thạch sương sáo']), 51000); // 45k + 6k
+
+  // Multiple Toppings + Size LARGE
+  // 45.000 + 10.000 (LARGE) + 10.000 (Kem cheese) + 8.000 (Trân châu trắng) + 6.000 (Sốt caramel) = 79.000
+  const multiToppings = ['Kem cheese', 'Trân châu trắng', 'Sốt caramel'];
+  assert.equal(calculateItemPrice(base, 'LARGE', multiToppings), 79000);
+
+  // Boundary check: negative or zero base price returns non-negative
+  assert.equal(calculateItemPrice(0, 'SMALL', []), 0);
+  assert.equal(calculateItemPrice(-5000, 'SMALL', []), 0);
+});
+
+test('11. Cart Item Key: buildCartItemKey produces canonical keys, normalizes topping order, separates variants', () => {
+  // Same product, size, toppings in different order -> identical key
+  const key1 = buildCartItemKey(1, 'MEDIUM', ['Kem cheese', 'Thạch đào'], 'Ít đá');
+  const key2 = buildCartItemKey(1, 'MEDIUM', ['Thạch đào', 'Kem cheese'], ' ít đá ');
+  assert.equal(key1, key2, 'Keys with different topping order or whitespace in note must match');
+
+  // Different size -> different key
+  const keySmall = buildCartItemKey(1, 'SMALL', ['Kem cheese'], 'Ít đá');
+  assert.notEqual(key1, keySmall);
+
+  // Different topping -> different key
+  const keyTopping = buildCartItemKey(1, 'MEDIUM', ['Kem cheese'], 'Ít đá');
+  assert.notEqual(key1, keyTopping);
+
+  // Different note -> different key
+  const keyNote = buildCartItemKey(1, 'MEDIUM', ['Kem cheese', 'Thạch đào'], 'Không đá');
+  assert.notEqual(key1, keyNote);
+
+  // Different productId -> different key
+  const keyOtherProduct = buildCartItemKey(2, 'MEDIUM', ['Kem cheese', 'Thạch đào'], 'Ít đá');
+  assert.notEqual(key1, keyOtherProduct);
+});
+
