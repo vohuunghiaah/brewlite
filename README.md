@@ -282,6 +282,9 @@ npm run build
 - **Quản lý Tài liệu & Kiểm soát Thay đổi (Task 4.2):**
   - [Chỉ mục Tài liệu Tập trung & Ma trận Kiểm kê (docs/README.md)](docs/README.md)
   - [Quy trình Quản lý Thay đổi Tài liệu (Document Change Control)](docs/document-control.md)
+- **Tích Hợp Liên Tục CI/CD & Branch Protection (Task 4.4):**
+  - [Báo Cáo Kiểm Toán & Nghiệm Thu CI/CD (docs/task-4.4-ci-verification.md)](docs/task-4.4-ci-verification.md)
+  - [Cấu hình GitHub, Branch Protection & CI Quality Gates](docs/github-setup.md)
 
 
 
@@ -291,24 +294,19 @@ npm run build
 
 Nhằm đảm bảo tính minh bạch, trung thực học thuật và truy vết kỹ thuật chuẩn xác theo `docs/document-control.md`, đội ngũ phát triển phân định rõ 3 tầng hiện trạng mã nguồn của hệ thống BrewLite:
 
-### 1. Hiện trạng đã có trên nhánh chính `main` (commit `c8d7a012` sau khi merge PR #26):
-- **Quản lý tài liệu & kiến trúc (Task 1–4.2):** Lưu trữ 46 tệp vật lý (36 tạo phẩm có mã quản trị), 14 sơ đồ UML chuẩn, RTM v2.5.0 và 7 quyết định kiến trúc ADRs.
-- **Backend cơ bản (`apps/api`):** Khởi tạo NestJS, TypeORM kết nối PostgreSQL, entity `Product` và `Order` cơ bản, cơ chế nạp dữ liệu mẫu `ProductsSeedService`, endpoint `GET /products` và `POST /orders` (tạo đơn `PENDING`).
-- **Frontend cơ bản (`apps/web`):** Giao diện danh mục Next.js gọi `GET /products`, giỏ hàng client-side tính tổng tiền tạm thời.
+### 1. Hiện trạng đã có trên nhánh chính `main` (commit `75503086` sau khi merge PR #26 và PR #27):
+- **Quản lý tài liệu & kiến trúc (Task 1–4.2):** Lưu trữ 47 tệp vật lý (37 tạo phẩm có mã quản trị), 14 sơ đồ UML chuẩn, RTM v2.5.0 và 7 quyết định kiến trúc ADRs.
+- **Backend Products API (`apps/api`):** Khởi tạo NestJS, TypeORM kết nối PostgreSQL, entity `Product` và `Order` cơ bản, cơ chế nạp dữ liệu mẫu `ProductsSeedService`, endpoint `GET /products` và `GET /products/:id` được kiểm chứng với 14 ca kiểm thử unit & e2e tự động (`products.service.spec.ts`, `products.controller.spec.ts`, `products.e2e.spec.ts`).
+- **Frontend Menu MVP (`apps/web`):** Giao diện danh mục Next.js 16 App Router mobile-first, modal xem chi tiết sản phẩm chuẩn WAI-ARIA, xử lý triệt để race conditions và bất đồng bộ bằng `AbortController` + `requestId`, 12 automated unit/flow/component tests, khắc phục vĩnh viễn lỗi React Hydration Error.
 - **CI Quality Gates:** Pipeline GitHub Actions tự động kiểm tra install, lint, test và build cho `api` và `web`.
 
-### 2. Chức năng mới hoàn thành tại PR #27 (`feat/task4-3-menu-mvp` — đang mở chờ nghiệm thu):
-- **Backend Products API:** Mở rộng và kiểm chứng toàn diện `GET /products` và `GET /products/:id` (xử lý danh sách rỗng, 404 NotFoundException, 400 BadRequest ParseIntPipe, và lan truyền lỗi CSDL) với 14 ca kiểm thử unit & e2e tự động (`products.service.spec.ts`, `products.controller.spec.ts`, `products.e2e.spec.ts`).
-- **Product Detail Modal & Xử lý Bất đồng bộ:**
-  - Khắc phục triệt để lỗi bất đồng bộ (Race Conditions): Tích hợp `AbortController` hủy bỏ request cũ khi đóng modal hoặc chuyển sản phẩm nhanh; sequence ID (`requestId`) loại bỏ hoàn toàn nguy cơ phản hồi cũ ghi đè dữ liệu mới; tuyệt đối không tự ý mở lại modal sau khi người dùng đã đóng.
-  - Xử lý lỗi kết nối và tải chi tiết rõ ràng: Thẻ cảnh báo lỗi kèm nút **"Thử lại" (Retry)** và bảo toàn dữ liệu xem trước giúp khách hàng vẫn có thể thêm sản phẩm vào giỏ hàng.
-- **Giao diện Mobile-First & Khả năng Tiếp cận (Accessibility):**
-  - Tối ưu hóa viewport di động 360px, 390px, 430px; touch target các nút điều khiển $\ge 40\text{px}$; modal card tự động cuộn (`max-height: calc(100vh - 24px); overflow-y: auto`) không tràn màn hình thiết bị thấp.
-  - Quản lý Focus chuẩn WAI-ARIA Dialog: Tự động lưu và phục hồi focus trước/sau khi mở modal; bẫy focus (focus trap) bên trong modal khi dùng phím `Tab`/`Shift+Tab`; đóng modal tức thì bằng phím `Escape`.
-- **Kiểm thử tự động Frontend:** Bổ sung bộ 11 ca kiểm thử toàn diện (`products.test.mjs` và `menu-modal-flow.test.mjs`) bao phủ loading state, empty state, error & retry, modal lifecycle, escape dismissal, và 2 kịch bản bất đồng bộ phản hồi trễ/lệch thứ tự.
-- **Dọn dẹp tệp sinh tự động (Generated Files):** Khôi phục và loại bỏ hoàn toàn các tệp build (`dist/main.js`, `tsconfig.build.tsbuildinfo`) khỏi PR diff, đảm bảo 100% build sạch có thể tái lập từ mã nguồn theo đúng `.gitignore`.
+### 2. Chức năng mới hoàn thành tại PR #28 (`ci/task4-4-final-acceptance` — Task 4.4 CI/CD):
+- **Kích hoạt Required Status Checks trên `main`:** Cấu hình `strict: true` và `enforce_admins: true`, bắt buộc 2 jobs `api lint, test, build` và `web lint, test, build` phải đạt trạng thái SUCCESS mới cho phép hợp nhất PR vào `main`.
+- **Thực hiện kiểm thử âm có kiểm soát (Negative Testing):** Tạo ca kiểm thử thất bại có chủ đích chứng minh job `web lint, test, build` FAIL, step Build bị hủy bỏ và PR chuyển sang trạng thái `mergeable_state: blocked`.
+- **Khắc phục và dọn dẹp sạch sẽ 100%:** Xóa toàn bộ mã kiểm thử âm, xác minh pipeline chạy lại đạt kết quả SUCCESS trọn vẹn, không còn rủi ro tồn dư.
+- **Biên bản kiểm toán và nghiệm thu:** Xây dựng hồ sơ `DOC-CI-01` tại [docs/task-4.4-ci-verification.md](docs/task-4.4-ci-verification.md).
 
-### 3. Chức năng dự kiến thuộc phạm vi Sprint 2 (Chưa có trên `main` và PR #27):
+### 3. Chức năng dự kiến thuộc phạm vi Sprint 2 (Chưa có trên `main` và PR #28):
 - Tùy biến kích cỡ (size: Nhỏ, Vừa, Lớn) và chọn topping cho từng món đồ uống (`FR-02`).
 - Module Xác thực (`AuthModule`), đăng nhập, đăng ký và bảo vệ endpoint bằng JWT (`FR-04`).
 - Module Thanh toán (`PaymentsModule`), xử lý ví điện tử / thẻ ngân hàng mô phỏng (`FR-06`).
