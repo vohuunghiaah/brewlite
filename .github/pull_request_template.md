@@ -14,6 +14,13 @@ Refs #
 | --- | --- | --- |
 | | | |
 
+## Kiểm soát thay đổi tài liệu (Document Change Control — điền khi có thay đổi trong `docs/`)
+
+- **Document ID / Tệp bị ảnh hưởng:**
+- **Lý do thay đổi:**
+- **Yêu cầu / Sơ đồ / ADR liên quan:**
+- **Đồng bộ sơ đồ SVG:** [ ] Đã kết xuất lại SVG / [ ] Không áp dụng (không thay đổi sơ đồ)
+
 ## Definition of Done
 
 - [ ] Đáp ứng yêu cầu và tiêu chí chấp nhận.

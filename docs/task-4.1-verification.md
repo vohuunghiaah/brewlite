@@ -65,7 +65,7 @@ Phần thiết lập kỹ thuật ban đầu đã hoàn thành; review của nh�
    - Bắt buộc Pull Request, cấm force-push và cấm xóa nhánh.
 5. **CI Quality Gates:**
    - Workflow `.github/workflows/quality.yml` chạy tự động trên push/PR vào `main`.
-   - Kết quả CI gần nhất trên `main` (commit `4dd639ea` merge PR #24): Run #44136367013 — **SUCCESS**.
+   - Kết quả CI gần nhất trên `main` (commit `5784317c` merge PR #25): Run [#44145601760](https://github.com/vohuunghiaah/brewlite/actions/runs/44145601760) — **SUCCESS**.
 6. **Project Board & Issues:**
    - GitHub Project #2 ([BrewLite — Product Backlog](https://github.com/users/vohuunghiaah/projects/2)): 5 cột trạng thái (`Backlog`, `Todo`, `In Progress`, `In Review`, `Done`).
    - 5 Issues #1–#5 gắn đúng nhãn Sprint 1 và Sprint 2, không trùng lặp.

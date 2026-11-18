@@ -242,8 +242,9 @@ npm run build
 | **Task 2.3: Class Diagram** | Mô hình lớp miền (Domain Class Diagram) chuẩn hóa bằng cú pháp Mermaid. | **PASS** | [ClassDiagram-Conceptual.mmd](docs/diagram/ClassDiagram-Conceptual.mmd), PR #21 |
 | **Task 3.1: Architecture Decisions** | Kiến trúc Modular Monolith, tài liệu kiến trúc, hệ thống ADR-001 -> ADR-006. | **PASS** | [Tài liệu Kiến trúc](docs/architecture/README.md), PR #23 đã MERGED (commit `607c6d40`) |
 | **Task 3.2: Deployment Diagram** | Sơ đồ Triển khai UML, phân định môi trường Local, CI/CD và Target Production AWS Lightsail (ADR-007). | **PASS** | [Deployment Diagram](docs/architecture/DeploymentDiagram.svg), PR #24 đã MERGED (commit `4dd639ea`) |
-| **Task 4.1: Repository Setup & Backlog** | Cấu trúc Monorepo (`apps/web`, `apps/api`, `docs`), Git flow, DoD, Backlog Sprint 1 & 2, CI Quality Gates. | **TECHNICAL PASS / PENDING FINAL SIGN-OFF** | [Bằng chứng Task 4.1](docs/task-4.1-verification.md), PR #6 MERGED (commit `e744a143`), Issue #1 In Review |
-| **Task 4: Sprint 1 Implementation** | Nền tảng mã nguồn Sprint 1: Next.js + NestJS + TypeORM trên `main`, Products & Orders cơ bản, Quality Gates CI. | **BASELINE ACTIVE** | CI Run [44136367013](https://github.com/vohuunghiaah/brewlite/actions/runs/44136367013) SUCCESS |
+| **Task 4.1: Repository Setup & Backlog** | Cấu trúc Monorepo (`apps/web`, `apps/api`, `docs`), Git flow, DoD, Backlog Sprint 1 & 2, CI Quality Gates. | **PASS** | [Bằng chứng Task 4.1](docs/task-4.1-verification.md), PR #6 & PR #25 đã MERGED (commit `5784317c`) |
+| **Task 4.2: Documentation Management** | Đưa toàn bộ tạo phẩm Task 1–3 vào `docs/`, lập chỉ mục tập trung, ma trận kiểm kê và quy trình kiểm soát thay đổi. | **PASS / READY FOR ACCEPTANCE** | [Chỉ mục docs/](docs/README.md), [Quy trình Quản lý Tài liệu](docs/document-control.md), Nhánh PR #26 |
+| **Task 4: Sprint 1 Implementation** | Nền tảng mã nguồn Sprint 1: Next.js + NestJS + TypeORM trên `main`, Products & Orders cơ bản, Quality Gates CI. | **BASELINE ACTIVE** | CI Run [44145601760](https://github.com/vohuunghiaah/brewlite/actions/runs/44145601760) SUCCESS |
 | **Task 5: Sprint 2 & Delivery** | Triển khai Sprint 2 hoàn thiện tính năng MVP, thanh toán, kiểm thử E2E, CD và bàn giao. | **PENDING SPRINT 2** | Mã nguồn thử nghiệm trên `feature/sprint2-full-flow` |
 
 ---
@@ -278,6 +279,10 @@ npm run build
   - [Chiến lược Phân nhánh Git](docs/branching-strategy.md)
   - [Quy ước Commit (Conventional Commits)](docs/commit-convention.md)
   - [Định nghĩa Hoàn thành (Definition of Done - DoD)](docs/definition-of-done.md)
+- **Quản lý Tài liệu & Kiểm soát Thay đổi (Task 4.2):**
+  - [Chỉ mục Tài liệu Tập trung & Ma trận Kiểm kê (docs/README.md)](docs/README.md)
+  - [Quy trình Quản lý Thay đổi Tài liệu (Document Change Control)](docs/document-control.md)
+
 
 
 ---
