@@ -276,9 +276,43 @@ api lint, test, build    pass    31s    https://github.com/vohuunghiaah/brewlite
 - Xóa bỏ hoàn toàn tệp kiểm thử âm: `git rm apps/web/tests/ci-negative-check.test.mjs`.
 - Kiểm tra lại toàn bộ kiểm thử nội bộ: `npm --prefix apps/web test` đạt **11/11 tests pass (node:test) + 1/1 suite pass (Jest RTL)**.
 - So sánh `git diff origin/main` để bảo đảm không còn bất kỳ dòng mã lỗi nào sót lại trong repository.
-- Commit bản sửa lỗi và tài liệu nghiệm thu với thông điệp:
-  `docs(ci): add task 4.4 ci verification report and clean negative test`
+- Commit bản dọn dẹp và tài liệu nghiệm thu với thông điệp:
+  `docs(ci): complete task 4.4 ci verification and clean negative test` (Commit `40f0e1c26b528b1a8d052d9a34bc444d371d7db3`).
 - Đẩy commit lên nhánh `ci/task4-4-final-acceptance`.
+
+### 2. Kết quả thực thi CI Run #44351533965 sau khắc phục
+- **Workflow Run ID:** `44351533965`
+- **URL:** [https://github.com/vohuunghiaah/brewlite/actions/runs/44351533965](https://github.com/vohuunghiaah/brewlite/actions/runs/44351533965)
+- **Sự kiện kích hoạt:** `pull_request` (PR #28 update)
+- **Commit SHA:** `40f0e1c26b528b1a8d052d9a34bc444d371d7db3`
+- **Thời gian chạy:** 2026-11-18 16:49:00 UTC
+- **Chi tiết kết quả từng job:**
+  - **`api lint, test, build` (ID `134968192835`, 36s):** **PASS**
+    - Install (`npm ci`): PASS
+    - Lint (`npm run lint`): PASS
+    - Unit Test (`npm test`): PASS (14/14 tests)
+    - Build (`npm run build`): PASS
+  - **`web lint, test, build` (ID `134968192122`, 42s):** **PASS**
+    - Install (`npm ci`): PASS
+    - Lint (`npm run lint`): PASS
+    - Unit Test (`npm test`): PASS (12/12 tests)
+    - Build (`npm run build`): PASS (5/5 pages static prerender)
+
+### 3. Đối soát trạng thái Pull Request sau khắc phục
+- Truy vấn kết quả checks của PR #28:
+  ```text
+  $ gh pr checks 28
+  api lint, test, build    pass    36s    https://github.com/vohuunghiaah/brewlite/actions/runs/44351533965/job/134968192835
+  web lint, test, build    pass    42s    https://github.com/vohuunghiaah/brewlite/actions/runs/44351533965/job/134968192122
+  ```
+- Đối soát thuộc tính mergeable qua GitHub API:
+  ```json
+  {
+    "mergeable": true,
+    "mergeable_state": "clean"
+  }
+  ```
+> **Kết luận chuyển đổi trạng thái:** Trạng thái của Pull Request #28 đã chuyển đổi thành công và chính xác từ **`blocked`** sang **`clean`**. Điều này khẳng định 100% tính năng kiểm soát chất lượng qua CI và Branch Protection hoạt động chính xác theo đặc tả.
 
 ---
 
