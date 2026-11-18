@@ -3,3 +3,9 @@ export async function fetchProducts(apiUrl, signal) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
+
+export async function fetchProductById(apiUrl, id, signal) {
+  const response = await fetch(`${apiUrl}/products/${id}`, { signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}

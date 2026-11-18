@@ -488,6 +488,35 @@
   font-size: 17px;
 }
 
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detailButton {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d4c2b2;
+  border-radius: 12px;
+  background: #fdfbf9;
+  color: #5a392b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 12px;
+  transition: background-color 160ms ease, border-color 160ms ease,
+    color 160ms ease;
+}
+
+.detailButton:hover {
+  border-color: #c58b52;
+  background: #f3e8df;
+  color: #38241b;
+}
+
 .addButton {
   display: grid;
   width: 36px;
@@ -585,6 +614,245 @@
 
 .footerIcon {
   color: #a76e3d;
+}
+
+/* ================= PRODUCT DETAIL MODAL (TASK 4.3) ================= */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(30 20 15 / 65%);
+  backdrop-filter: blur(6px);
+  animation: fadeIn 180ms ease-out;
+}
+
+.modalCard {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  outline: none;
+  border: 1px solid #eee7e0;
+  border-radius: 24px;
+  background: white;
+  box-shadow: 0 24px 50px rgb(45 25 15 / 25%);
+  animation: modalScale 200ms ease-out;
+}
+
+.modalCloseButton {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(56 36 27 / 85%);
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.modalCloseButton:hover {
+  background: #c58b52;
+  transform: scale(1.08);
+}
+
+.modalPhotoWrapper {
+  position: relative;
+  height: 240px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #ddc4aa, #f3e7d8);
+}
+
+.modalPhoto {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.modalCategoryBadge {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 2;
+  border-radius: 999px;
+  background: rgb(56 36 27 / 90%);
+  color: #e6c497;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 6px 12px;
+}
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+}
+
+.modalMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modalProductId {
+  color: #a78873;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.modalStatusAvailable {
+  color: #2e8b57;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modalStatusUnavailable {
+  color: #c0392b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modalTitle {
+  color: #38241b;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.modalDescription {
+  color: #765644;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.modalSyncNotice {
+  color: #b17a47;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.modalErrorNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.modalRetryButton {
+  min-height: 32px;
+  border: 1px solid #b91c1c;
+  background: white;
+  color: #b91c1c;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.modalRetryButton:hover {
+  background: #fee2e2;
+}
+
+.modalPriceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+  border-top: 1px solid #f0e6dc;
+  padding-top: 18px;
+}
+
+.modalPriceLabel {
+  display: block;
+  margin-bottom: 2px;
+  color: #a78873;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.modalPrice {
+  color: #c58b52;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.modalActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modalAddButton {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: #43291f;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0 20px;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.modalAddButton:hover:not(:disabled) {
+  background: #c58b52;
+  transform: translateY(-1px);
+}
+
+.modalAddButton:disabled {
+  background: #c2b5ab;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalScale {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes spin {
@@ -749,8 +1017,53 @@
     font-size: 14px;
   }
 
+  .cardActions {
+    gap: 6px;
+  }
+
+  .detailButton {
+    min-height: 32px;
+    font-size: 11px;
+    padding: 0 9px;
+  }
+
   .addButton {
     width: 32px;
     height: 32px;
+  }
+
+  .modalPhotoWrapper {
+    height: 180px;
+  }
+
+  .modalBody {
+    padding: 18px;
+    gap: 10px;
+  }
+
+  .modalTitle {
+    font-size: 20px;
+  }
+
+  .modalPrice {
+    font-size: 20px;
+  }
+
+  .modalAddButton {
+    min-height: 40px;
+    font-size: 13px;
+    padding: 0 16px;
+  }
+
+  .modalCard {
+    max-height: calc(100vh - 24px);
+    border-radius: 20px;
+  }
+
+  .modalCloseButton {
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
   }
 }

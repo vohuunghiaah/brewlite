@@ -1,9 +1,11 @@
 
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { fetchProducts } from "./products.mjs";
+import { createMenuModalController, getCategory } from "./menu-controller.mjs";
 import ui from "./menu.module.css";
 
 // ================= API BACKEND =================
@@ -27,6 +29,21 @@ interface OrderResponse {
   message?: string;
 }
 
+interface ModalState {
+  selectedProduct: Product | null;
+  loadingDetail: boolean;
+  detailError: string;
+  isOpen: boolean;
+}
+
+const initialModalState: ModalState = {
+  selectedProduct: null,
+  loadingDetail: false,
+  detailError: "",
+  isOpen: false,
+};
+const getServerModalSnapshot = () => initialModalState;
+
 const categories = [
   "Tất cả",
   "Cà phê truyền thống",
@@ -45,20 +62,6 @@ const fallbackImages = {
   water:
     "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=900&q=85",
 };
-
-function getCategory(product: Product): string {
-  const details = `${product.name} ${product.description}`.toLocaleLowerCase();
-
-  if (/trà|tea|đào|cam/.test(details)) return "Trà trái cây";
-  if (/cold brew|espresso|americano/.test(details)) {
-    return "Cold Brew & Espresso";
-  }
-  if (/cà phê|latte|cappuccino/.test(details)) {
-    return "Cà phê truyền thống";
-  }
-  if (/bánh|cake/.test(details)) return "Bánh ngọt";
-  return "Khác";
-}
 
 function getFallbackImage(product: Product): string {
   const details = `${product.name} ${product.description}`.toLocaleLowerCase();
@@ -94,6 +97,64 @@ export default function MenuPage() {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderMessage, setOrderMessage] = useState("");
   const [orderError, setOrderError] = useState("");
+
+  // Chi tiết sản phẩm (Modal Task 4.3 Controller & Focus Manager)
+  const modalController = useMemo(
+    () => createMenuModalController({ apiUrl: API_URL }),
+    []
+  );
+  const modalState = useSyncExternalStore(
+    modalController.subscribe,
+    modalController.getState,
+    getServerModalSnapshot
+  ) as ModalState;
+  const { selectedProduct, loadingDetail, detailError, isOpen } = modalState;
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Quản lý Focus khi mở và đóng modal
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      modalRef.current?.focus();
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
+  }, [isOpen]);
+
+  // Quản lý sự kiện bàn phím: Escape đóng modal & Trap Focus
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        modalController.handleEscape();
+        return;
+      }
+
+      if (event.key === "Tab" && modalRef.current) {
+        const focusables = modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [tabindex="0"], a[href], input:not(:disabled)'
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, modalController]);
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
   const loadProducts = useCallback((signal?: AbortSignal) => {
@@ -464,7 +525,20 @@ export default function MenuPage() {
             <div className={ui.productGrid}>
               {filteredProducts.map((product, index) => (
                 <article key={product.id} className={ui.productCard}>
-                  <div className={ui.productPhoto}>
+                  <div
+                    className={ui.productPhoto}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void modalController.openProductDetail(product)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void modalController.openProductDetail(product);
+                      }
+                    }}
+                    style={{ cursor: "pointer" }}
+                    aria-label={`Xem chi tiết ${product.name}`}
+                  >
                     <div className={ui.photoFallback} aria-hidden="true">
                       {getCategory(product) === "Trà trái cây" ? "🧋" : "☕"}
                     </div>
@@ -492,12 +566,13 @@ export default function MenuPage() {
                           : `Yêu thích ${product.name}`
                       }
                       aria-pressed={Boolean(favorites[product.id])}
-                      onClick={() =>
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setFavorites((previous) => ({
                           ...previous,
                           [product.id]: !previous[product.id],
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       ★ <span>Yêu thích</span>
                     </button>
@@ -505,7 +580,13 @@ export default function MenuPage() {
 
                   <div className={ui.productContent}>
                     <div className={ui.productTitleRow}>
-                      <h3>{product.name}</h3>
+                      <h3
+                        onClick={() => void modalController.openProductDetail(product)}
+                        style={{ cursor: "pointer" }}
+                        title={`Xem chi tiết ${product.name}`}
+                      >
+                        {product.name}
+                      </h3>
                       <span
                         className={
                           product.isAvailable
@@ -523,15 +604,25 @@ export default function MenuPage() {
                     </p>
                     <div className={ui.productFooter}>
                       <strong>{formatPrice(product.price)}</strong>
-                      <button
-                        type="button"
-                        className={ui.addButton}
-                        disabled={!product.isAvailable}
-                        onClick={() => addToCart(product)}
-                        aria-label={`Thêm ${product.name} vào giỏ`}
-                      >
-                        +
-                      </button>
+                      <div className={ui.cardActions}>
+                        <button
+                          type="button"
+                          className={ui.detailButton}
+                          onClick={() => void modalController.openProductDetail(product)}
+                          aria-label={`Xem chi tiết ${product.name}`}
+                        >
+                          Chi tiết
+                        </button>
+                        <button
+                          type="button"
+                          className={ui.addButton}
+                          disabled={!product.isAvailable}
+                          onClick={() => addToCart(product)}
+                          aria-label={`Thêm ${product.name} vào giỏ`}
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -794,6 +885,119 @@ export default function MenuPage() {
           <p>BrewLite · Một ly ngon, một ngày vui.</p>
         </footer>
       </div>
+
+      {/* ================= MODAL CHI TIẾT SẢN PHẨM (TASK 4.3) ================= */}
+      {isOpen && selectedProduct && (
+        <div
+          className={ui.modalOverlay}
+          role="presentation"
+          onClick={() => modalController.closeProductDetail()}
+        >
+          <div
+            ref={modalRef}
+            tabIndex={-1}
+            className={ui.modalCard}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-product-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={ui.modalCloseButton}
+              onClick={() => modalController.closeProductDetail()}
+              aria-label="Đóng chi tiết sản phẩm"
+            >
+              ✕
+            </button>
+
+            <div className={ui.modalPhotoWrapper}>
+              <div className={ui.photoFallback} aria-hidden="true">
+                {getCategory(selectedProduct) === "Trà trái cây" ? "🧋" : "☕"}
+              </div>
+              <img
+                src={selectedProduct.imageUrl || getFallbackImage(selectedProduct)}
+                alt={selectedProduct.name}
+                className={ui.modalPhoto}
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+              <span className={ui.modalCategoryBadge}>
+                {getCategory(selectedProduct)}
+              </span>
+            </div>
+
+            <div className={ui.modalBody}>
+              <div className={ui.modalMetaRow}>
+                <span className={ui.modalProductId}>
+                  Mã món: #{selectedProduct.id}
+                </span>
+                <span
+                  className={
+                    selectedProduct.isAvailable
+                      ? ui.modalStatusAvailable
+                      : ui.modalStatusUnavailable
+                  }
+                >
+                  {selectedProduct.isAvailable
+                    ? "● Còn hàng phục vụ"
+                    : "● Tạm hết hàng"}
+                </span>
+              </div>
+
+              <h2 id="modal-product-title" className={ui.modalTitle}>
+                {selectedProduct.name}
+              </h2>
+
+              <p className={ui.modalDescription}>
+                {selectedProduct.description || "Pha chế tỉ mỉ mỗi ngày tại quầy BrewLite."}
+              </p>
+
+              {loadingDetail && (
+                <p className={ui.modalSyncNotice}>
+                  Đang đồng bộ dữ liệu mới nhất từ quầy...
+                </p>
+              )}
+
+              {detailError && (
+                <div className={ui.modalErrorNotice} role="alert">
+                  <span>⚠️ Không thể cập nhật chi tiết mới nhất ({detailError})</span>
+                  <button
+                    type="button"
+                    className={ui.modalRetryButton}
+                    onClick={() => void modalController.openProductDetail(selectedProduct)}
+                  >
+                    Thử lại
+                  </button>
+                </div>
+              )}
+
+              <div className={ui.modalPriceRow}>
+                <div>
+                  <span className={ui.modalPriceLabel}>Đơn giá niêm yết</span>
+                  <strong className={ui.modalPrice}>
+                    {formatPrice(selectedProduct.price)}
+                  </strong>
+                </div>
+                <div className={ui.modalActions}>
+                  <button
+                    type="button"
+                    className={ui.modalAddButton}
+                    disabled={!selectedProduct.isAvailable}
+                    onClick={() => {
+                      addToCart(selectedProduct);
+                      modalController.closeProductDetail();
+                    }}
+                  >
+                    {selectedProduct.isAvailable ? "Thêm vào giỏ hàng" : "Hết hàng"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
