@@ -31,7 +31,12 @@ Repository: https://github.com/vohuunghiaah/brewlite
 
 1. **PR #6 & PR #25:** PR #6 (`chore: thiết lập repository`) đã merged tại commit `e744a143`. PR #25 (`docs(task4.1): finalize repository setup`) đã merged tại commit `5784317c`, hoàn tất phê duyệt kỹ thuật Task 4.1.
 2. **Branch Protection:** Nhánh `main` được bảo vệ: `enforce_admins=true`, cấm force push, cấm xóa nhánh, yêu cầu giải quyết hội thoại.
-3. **CI Quality Gates:** Đã kích hoạt pipeline `.github/workflows/quality.yml` kiểm tra tự động lint, unit test và build.
+3. **CI Quality Gates & Required Status Checks (Task 4.4):**
+   - Đã cấu hình kích hoạt pipeline `.github/workflows/quality.yml` (Install -> Lint -> Unit Test -> Build cho cả `api` và `web`).
+   - Đã kích hoạt **Required Status Checks** bắt buộc trên nhánh `main`: `strict=true`, yêu cầu cả hai jobs `api lint, test, build` và `web lint, test, build` (`app_id: 15368` - GitHub Actions) phải thành công mới cho phép merge.
+   - Cơ chế chặn bypass: `enforce_admins=true`, cấm force push, cấm xóa nhánh, yêu cầu giải quyết hội thoại.
+   - Đã kiểm chứng qua thử nghiệm âm có kiểm soát: PR bị chuyển trạng thái `mergeable_state: blocked` khi có bài test lỗi.
+   - Báo cáo chi tiết tại [docs/task-4.4-ci-verification.md](task-4.4-ci-verification.md).
 4. **Trạng thái Issue #1 ([BL-00]):** Toàn bộ tiêu chí kỹ thuật đã hoàn thành. Hiện đang ở trạng thái **BLOCKED — PENDING REVIEW** trên GitHub Project #2.
 5. **Thao tác bàn giao cho chủ repository:**
    - Thực hiện review chính thức Issue #1 / Task 4.1 theo biên bản nghiệm thu.
