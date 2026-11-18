@@ -56,7 +56,17 @@ docs/
 
 ## 2. Ma Trận Kiểm Kê & Kiểm Soát Tạo Phẩm (Document Inventory Matrix)
 
-Bảng dưới đây liệt kê toàn bộ các tạo phẩm chính thức thuộc Task 1, 2, 3, 4, phiên bản được xác nhận, đường dẫn tệp nguồn/kết xuất, bằng chứng commit/PR và các yêu cầu liên quan:
+### Nguyên tắc và Quy tắc Đếm Tạo Phẩm (Counting Rules):
+1. **Theo Mã Định Danh Tạo Phẩm (Document ID — 36 tạo phẩm):**
+   - Mỗi dòng trong bảng dưới đây tương ứng với đúng một mã định danh tạo phẩm duy nhất (`Document ID`).
+   - Mỗi sơ đồ bao gồm một cặp tệp (1 tệp mã nguồn `.puml` hoặc `.mmd` và 1 tệp kết xuất `.svg` đồng bộ 100%) được quản lý thống nhất dưới một mã `Document ID` duy nhất (ví dụ: `UML-ACT-01` đại diện cho cặp `ActivityDiagram.puml` và `ActivityDiagram.svg`).
+   - Bảng kiểm kê gồm **36 tạo phẩm có mã quản trị** (Task 1: 7 tạo phẩm; Task 2: 7 tạo phẩm sơ đồ; Task 3: 10 tạo phẩm kiến trúc; Kiểm toán & RTM: 2 tạo phẩm; Task 4: 10 tạo phẩm quy trình và backlog bao gồm cả chỉ mục `DOC-INDEX-01`).
+2. **Theo Tệp Vật Lý Được Quản Lý Trong Git (Physical Files — 46 tệp):**
+   - **26 tệp Markdown (`.md`):** Đặc tả yêu cầu, use cases, kiến trúc, ADRs, báo cáo kiểm toán, RTM, quy trình và backlog.
+   - **9 tệp PlantUML (`.puml`):** Mã nguồn sơ đồ Use Case (2), Sơ đồ Hoạt động & Tuần tự (6), Sơ đồ Triển khai (1).
+   - **1 tệp Mermaid (`.mmd`):** Mã nguồn Sơ đồ Lớp miền Khái niệm (1).
+   - **10 tệp SVG (`.svg`):** Bản kết xuất trực quan đồng bộ 1:1 của 10 tệp nguồn sơ đồ trên (không có sơ đồ nào thiếu SVG hoặc ngược lại).
+   - Tổng cộng: **26 + 9 + 1 + 10 = 46 tệp vật lý** trong thư mục `docs/`.
 
 | Document ID | Tên tạo phẩm | Phân hệ | Tệp nguồn (Source Path) | Tệp xuất (Export Path) | Phiên bản / Trạng thái | Bằng chứng Commit / PR | Yêu cầu / Use Case / ADR liên quan |
 |:---:|---|:---:|---|---|:---:|---|---|
@@ -95,6 +105,7 @@ Bảng dưới đây liệt kê toàn bộ các tạo phẩm chính thức thu�
 | **BKLG-PRD-01**| Product Backlog Tổng thể | Task 4.1 | [backlog/product-backlog.md](backlog/product-backlog.md) | N/A | Active | PR [#6](https://github.com/vohuunghiaah/brewlite/pull/6), PR [#25](https://github.com/vohuunghiaah/brewlite/pull/25) (`5784317c`) | Quản trị backlog `BL-00` -> `BL-04` |
 | **BKLG-SP1-01**| Kế hoạch Sprint 1 | Task 4.1 | [backlog/sprint-1.md](backlog/sprint-1.md) | N/A | Active | PR [#6](https://github.com/vohuunghiaah/brewlite/pull/6), PR [#25](https://github.com/vohuunghiaah/brewlite/pull/25) (`5784317c`) | Công việc `BL-00`, `BL-01`, `BL-02` |
 | **BKLG-SP2-01**| Kế hoạch Sprint 2 | Task 4.1 | [backlog/sprint-2.md](backlog/sprint-2.md) | N/A | Active | PR [#6](https://github.com/vohuunghiaah/brewlite/pull/6), PR [#25](https://github.com/vohuunghiaah/brewlite/pull/25) (`5784317c`) | Công việc `BL-03`, `BL-04` |
+| **DOC-INDEX-01**| Chỉ mục Tài liệu Tập trung | Task 4.2 | [README.md](README.md) | N/A | v2.0.0 / Active | PR [#26](https://github.com/vohuunghiaah/brewlite/pull/26) | Chỉ mục trung tâm, ma trận kiểm kê Task 1–4 |
 
 ---
 

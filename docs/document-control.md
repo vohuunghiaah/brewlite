@@ -36,6 +36,12 @@ Mỗi tạo phẩm trong thư mục `docs/` được gán một mã định danh
 | `TRACE-*`| Ma trận truy vết yêu cầu | `TRACE-RTM-01` | Requirements Traceability Matrix (RTM v2.5.0) |
 | `GOV-*`  | Tài liệu quy trình & Quản trị | `GOV-GIT-01` | Chiến lược Phân nhánh Git |
 | `BKLG-*` | Quản trị Backlog & Sprint | `BKLG-PRD-01` | Product Backlog Sprint 1 & Sprint 2 |
+| `DOC-*`  | Chỉ mục và danh mục tài liệu tập trung | `DOC-INDEX-01` | Chỉ mục tài liệu tập trung (docs/README.md) |
+
+### Quy tắc kiểm kê và định lượng tạo phẩm:
+- **Định lượng theo mã định danh (Document ID):** Toàn bộ hệ thống tài liệu gồm **36 tạo phẩm có mã quản trị**. Mỗi sơ đồ hệ thống gồm 1 tệp nguồn (`.puml` hoặc `.mmd`) và 1 tệp kết xuất trực quan (`.svg`) được quản lý chung dưới 1 mã Document ID duy nhất.
+- **Định lượng theo tệp vật lý:** Toàn bộ thư mục `docs/` được quản lý bởi Git gồm **46 tệp vật lý** (26 tệp `.md`, 9 tệp `.puml`, 1 tệp `.mmd`, 10 tệp `.svg` đồng bộ 100%).
+
 
 ---
 
