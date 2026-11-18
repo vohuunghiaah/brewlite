@@ -1,9 +1,10 @@
 
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { fetchProducts } from "./products.mjs";
+import { fetchProducts, fetchProductById } from "./products.mjs";
 import ui from "./menu.module.css";
 
 // ================= API BACKEND =================
@@ -94,6 +95,39 @@ export default function MenuPage() {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderMessage, setOrderMessage] = useState("");
   const [orderError, setOrderError] = useState("");
+
+  // Chi tiết sản phẩm (Modal Task 4.3)
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const openProductDetail = useCallback(async (product: Product) => {
+    setSelectedProduct(product);
+    setLoadingDetail(true);
+    try {
+      const detail = await fetchProductById(API_URL, product.id);
+      setSelectedProduct(detail);
+    } catch (err) {
+      console.warn("Không thể làm mới chi tiết sản phẩm từ API:", err);
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, []);
+
+  const closeProductDetail = useCallback(() => {
+    setSelectedProduct(null);
+    setLoadingDetail(false);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProduct) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeProductDetail();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedProduct, closeProductDetail]);
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
   const loadProducts = useCallback((signal?: AbortSignal) => {
@@ -464,7 +498,20 @@ export default function MenuPage() {
             <div className={ui.productGrid}>
               {filteredProducts.map((product, index) => (
                 <article key={product.id} className={ui.productCard}>
-                  <div className={ui.productPhoto}>
+                  <div
+                    className={ui.productPhoto}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void openProductDetail(product)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void openProductDetail(product);
+                      }
+                    }}
+                    style={{ cursor: "pointer" }}
+                    aria-label={`Xem chi tiết ${product.name}`}
+                  >
                     <div className={ui.photoFallback} aria-hidden="true">
                       {getCategory(product) === "Trà trái cây" ? "🧋" : "☕"}
                     </div>
@@ -492,12 +539,13 @@ export default function MenuPage() {
                           : `Yêu thích ${product.name}`
                       }
                       aria-pressed={Boolean(favorites[product.id])}
-                      onClick={() =>
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setFavorites((previous) => ({
                           ...previous,
                           [product.id]: !previous[product.id],
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       ★ <span>Yêu thích</span>
                     </button>
@@ -505,7 +553,13 @@ export default function MenuPage() {
 
                   <div className={ui.productContent}>
                     <div className={ui.productTitleRow}>
-                      <h3>{product.name}</h3>
+                      <h3
+                        onClick={() => void openProductDetail(product)}
+                        style={{ cursor: "pointer" }}
+                        title={`Xem chi tiết ${product.name}`}
+                      >
+                        {product.name}
+                      </h3>
                       <span
                         className={
                           product.isAvailable
@@ -523,15 +577,25 @@ export default function MenuPage() {
                     </p>
                     <div className={ui.productFooter}>
                       <strong>{formatPrice(product.price)}</strong>
-                      <button
-                        type="button"
-                        className={ui.addButton}
-                        disabled={!product.isAvailable}
-                        onClick={() => addToCart(product)}
-                        aria-label={`Thêm ${product.name} vào giỏ`}
-                      >
-                        +
-                      </button>
+                      <div className={ui.cardActions}>
+                        <button
+                          type="button"
+                          className={ui.detailButton}
+                          onClick={() => void openProductDetail(product)}
+                          aria-label={`Xem chi tiết ${product.name}`}
+                        >
+                          Chi tiết
+                        </button>
+                        <button
+                          type="button"
+                          className={ui.addButton}
+                          disabled={!product.isAvailable}
+                          onClick={() => addToCart(product)}
+                          aria-label={`Thêm ${product.name} vào giỏ`}
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -794,6 +858,104 @@ export default function MenuPage() {
           <p>BrewLite · Một ly ngon, một ngày vui.</p>
         </footer>
       </div>
+
+      {/* ================= MODAL CHI TIẾT SẢN PHẨM (TASK 4.3) ================= */}
+      {selectedProduct && (
+        <div
+          className={ui.modalOverlay}
+          role="presentation"
+          onClick={closeProductDetail}
+        >
+          <div
+            className={ui.modalCard}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-product-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={ui.modalCloseButton}
+              onClick={closeProductDetail}
+              aria-label="Đóng chi tiết sản phẩm"
+            >
+              ✕
+            </button>
+
+            <div className={ui.modalPhotoWrapper}>
+              <div className={ui.photoFallback} aria-hidden="true">
+                {getCategory(selectedProduct) === "Trà trái cây" ? "🧋" : "☕"}
+              </div>
+              <img
+                src={selectedProduct.imageUrl || getFallbackImage(selectedProduct)}
+                alt={selectedProduct.name}
+                className={ui.modalPhoto}
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+              <span className={ui.modalCategoryBadge}>
+                {getCategory(selectedProduct)}
+              </span>
+            </div>
+
+            <div className={ui.modalBody}>
+              <div className={ui.modalMetaRow}>
+                <span className={ui.modalProductId}>
+                  Mã món: #{selectedProduct.id}
+                </span>
+                <span
+                  className={
+                    selectedProduct.isAvailable
+                      ? ui.modalStatusAvailable
+                      : ui.modalStatusUnavailable
+                  }
+                >
+                  {selectedProduct.isAvailable
+                    ? "● Còn hàng phục vụ"
+                    : "● Tạm hết hàng"}
+                </span>
+              </div>
+
+              <h2 id="modal-product-title" className={ui.modalTitle}>
+                {selectedProduct.name}
+              </h2>
+
+              <p className={ui.modalDescription}>
+                {selectedProduct.description || "Pha chế tỉ mỉ mỗi ngày tại quầy BrewLite."}
+              </p>
+
+              {loadingDetail && (
+                <p className={ui.modalSyncNotice}>
+                  Đang đồng bộ dữ liệu mới nhất từ quầy...
+                </p>
+              )}
+
+              <div className={ui.modalPriceRow}>
+                <div>
+                  <span className={ui.modalPriceLabel}>Đơn giá niêm yết</span>
+                  <strong className={ui.modalPrice}>
+                    {formatPrice(selectedProduct.price)}
+                  </strong>
+                </div>
+                <div className={ui.modalActions}>
+                  <button
+                    type="button"
+                    className={ui.modalAddButton}
+                    disabled={!selectedProduct.isAvailable}
+                    onClick={() => {
+                      addToCart(selectedProduct);
+                      closeProductDetail();
+                    }}
+                  >
+                    {selectedProduct.isAvailable ? "Thêm vào giỏ hàng" : "Hết hàng"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

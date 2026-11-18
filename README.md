@@ -243,8 +243,8 @@ npm run build
 | **Task 3.1: Architecture Decisions** | Kiến trúc Modular Monolith, tài liệu kiến trúc, hệ thống ADR-001 -> ADR-006. | **PASS** | [Tài liệu Kiến trúc](docs/architecture/README.md), PR #23 đã MERGED (commit `607c6d40`) |
 | **Task 3.2: Deployment Diagram** | Sơ đồ Triển khai UML, phân định môi trường Local, CI/CD và Target Production AWS Lightsail (ADR-007). | **PASS** | [Deployment Diagram](docs/architecture/DeploymentDiagram.svg), PR #24 đã MERGED (commit `4dd639ea`) |
 | **Task 4.1: Repository Setup & Backlog** | Cấu trúc Monorepo (`apps/web`, `apps/api`, `docs`), Git flow, DoD, Backlog Sprint 1 & 2, CI Quality Gates. | **PASS** | [Bằng chứng Task 4.1](docs/task-4.1-verification.md), PR #6 & PR #25 đã MERGED (commit `5784317c`) |
-| **Task 4.2: Documentation Management** | Đưa toàn bộ tạo phẩm Task 1–3 vào `docs/`, lập chỉ mục tập trung, ma trận kiểm kê và quy trình kiểm soát thay đổi. | **PASS / READY FOR ACCEPTANCE** | [Chỉ mục docs/](docs/README.md), [Quy trình Quản lý Tài liệu](docs/document-control.md), Nhánh PR #26 |
-| **Task 4: Sprint 1 Implementation** | Nền tảng mã nguồn Sprint 1: Next.js + NestJS + TypeORM trên `main`, Products & Orders cơ bản, Quality Gates CI. | **BASELINE ACTIVE** | CI Run [44145601760](https://github.com/vohuunghiaah/brewlite/actions/runs/44145601760) SUCCESS |
+| **Task 4.2: Documentation Management** | Đưa toàn bộ tạo phẩm Task 1–3 vào `docs/`, lập chỉ mục tập trung, ma trận kiểm kê và quy trình kiểm soát thay đổi. | **PASS** | [Chỉ mục docs/](docs/README.md), [Quy trình Quản lý Tài liệu](docs/document-control.md), PR #26 đã MERGED (commit `c8d7a012`) |
+| **Task 4.3: MVP Sprint 1 (Menu & Product Detail)** | Hoàn thiện MVP Sprint 1: `GET /products` và `GET /products/:id`, giao diện Menu Next.js mobile-first, modal xem chi tiết sản phẩm, loading/empty/error states và 100% unit tests. | **PASS / READY FOR ACCEPTANCE** | [Kế hoạch Sprint 1](docs/backlog/sprint-1.md), PR #27 |
 | **Task 5: Sprint 2 & Delivery** | Triển khai Sprint 2 hoàn thiện tính năng MVP, thanh toán, kiểm thử E2E, CD và bàn giao. | **PENDING SPRINT 2** | Mã nguồn thử nghiệm trên `feature/sprint2-full-flow` |
 
 ---
@@ -292,13 +292,15 @@ npm run build
 Nhằm đảm bảo tính minh bạch và trung thực học thuật, đội ngũ phát triển công bố hiện trạng thực tế của nhánh chính `main` tại commit `ee090814`:
 
 ### Hiện Trạng Mã Nguồn Trên `main`:
-1. **Đã hoạt động:**
-   - Hiển thị danh mục sản phẩm từ cơ sở dữ liệu (`GET /products`).
+1. **Đã hoạt động (Task 4.3 MVP Sprint 1):**
+   - Hiển thị danh mục sản phẩm từ cơ sở dữ liệu (`GET /products`) sắp xếp theo ID tăng dần.
+   - Xem chi tiết từng món đồ uống (`GET /products/:id`) qua Product Detail Modal trên Next.js UI với đầy đủ ảnh, mã món, giá, mô tả và tình trạng còn hàng.
+   - Trạng thái giao diện thực đơn hoàn chỉnh: Loading state, Empty state (thực đơn rỗng / không tìm thấy kết quả tìm kiếm), Error state kèm nút retry.
    - Giao diện giỏ hàng Next.js phía client, tính toán tổng tiền tạm thời real-time.
    - Tạo đơn hàng cơ bản (`POST /orders`) lưu vào PostgreSQL qua TypeORM transaction, thiết lập trạng thái khởi tạo `PENDING`.
-   - Pipeline CI tự động kiểm tra cú pháp, unit tests và build thành công.
+   - Pipeline CI tự động kiểm tra cú pháp, 10 unit tests API và 2 unit tests Web, cùng build thành công.
 2. **Chưa có mã nguồn trên `main` (Mới có trên nhánh tính năng hoặc tài liệu thiết kế):**
-   - Chọn size, topping hoặc ghi chú từng món (`FR-02`).
+   - Chọn size, topping hoặc ghi chú từng món (`FR-02` - dự kiến Sprint 2).
    - Module Xác thực (`AuthModule`), đăng nhập, đăng ký và bảo vệ endpoint bằng JWT (`FR-04`).
    - Module Thanh toán (`PaymentsModule`), xử lý ví điện tử / thẻ ngân hàng mô phỏng (`FR-06`).
    - State Machine quản lý chuyển trạng thái đơn hàng (`FR-07`).

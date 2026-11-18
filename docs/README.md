@@ -129,7 +129,8 @@ Toàn bộ các mốc hoàn thiện tài liệu đều được thực hiện th
 | **[#23](https://github.com/vohuunghiaah/brewlite/pull/23)** | `docs/task3-architecture-and-deployment` | Nghiệm thu Task 3.1 — Đặc tả Kiến trúc Modular Monolith & ADR-001..006 | `607c6d40` | 16/11/2026 | PASS |
 | **[#24](https://github.com/vohuunghiaah/brewlite/pull/24)** | `docs/task3-2-aws-lightsail-deployment` | Nghiệm thu Task 3.2 — Sơ đồ Triển khai UML & ADR-007 (AWS Lightsail) | `4dd639ea` | 17/11/2026 | PASS |
 | **[#25](https://github.com/vohuunghiaah/brewlite/pull/25)** | `docs/task4-1-final-acceptance` | Nghiệm thu Task 4.1 — Thiết lập Repository, Backlog Sprint 1/2, DoD | `5784317c` | 18/11/2026 | PASS |
-| **[#26](https://github.com/vohuunghiaah/brewlite/pull/26)** | `docs/task4-2-document-management` | Nghiệm thu Task 4.2 — Quản lý Tài liệu, Chỉ mục tập trung & Change Control | *(Đang mở)* | 18/11/2026 | PASS |
+| **[#26](https://github.com/vohuunghiaah/brewlite/pull/26)** | `docs/task4-2-document-management` | Nghiệm thu Task 4.2 — Quản lý Tài liệu, Chỉ mục tập trung & Change Control | `c8d7a012` | 18/11/2026 | PASS |
+| **[#27](https://github.com/vohuunghiaah/brewlite/pull/27)** | `feat/task4-3-menu-mvp` | Hoàn thành Task 4.3 — MVP Sprint 1 (Menu & Product Detail View) | *(Đang mở)* | 18/11/2026 | PASS |
 
 ---
 
@@ -140,7 +141,8 @@ Toàn bộ các mốc hoàn thiện tài liệu đều được thực hiện th
 - **Task 3.1 (Kiến trúc Hệ thống & ADRs):** **PASS** (Đặc tả Modular Monolith, ADR-001 -> ADR-006 — PR #23).
 - **Task 3.2 (Sơ đồ Triển khai UML):** **PASS** (Deployment Diagram & ADR-007 AWS Lightsail — PR #24).
 - **Task 4.1 (Thiết lập Repository & Backlog):** **PASS** (Monorepo `apps/web`, `apps/api`, `docs`, Git flow, Backlog Sprint 1 & 2, DoD — PR #6, PR #25).
-- **Task 4.2 (Quản lý Tài liệu & Bàn giao):** **READY FOR ACCEPTANCE** (Chỉ mục tập trung `docs/README.md`, Quy trình kiểm soát thay đổi `docs/document-control.md`, bảo toàn 100% tạo phẩm — PR #26).
+- **Task 4.2 (Quản lý Tài liệu & Bàn giao):** **PASS** (Chỉ mục tập trung `docs/README.md`, Quy trình kiểm soát thay đổi `docs/document-control.md`, bảo toàn 100% tạo phẩm — PR #26 đã MERGED).
+- **Task 4.3 (MVP Sprint 1 — Menu & Chi tiết sản phẩm):** **READY FOR ACCEPTANCE** (Hiển thị thực đơn mobile-first, xem chi tiết sản phẩm qua Modal tương tác, kết nối backend API `GET /products` và `GET /products/:id`, xử lý loading/empty/error states và 100% unit tests — PR #27).
 
 ---
 
