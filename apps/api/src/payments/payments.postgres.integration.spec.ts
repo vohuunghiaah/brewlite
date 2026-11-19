@@ -478,4 +478,67 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
     expect(rawFk.length).toBeGreaterThan(0);
     expect(rawFk[0].delete_rule).toBe('RESTRICT');
   });
+
+  it('11. Concurrent reconciliation: Hai request đối soát gửi đồng thời cho cùng 1 đơn PENDING, chỉ 1 transaction trừ kho OCC (FIX-09)', async () => {
+    const { product, order } = await createTestProductAndOrder(10, 1);
+    const key = crypto.randomUUID();
+
+    const dto: CreatePaymentDto = {
+      orderId: order.id,
+      amount: 40000,
+      method: PaymentMethod.MOMO,
+      idempotencyKey: key,
+      mockOutcome: 'PENDING',
+    };
+
+    const res1 = await service.processPayment(dto, testUser1.id);
+    expect(res1.status).toBe(PaymentStatus.PENDING);
+
+    // Cổng thanh toán ghi nhận SUCCESS
+    mockGateway.setTransactionStatus(res1.payment.merchantReference!, 'SUCCESS');
+
+    // Gửi 2 request đối soát hoàn toàn đồng thời
+    const [reconcile1, reconcile2] = await Promise.all([
+      service.reconcilePayment(key, testUser1.id),
+      service.reconcilePayment(key, testUser1.id),
+    ]);
+
+    expect(reconcile1.status).toBe(PaymentStatus.SUCCESS);
+    expect(reconcile2.status).toBe(PaymentStatus.SUCCESS);
+
+    // Tồn kho chỉ được trừ đúng 1 lần (10 - 1 = 9)
+    const freshProduct = await productRepo.findOneByOrFail({ id: product.id });
+    expect(freshProduct.stock).toBe(9);
+    expect(freshProduct.version).toBe(2);
+  });
+
+  it('12. Đơn hàng đang có payment PENDING chưa đối soát: chặn request với key mới (FIX-11)', async () => {
+    const { order } = await createTestProductAndOrder(10, 1);
+    const pendingKey = crypto.randomUUID();
+
+    await service.processPayment(
+      {
+        orderId: order.id,
+        amount: 40000,
+        method: PaymentMethod.MOMO,
+        idempotencyKey: pendingKey,
+        mockOutcome: 'PENDING',
+      },
+      testUser1.id,
+    );
+
+    // Request với key mới cho cùng order khi pending chưa giải quyết -> ném ConflictException
+    const newKey = crypto.randomUUID();
+    await expect(
+      service.processPayment(
+        {
+          orderId: order.id,
+          amount: 40000,
+          method: PaymentMethod.CARD,
+          idempotencyKey: newKey,
+        },
+        testUser1.id,
+      ),
+    ).rejects.toThrow(ConflictException);
+  });
 });
