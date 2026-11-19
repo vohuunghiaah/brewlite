@@ -51,6 +51,31 @@ export class AddPaymentsAndStockOcc1732147200000 implements MigrationInterface {
       CREATE INDEX IF NOT EXISTS "IDX_payments_userId" ON "payments" ("userId");
       CREATE INDEX IF NOT EXISTS "IDX_payments_idempotencyKey" ON "payments" ("idempotencyKey");
     `);
+
+    // 4. Tạo bảng lưu trữ cổng thanh toán giả lập bền vững (FIX-15)
+    await queryRunner.query(`
+      CREATE TABLE IF NOT EXISTS "mock_gateway_transactions" (
+        "id" SERIAL PRIMARY KEY,
+        "merchantReference" varchar(100) UNIQUE NOT NULL,
+        "transactionId" varchar(100) NOT NULL,
+        "status" varchar(30) NOT NULL,
+        "amount" numeric(12, 2) NOT NULL,
+        "method" varchar(30) NOT NULL,
+        "reason" text,
+        "createdAt" timestamp NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS "mock_gateway_refunds" (
+        "id" SERIAL PRIMARY KEY,
+        "merchantReference" varchar(100) NOT NULL,
+        "refundKey" varchar(128) UNIQUE NOT NULL,
+        "refundTransactionId" varchar(100) NOT NULL,
+        "status" varchar(30) NOT NULL,
+        "amount" numeric(12, 2) NOT NULL,
+        "reason" text,
+        "createdAt" timestamp NOT NULL DEFAULT now()
+      );
+    `);
   }
 
   async down(): Promise<void> {

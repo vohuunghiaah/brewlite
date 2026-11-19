@@ -61,7 +61,7 @@ export class PaymentsController {
     @Param('idempotencyKey') idempotencyKey: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.paymentsService.reconcilePayment(idempotencyKey, user.id);
+    return this.paymentsService.getPaymentStatus(idempotencyKey, user.id);
   }
 
   @Get('order/:orderId')

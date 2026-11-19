@@ -76,8 +76,8 @@ describe('Payments Endpoints (e2e / integration)', () => {
     transaction: jest.fn(async (cb: any) => {
       const manager = {
         findOne: jest.fn(async (entityClass: any) => {
-          if (entityClass === Product) return { ...mockProduct };
-          if (entityClass === Order) return { ...mockOrder };
+          if (entityClass === Product) return Object.assign(new Product(), mockProduct);
+          if (entityClass === Order) return Object.assign(new Order(), mockOrder);
           if (entityClass === Payment) return null;
           return null;
         }),
@@ -149,8 +149,8 @@ describe('Payments Endpoints (e2e / integration)', () => {
     await app.close();
   });
 
-  beforeEach(() => {
-    mockGateway.clear();
+  beforeEach(async () => {
+    await mockGateway.clear();
   });
 
   it('POST /payments - successfully processes payment and returns 201 with SUCCESS status', async () => {

@@ -165,7 +165,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
 
     service = module.get<PaymentsService>(PaymentsService);
     mockGateway = module.get<MockPaymentGateway>(MockPaymentGateway);
-    mockGateway.clear();
+    await mockGateway.clear();
   });
 
   it('1. should process payment successfully and transition order PENDING -> PAID with stock deduction (TX2 Happy Path)', async () => {
@@ -197,7 +197,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       status: PaymentStatus.SUCCESS,
       idempotencyKey: validUuid2,
       transactionId: 'GW-TX-SUCCESS-OLD',
-      order: { ...currentMockOrder, status: OrderStatus.PAID },
+      order: Object.assign(new Order(), currentMockOrder, { status: OrderStatus.PAID }),
     } as Payment;
 
     paymentRepository.findOne!.mockResolvedValue(existingPayment);

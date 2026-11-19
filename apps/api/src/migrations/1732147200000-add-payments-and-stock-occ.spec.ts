@@ -19,7 +19,7 @@ describe('AddPaymentsAndStockOcc1732147200000 Migration Safeguard', () => {
       await migration.up(mockQueryRunner as QueryRunner);
 
       expect(mockQueryRunner.getTable).toHaveBeenCalledWith('orders');
-      expect(mockQueryRunner.query).toHaveBeenCalledTimes(4);
+      expect(mockQueryRunner.query).toHaveBeenCalledTimes(5);
     });
 
     it('throws error if orders table does not exist', async () => {
