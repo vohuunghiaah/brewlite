@@ -50,55 +50,21 @@ export class AddCustomizationAndNoteToOrderItems1731974400000
     }
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    const hasTable = await queryRunner.hasTable('order_items');
-    if (!hasTable) {
-      return;
-    }
-
-    // Zero Data Loss Safeguard:
-    // Nếu bảng order_items đã chứa dữ liệu đơn hàng thực tế, việc DROP COLUMN
-    // sẽ làm mất vĩnh viễn dữ liệu tùy chỉnh (size, toppings, note) của các đơn hàng.
-    // Theo quy chuẩn vận hành sản xuất của BrewLite:
-    // Tuyệt đối không hủy cột khi bảng chứa dữ liệu live. Thay vào đó, áp dụng
-    // Forward-Only Migrations hoặc sao lưu (backup) dữ liệu trước khi can thiệp.
-    try {
-      const rowCountResult = await queryRunner.query(
-        'SELECT COUNT(*)::int AS count FROM "order_items"',
-      );
-      const rowCount = Number(rowCountResult[0]?.count ?? 0);
-
-      if (rowCount > 0) {
-        console.warn(
-          `[MIGRATION SAFEGUARD] Bảng "order_items" hiện chứa ${rowCount} bản ghi dữ liệu. ` +
-            `Hủy bỏ thao tác DROP COLUMN (size, toppings, note) để bảo vệ toàn vẹn dữ liệu đơn hàng. ` +
-            `Vui lòng sử dụng forward-only migration hoặc backup dữ liệu trước khi rollback thủ công.`,
-        );
-        return;
-      }
-    } catch (error) {
-      console.warn(
-        '[MIGRATION SAFEGUARD] Không thể kiểm tra số lượng bản ghi trong "order_items", hủy thao tác drop để an toàn:',
-        error,
-      );
-      return;
-    }
-
-    // Nếu bảng hoàn toàn rỗng (ví dụ: teardown trong môi trường test/staging cô lập),
-    // cho phép rollback an toàn theo thứ tự ngược lại:
-    const hasNote = await queryRunner.hasColumn('order_items', 'note');
-    if (hasNote) {
-      await queryRunner.dropColumn('order_items', 'note');
-    }
-
-    const hasToppings = await queryRunner.hasColumn('order_items', 'toppings');
-    if (hasToppings) {
-      await queryRunner.dropColumn('order_items', 'toppings');
-    }
-
-    const hasSize = await queryRunner.hasColumn('order_items', 'size');
-    if (hasSize) {
-      await queryRunner.dropColumn('order_items', 'size');
-    }
+  public async down(_queryRunner: QueryRunner): Promise<void> {
+    // Chính sách FORWARD-ONLY MIGRATION của dự án BrewLite:
+    // Tuyệt đối nghiêm cấm rollback tự động (automatic revert) đối với các cột lưu trữ
+    // dữ liệu đơn hàng (size, toppings, note) để bảo vệ toàn vẹn dữ liệu (Zero Data Loss).
+    // Không được âm thầm 'return' để tránh TypeORM cập nhật sai bảng migrations history
+    // trong khi schema thực tế vẫn còn nguyên, cũng như tránh drop cột đã tồn tại từ trước.
+    //
+    // Quy trình chuẩn khi cần thay đổi schema:
+    // 1. Sao lưu dữ liệu (backup) cơ sở dữ liệu hiện tại.
+    // 2. Tạo một migration mới dạng tiến tới (forward-only migration) có phương án chuyển đổi dữ liệu.
+    // 3. Kiểm thử trên môi trường staging trước khi áp dụng lên production.
+    // 4. Tuyệt đối không chạy rollback trên database production.
+    throw new Error(
+      'FORWARD_ONLY_MIGRATION: Automatic rollback is prohibited. ' +
+        'Use a new migration and an approved data recovery procedure.',
+    );
   }
 }

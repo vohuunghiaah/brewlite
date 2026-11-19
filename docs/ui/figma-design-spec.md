@@ -172,7 +172,7 @@
 | **Thực đơn & Thẻ món** | Grid bo góc `rounded-2xl`, nút Chi tiết + nút thêm nhanh `+` | `apps/web/src/app/menu/page.tsx` | **ĐỒNG BỘ** | Bố cục lưới responsive, tích hợp nút thêm nhanh Size S mặc định và nút mở modal chi tiết tùy biến. |
 | **Modal Tùy biến món** | Size (S/M/L), Topping checkboxes, Mức đá, Mức đường, Stepper | `apps/web/src/app/menu/page.tsx` | **ĐỒNG BỘ** | Giao diện chuẩn Figma Screen 02. Phụ thu Size tuân thủ SRS v1.4.0 (Small +0đ, Medium +5.000đ, Large +10.000đ); Mức đá/đường lưu nối chuỗi chuẩn hóa vào note. |
 | **Giỏ hàng** | Slide-over Drawer cạnh phải, overlay mờ, Escape/focus trap | `apps/web/src/app/menu/page.tsx` (`#cart`) | **ĐỒNG BỘ (A11y)** | Thiết kế trượt ngang (Slide-over Drawer) với overlay làm mờ. Đạt chuẩn Accessibility: khi đóng có `aria-hidden="true"`, `inert`, `visibility: hidden; pointer-events: none;`, chặn focus tab; khi mở tự động trap focus và hoàn trả focus khi đóng. |
-| **Chống tạo đơn lặp** | Nhận diện đơn PENDING, nút tiếp tục thanh toán vs tạo đơn mới | `apps/web/src/app/menu/page.tsx` (`pendingOrder`) | **CLIENT-SIDE GUARD** | **Ranh giới:** Chặn đúp gửi đơn dựa trên React state trong cùng phiên duyệt web. Nếu người dùng F5 hoặc mở tab mới, trạng thái này bị reset; tính năng Idempotency Key phân tán phía máy chủ sẽ được triển khai toàn diện tại Task 5.1.2 / UC-10. |
+| **Chống tạo đơn lặp** | Nhận diện đơn PENDING, nút tiếp tục thanh toán vs tạo đơn mới | `apps/web/src/app/menu/page.tsx` (`pendingOrder`) | **CLIENT-SIDE GUARD (UC-04)** | **Ranh giới:** Chặn đúp gửi đơn dựa trên React state trong cùng phiên duyệt web cho UC-04. Phân biệt rõ ranh giới với Idempotency thanh toán UC-10 (ngăn trừ tiền đúp khi thanh toán). Server-side idempotency phân tán trên đơn hàng thuộc phạm vi Task 5.1.2. |
 | **Thanh toán điện tử** | MoMo, VietQR, Thẻ quốc tế, Test mode switch | Hoạch định cho Task 5.1.2 / UC-10 | *Theo Sprint 2 Plan* | Nằm ngoài phạm vi Task 5.1.1 (Menu, Customization & Cart). |
 | **Vé chuông điện tử** | Ticket perforated, buzzer number, live 4-stage timeline | Hoạch định cho Task 5.1.2 / UC-10 | *Theo Sprint 2 Plan* | Nằm ngoài phạm vi Task 5.1.1. |
 | **Lịch sử & Loyalty** | Tabs trạng thái, Re-order, Gold Member thẻ, Beans balance | Hoạch định cho Task 5.2 (UC-06, UC-09) | *Theo Sprint 2 Plan* | Nằm ngoài phạm vi Task 5.1.1. |
@@ -182,8 +182,8 @@
 1. **Kiến trúc Prototype vs Ứng dụng thực tế:**
    - Nguyên mẫu Figma Make là ứng dụng React SPA độc lập với Mock Storage trong RAM/LocalStorage.
    - Ứng dụng thực tế BrewLite là hệ thống Full-Stack phân tán với Next.js App Router (SSR/Turbopack) và NestJS + PostgreSQL. Do đó, các logic về session, hydration, state synchronization và transaction safety được quản lý nghiêm ngặt theo kiến trúc sản xuất.
-2. **Ngăn chặn trùng lặp đơn hàng (Idempotency):**
-   - Hiện tại ở Task 5.1.1: Cơ chế ngăn gửi trùng đơn hoạt động hiệu quả ở tầng Client Component thông qua `pendingOrder` guard.
-   - Tương lai ở Task 5.1.2 & 5.2: Bổ sung trường `idempotencyKey` vào `Order` entity ở backend để đảm bảo bất biến ngay cả khi mạng lag, retry HTTP timeout hoặc người dùng thao tác trên nhiều tab song song.
+2. **Phân biệt cơ chế Chống trùng lặp (Idempotency):**
+   - **Tạo đơn hàng (UC-04):** Hiện tại ở Task 5.1.1, cơ chế ngăn gửi trùng đơn hoạt động hiệu quả ở tầng Client Component thông qua `pendingOrder` guard. Server-side idempotency cho `POST /orders` thuộc kế hoạch Task 5.1.2.
+   - **Thanh toán không tiền mặt (UC-10):** Độc lập hoàn toàn với UC-04. Cơ chế chống trừ tiền đúp khi thanh toán sử dụng `idempotencyKey` trong bảng `Payment` và được triển khai riêng biệt tại Task 5.1.2. Không được đồng nhất hai cơ chế này làm một.
 3. **Typography & Font Optimization:**
    - Đã loại bỏ font Arial dự phòng cũ, chuyển sang `Plus_Jakarta_Sans` từ `next/font/google` với biến CSS `--font-plus-jakarta-sans`, bảo đảm hỗ trợ 100% tiếng Việt có dấu và không gây lỗi hydration mismatch trên Server-Side Rendering.

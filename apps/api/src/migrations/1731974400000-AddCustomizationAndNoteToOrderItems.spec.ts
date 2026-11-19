@@ -40,59 +40,30 @@ describe('AddCustomizationAndNoteToOrderItems Migration Safeguard', () => {
     });
   });
 
-  describe('down() with Zero Data Loss Safeguard', () => {
-    it('aborts rollback if table does not exist', async () => {
+  describe('down() with Forward-Only Migration Policy', () => {
+    it('prohibits automatic rollback and rejects with explicit FORWARD_ONLY_MIGRATION error', async () => {
       mockQueryRunner = {
-        hasTable: jest.fn().mockResolvedValue(false),
-        query: jest.fn(),
         dropColumn: jest.fn(),
       };
 
-      await migration.down(mockQueryRunner as QueryRunner);
-
-      expect(mockQueryRunner.hasTable).toHaveBeenCalledWith('order_items');
-      expect(mockQueryRunner.query).not.toHaveBeenCalled();
-      expect(mockQueryRunner.dropColumn).not.toHaveBeenCalled();
+      await expect(migration.down(mockQueryRunner as QueryRunner)).rejects.toThrow(
+        'FORWARD_ONLY_MIGRATION: Automatic rollback is prohibited. ' +
+          'Use a new migration and an approved data recovery procedure.',
+      );
     });
 
-    it('ABORTS DROP COLUMN when order_items table has live records (prevents data loss)', async () => {
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    it('ensures dropColumn is NEVER called on queryRunner', async () => {
       mockQueryRunner = {
-        hasTable: jest.fn().mockResolvedValue(true),
-        query: jest.fn().mockResolvedValue([{ count: 42 }]),
         dropColumn: jest.fn(),
       };
 
-      await migration.down(mockQueryRunner as QueryRunner);
+      try {
+        await migration.down(mockQueryRunner as QueryRunner);
+      } catch {
+        // Expected throw from forward-only migration policy
+      }
 
-      expect(mockQueryRunner.hasTable).toHaveBeenCalledWith('order_items');
-      expect(mockQueryRunner.query).toHaveBeenCalledWith(
-        'SELECT COUNT(*)::int AS count FROM "order_items"',
-      );
-      // Safeguard must prevent any dropColumn calls
       expect(mockQueryRunner.dropColumn).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[MIGRATION SAFEGUARD] Bảng "order_items" hiện chứa 42 bản ghi dữ liệu'),
-      );
-      warnSpy.mockRestore();
-    });
-
-    it('safely drops columns when table is completely empty (e.g. CI/isolated rollback)', async () => {
-      const droppedColumns: { table: string; column: string }[] = [];
-      mockQueryRunner = {
-        hasTable: jest.fn().mockResolvedValue(true),
-        query: jest.fn().mockResolvedValue([{ count: 0 }]),
-        hasColumn: jest.fn().mockResolvedValue(true),
-        dropColumn: jest.fn().mockImplementation((table, column) => {
-          droppedColumns.push({ table, column });
-          return Promise.resolve();
-        }),
-      };
-
-      await migration.down(mockQueryRunner as QueryRunner);
-
-      expect(mockQueryRunner.dropColumn).toHaveBeenCalledTimes(3);
-      expect(droppedColumns.map((c) => c.column)).toEqual(['note', 'toppings', 'size']);
     });
   });
 });
