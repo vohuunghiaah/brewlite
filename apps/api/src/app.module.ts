@@ -6,7 +6,9 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
+import { AuthModule } from './auth/auth.module';
 import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1731974400000-AddCustomizationAndNoteToOrderItems';
+import { AddAccountAuthentication1732060800000 } from './migrations/1732060800000-add-account-authentication';
 
 @Module({
   imports: [
@@ -42,13 +44,16 @@ import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1
         // Chỉ sử dụng synchronize trong môi trường phát triển (tuyệt đối không bật trong production)
         synchronize: config.get<string>('NODE_ENV') !== 'production',
 
-        // Tự động chạy migration khi khởi động ở production
+        // Tự động chạy migration khi khởi động ở production theo thứ tự tuần tự
         migrationsRun: config.get<string>('NODE_ENV') === 'production',
 
-        migrations: [AddCustomizationAndNoteToOrderItems1731974400000],
+        migrations: [
+          AddCustomizationAndNoteToOrderItems1731974400000,
+          AddAccountAuthentication1732060800000,
+        ],
 
-        // Ghi log câu truy vấn SQL khi phát triển
-        logging: config.get<string>('NODE_ENV') !== 'production',
+        // Vô hiệu hóa query logging để tránh rò rỉ credentials/passwords vào logs
+        logging: false,
 
         // Thử kết nối lại nếu PostgreSQL chưa sẵn sàng
         retryAttempts: 5,
@@ -57,7 +62,7 @@ import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1
     }),
 
     ProductsModule,
-
+    AuthModule,
     OrdersModule,
   ],
 
