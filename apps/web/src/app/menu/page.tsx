@@ -121,6 +121,7 @@ export default function MenuPage() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const cartDrawerRef = useRef<HTMLElement>(null);
   const cartSummaryBtnRef = useRef<HTMLButtonElement>(null);
+  const drawerTriggerRef = useRef<HTMLElement | null>(null);
 
   // Đơn hàng PENDING đã tạo (Chống tạo đơn lặp ngoài ý muốn)
   const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string } | null>(null);
@@ -175,14 +176,19 @@ export default function MenuPage() {
     }
   }, [isOpen]);
 
-  // Quản lý Drawer: Focus trap, Escape, khóa cuộn trang
+  // Quản lý Drawer: Focus trap, Escape, khóa cuộn trang và hoàn trả focus
   useEffect(() => {
     if (!isCartOpen) return;
 
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const summaryBtn = cartSummaryBtnRef.current;
+    // Ghi nhận element mở Drawer để hoàn trả focus khi đóng
+    if (!drawerTriggerRef.current && document.activeElement instanceof HTMLElement) {
+      drawerTriggerRef.current = document.activeElement;
+    }
+
+    const restoreTarget = drawerTriggerRef.current ?? cartSummaryBtnRef.current;
     cartDrawerRef.current?.focus();
 
     function handleDrawerKeyDown(event: KeyboardEvent) {
@@ -217,7 +223,8 @@ export default function MenuPage() {
     return () => {
       document.body.style.overflow = originalOverflow;
       window.removeEventListener("keydown", handleDrawerKeyDown);
-      summaryBtn?.focus();
+      restoreTarget?.focus();
+      drawerTriggerRef.current = null;
     };
   }, [isCartOpen, modalState.isOpen]);
 
@@ -786,6 +793,8 @@ export default function MenuPage() {
         className={`${ui.cartDrawer} ${isCartOpen ? ui.cartDrawerOpen : ""}`}
         role={isCartOpen ? "dialog" : undefined}
         aria-modal={isCartOpen ? "true" : undefined}
+        aria-hidden={!isCartOpen ? true : undefined}
+        inert={!isCartOpen ? true : undefined}
         aria-label="Giỏ hàng của bạn"
       >
         <div className={ui.drawerHeader}>

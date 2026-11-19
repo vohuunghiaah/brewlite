@@ -3,11 +3,12 @@
 ### PHÂN HỆ: TASK 5.1 — USER INTERFACE SPECIFICATION & FIGMA ALIGNMENT
 
 - **Mã tài liệu:** `UI-SPEC-01`
-- **Phiên bản:** 1.0.0
+- **Phiên bản:** 1.1.0
 - **Trạng thái:** Approved / Active Baseline
 - **Ngày ban hành:** 19/11/2026
 - **URL Nguồn chính thức:** [Figma Make — BrewLite Coffee Ordering App](https://www.figma.com/make/2bPJMAlevBhb3qpiYwGBnQ/BrewLite-Coffee-Ordering-App?t=QGfqnK5tsUlJqf1e-20&fullscreen=1)
 - **Kiến trúc nguyên mẫu:** Ứng dụng web React + Vite + Tailwind CSS v4 + TypeScript (16 files, 2.667 dòng mã nguồn, 8 màn hình tương tác).
+- **Phông chữ thực thi:** `Plus Jakarta Sans` thông qua `next/font/google` hỗ trợ đầy đủ bộ ký tự `["latin", "vietnamese"]` không giật layout (swap).
 
 ---
 
@@ -160,16 +161,29 @@
 
 ---
 
-## 4. Bảng Đối Chiếu Figma ↔ Mã Nguồn (Figma-to-Code Mapping)
+## 4. Bảng Đối Chiếu Figma ↔ Mã Nguồn & Báo Cáo Phân Tích Khoảng Cách (Gap Analysis)
 
-| Thành phần giao diện | Thiết kế Figma Make | Mã nguồn thực tế triển khai | Trạng thái đồng bộ |
-|---|---|---|:---:|
-| **Bảng màu chủ đạo** | Espresso `#3D261D`, Caramel `#C28D58`, Cream Foam `#FAF6F0` | `apps/web/src/app/menu/menu.module.css` | **100% MATCH** |
-| **Typography** | `Plus Jakarta Sans`, display 28-32px, headings 18-24px | `apps/web/src/app/layout.tsx` & font CSS | **100% MATCH** |
-| **Thực đơn & Thẻ món** | Grid bo góc `rounded-2xl`, nút Chi tiết + nút thêm nhanh `+` | `apps/web/src/app/menu/page.tsx` | **100% MATCH** |
-| **Modal Tùy biến món** | Size (S/M/L), Topping checkboxes, Mức đá, Mức đường, Stepper | `apps/web/src/app/menu/page.tsx` | **100% MATCH** |
-| **Giỏ hàng** | Slide-over Drawer cạnh phải, overlay mờ, Escape/focus trap | `apps/web/src/app/menu/page.tsx` (`#cart`) | **100% MATCH** |
-| **Chống tạo đơn lặp** | Nhận diện đơn PENDING, nút tiếp tục thanh toán vs tạo đơn mới | `apps/web/src/app/menu/page.tsx` (`pendingOrder`) | **100% MATCH** |
-| **Thanh toán điện tử** | MoMo, VietQR, Thẻ quốc tế, Test mode switch | Sẽ triển khai tại Sprint 2 (Task 5.1.2 / UC-10) | *Theo kế hoạch Sprint 2* |
-| **Vé chuông điện tử** | Ticket perforated, buzzer number, live 4-stage timeline | Sẽ triển khai tại Sprint 2 (Task 5.1.2 / UC-10) | *Theo kế hoạch Sprint 2* |
-| **Lịch sử & Loyalty** | Tabs trạng thái, Re-order, Gold Member thẻ, Beans balance | Sẽ triển khai tại Sprint 2 (Task 5.2 / UC-06, UC-09) | *Theo kế hoạch Sprint 2* |
+### 4.1 Bảng đối chiếu các hạng mục Task 5.1.1
+
+| Thành phần giao diện | Thiết kế Figma Make | Mã nguồn thực tế triển khai | Trạng thái đồng bộ | Đánh giá & Ranh giới kỹ thuật |
+|---|---|---|:---:|---|
+| **Bảng màu chủ đạo** | Espresso `#3D261D`, Caramel `#C28D58`, Cream Foam `#FAF6F0` | `apps/web/src/app/menu/menu.module.css` | **ĐỒNG BỘ** | Sử dụng mã màu hex chính xác theo design tokens của Figma. |
+| **Typography** | `Plus Jakarta Sans` | `apps/web/src/app/layout.tsx`, `menu.module.css`, `globals.css` | **ĐỒNG BỘ** | Tải trực tiếp qua `next/font/google` với `subsets: ["latin", "vietnamese"]` bảo đảm chuẩn dấu tiếng Việt, không gián đoạn tải (display: swap). |
+| **Thực đơn & Thẻ món** | Grid bo góc `rounded-2xl`, nút Chi tiết + nút thêm nhanh `+` | `apps/web/src/app/menu/page.tsx` | **ĐỒNG BỘ** | Bố cục lưới responsive, tích hợp nút thêm nhanh Size S mặc định và nút mở modal chi tiết tùy biến. |
+| **Modal Tùy biến món** | Size (S/M/L), Topping checkboxes, Mức đá, Mức đường, Stepper | `apps/web/src/app/menu/page.tsx` | **ĐỒNG BỘ** | Giao diện chuẩn Figma Screen 02. Phụ thu Size tuân thủ SRS v1.4.0 (Small +0đ, Medium +5.000đ, Large +10.000đ); Mức đá/đường lưu nối chuỗi chuẩn hóa vào note. |
+| **Giỏ hàng** | Slide-over Drawer cạnh phải, overlay mờ, Escape/focus trap | `apps/web/src/app/menu/page.tsx` (`#cart`) | **ĐỒNG BỘ (A11y)** | Thiết kế trượt ngang (Slide-over Drawer) với overlay làm mờ. Đạt chuẩn Accessibility: khi đóng có `aria-hidden="true"`, `inert`, `visibility: hidden; pointer-events: none;`, chặn focus tab; khi mở tự động trap focus và hoàn trả focus khi đóng. |
+| **Chống tạo đơn lặp** | Nhận diện đơn PENDING, nút tiếp tục thanh toán vs tạo đơn mới | `apps/web/src/app/menu/page.tsx` (`pendingOrder`) | **CLIENT-SIDE GUARD** | **Ranh giới:** Chặn đúp gửi đơn dựa trên React state trong cùng phiên duyệt web. Nếu người dùng F5 hoặc mở tab mới, trạng thái này bị reset; tính năng Idempotency Key phân tán phía máy chủ sẽ được triển khai toàn diện tại Task 5.1.2 / UC-10. |
+| **Thanh toán điện tử** | MoMo, VietQR, Thẻ quốc tế, Test mode switch | Hoạch định cho Task 5.1.2 / UC-10 | *Theo Sprint 2 Plan* | Nằm ngoài phạm vi Task 5.1.1 (Menu, Customization & Cart). |
+| **Vé chuông điện tử** | Ticket perforated, buzzer number, live 4-stage timeline | Hoạch định cho Task 5.1.2 / UC-10 | *Theo Sprint 2 Plan* | Nằm ngoài phạm vi Task 5.1.1. |
+| **Lịch sử & Loyalty** | Tabs trạng thái, Re-order, Gold Member thẻ, Beans balance | Hoạch định cho Task 5.2 (UC-06, UC-09) | *Theo Sprint 2 Plan* | Nằm ngoài phạm vi Task 5.1.1. |
+
+### 4.2 Phân tích khoảng cách kỹ thuật (Technical Gap & Future Alignment)
+
+1. **Kiến trúc Prototype vs Ứng dụng thực tế:**
+   - Nguyên mẫu Figma Make là ứng dụng React SPA độc lập với Mock Storage trong RAM/LocalStorage.
+   - Ứng dụng thực tế BrewLite là hệ thống Full-Stack phân tán với Next.js App Router (SSR/Turbopack) và NestJS + PostgreSQL. Do đó, các logic về session, hydration, state synchronization và transaction safety được quản lý nghiêm ngặt theo kiến trúc sản xuất.
+2. **Ngăn chặn trùng lặp đơn hàng (Idempotency):**
+   - Hiện tại ở Task 5.1.1: Cơ chế ngăn gửi trùng đơn hoạt động hiệu quả ở tầng Client Component thông qua `pendingOrder` guard.
+   - Tương lai ở Task 5.1.2 & 5.2: Bổ sung trường `idempotencyKey` vào `Order` entity ở backend để đảm bảo bất biến ngay cả khi mạng lag, retry HTTP timeout hoặc người dùng thao tác trên nhiều tab song song.
+3. **Typography & Font Optimization:**
+   - Đã loại bỏ font Arial dự phòng cũ, chuyển sang `Plus_Jakarta_Sans` từ `next/font/google` với biến CSS `--font-plus-jakarta-sans`, bảo đảm hỗ trợ 100% tiếng Việt có dấu và không gây lỗi hydration mismatch trên Server-Side Rendering.

@@ -134,6 +134,10 @@ describe('MenuPage React Component Tests', () => {
     fireEvent.click(addQuickBtn);
     fireEvent.click(addQuickBtn);
 
+    // Open cart drawer to view and modify cart items
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
+
     const cartSection = document.getElementById('cart')!;
     // Should be grouped into 1 item with quantity 2
     expect(cartSection).toHaveTextContent('Size S');
@@ -167,6 +171,10 @@ describe('MenuPage React Component Tests', () => {
     // Quick add item to cart
     const addQuickBtn = screen.getByRole('button', { name: /thêm nhanh cà phê latte vào giỏ/i });
     fireEvent.click(addQuickBtn);
+
+    // Open cart drawer to proceed to checkout
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
 
     // Click "Tiếp tục đặt hàng"
     const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
@@ -268,6 +276,9 @@ describe('MenuPage React Component Tests', () => {
     expect(cartSection).toHaveTextContent('Ít đá, 70% đường, Giao tận bàn 4');
 
     // 6. Proceed to checkout
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
+
     const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
     fireEvent.click(checkoutBtn);
 
@@ -324,6 +335,48 @@ describe('MenuPage React Component Tests', () => {
         (call: [string, RequestInit?]) => call[0].endsWith('/orders') && call[1]?.method === 'POST'
       ).length;
       expect(finalPostCount).toBe(2);
+    });
+  });
+
+  it('enforces drawer accessibility: closed drawer has aria-hidden and inert, open drawer traps focus and restores focus on close', async () => {
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    const cartSection = document.getElementById('cart')!;
+    expect(cartSection).toBeInTheDocument();
+
+    // 1. Khi Drawer đóng: có aria-hidden="true" và thuộc tính inert
+    expect(cartSection).toHaveAttribute('aria-hidden', 'true');
+    expect(cartSection).toHaveAttribute('inert');
+    expect(screen.queryByRole('dialog', { name: /giỏ hàng của bạn/i })).not.toBeInTheDocument();
+
+    // 2. Các nút bên trong Drawer đóng không thể tương tác trong accessibility tree
+    expect(screen.queryByRole('button', { name: /đóng giỏ hàng/i })).not.toBeInTheDocument();
+
+    // 3. Mở Drawer qua nút Giỏ hàng trên Header
+    const headerCartBtn = screen.getByRole('button', { name: /giỏ hàng: 0 món/i });
+    fireEvent.click(headerCartBtn);
+
+    // 4. Khi Drawer mở: role="dialog", aria-modal="true", KHÔNG còn aria-hidden hay inert
+    const openDrawer = screen.getByRole('dialog', { name: /giỏ hàng của bạn/i });
+    expect(openDrawer).toBeInTheDocument();
+    expect(openDrawer).toHaveAttribute('aria-modal', 'true');
+    expect(openDrawer).not.toHaveAttribute('aria-hidden');
+    expect(openDrawer).not.toHaveAttribute('inert');
+
+    // Nút đóng giỏ hàng xuất hiện và có thể truy cập
+    const closeBtn = screen.getByRole('button', { name: /đóng giỏ hàng/i });
+    expect(closeBtn).toBeInTheDocument();
+
+    // 5. Đóng Drawer qua nút đóng và kiểm tra trạng thái khôi phục
+    fireEvent.click(closeBtn);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /giỏ hàng của bạn/i })).not.toBeInTheDocument();
+      expect(cartSection).toHaveAttribute('aria-hidden', 'true');
+      expect(cartSection).toHaveAttribute('inert');
     });
   });
 });

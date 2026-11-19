@@ -111,7 +111,7 @@ docs/
 | **BKLG-SP2-01**| Kế hoạch Sprint 2 | Task 4.1 | [backlog/sprint-2.md](backlog/sprint-2.md) | N/A | Active | PR [#6](https://github.com/vohuunghiaah/brewlite/pull/6), PR [#25](https://github.com/vohuunghiaah/brewlite/pull/25) (`5784317c`) | Công việc `BL-03`, `BL-04` |
 | **DOC-INDEX-01**| Chỉ mục Tài liệu Tập trung | Task 4.2 | [README.md](README.md) | N/A | v2.0.0 / Active | PR [#26](https://github.com/vohuunghiaah/brewlite/pull/26) | Chỉ mục trung tâm, ma trận kiểm kê Task 1–4 |
 | **DOC-CI-01**  | Báo cáo Nghiệm thu CI/CD | Task 4.4 | [task-4.4-ci-verification.md](task-4.4-ci-verification.md) | N/A | v1.0.0 / Final | PR [#28](https://github.com/vohuunghiaah/brewlite/pull/28) | Kiểm toán CI Quality Gates & Branch Protection |
-| **UI-SPEC-01** | Đặc tả Thiết kế Giao diện Figma Make | Task 5.1 | [ui/figma-design-spec.md](ui/figma-design-spec.md) | N/A | v1.0.0 / Active | PR [#29](https://github.com/vohuunghiaah/brewlite/pull/29) | `FR-01` -> `FR-03`, `FR-05`, Giao diện 8 màn hình |
+| **UI-SPEC-01** | Đặc tả Thiết kế Giao diện Figma Make | Task 5.1 | [ui/figma-design-spec.md](ui/figma-design-spec.md) | N/A | v1.1.0 / Active | PR [#29](https://github.com/vohuunghiaah/brewlite/pull/29) | `FR-01` -> `FR-03`, `FR-05`, Giao diện 8 màn hình |
 
 ---
 
