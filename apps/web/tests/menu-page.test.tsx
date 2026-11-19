@@ -667,11 +667,12 @@ describe('MenuPage React Component Tests', () => {
     expect(buzzerDialog).toHaveTextContent(/Bàn số 8/i);
     expect(buzzerDialog).toHaveTextContent(/PAID/i);
 
-    // 8. Đóng vé chuông
+    // 8. Đóng vé chuông và kiểm tra giỏ hàng đã được làm trống đúng FR-06
     const dismissBtns = screen.getAllByRole('button', { name: /đóng vé chuông/i });
     fireEvent.click(dismissBtns[0]);
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: /#BL-1042/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /giỏ hàng: 0 món/i })).toBeInTheDocument();
     });
   });
 

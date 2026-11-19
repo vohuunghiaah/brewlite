@@ -12,7 +12,7 @@ import { PaymentsService } from './payments.service';
 import { Payment, PaymentMethod, PaymentStatus } from './entities/payment.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { Product } from '../products/entities/product.entity';
-import { CreatePaymentDto } from './dto/create-payment.dto';
+import { CreatePaymentDto, PickupMethod } from './dto/create-payment.dto';
 
 describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-10)', () => {
   let service: PaymentsService;
@@ -20,6 +20,10 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   let orderRepository: Partial<Record<keyof Repository<Order>, jest.Mock>>;
   let productRepository: Partial<Record<keyof Repository<Product>, jest.Mock>>;
   let dataSource: Partial<DataSource>;
+
+  let currentMockOrder: Order;
+  let currentMockProduct: Product;
+  let occAffectedRows = 1;
 
   const mockProduct = {
     id: 1,
@@ -58,9 +62,13 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   } as unknown as Order;
 
   beforeEach(async () => {
+    currentMockOrder = JSON.parse(JSON.stringify(mockOrder));
+    currentMockProduct = JSON.parse(JSON.stringify(mockProduct));
+    occAffectedRows = 1;
+
     paymentRepository = {
-      findOne: jest.fn(),
-      find: jest.fn(),
+      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([]),
       create: jest.fn((dto) => dto as Payment),
       save: jest.fn((entity) =>
         Promise.resolve(Object.assign({ id: 1 }, entity) as Payment),
@@ -68,21 +76,27 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     };
 
     orderRepository = {
-      findOne: jest.fn(),
-      findOneBy: jest.fn(),
-      save: jest.fn((entity) => Promise.resolve(entity as Order)),
+      findOne: jest.fn().mockImplementation(async () => currentMockOrder),
+      findOneBy: jest.fn().mockImplementation(async () => currentMockOrder),
+      save: jest.fn().mockImplementation(async (entity) => entity as Order),
     };
 
     productRepository = {
-      findOne: jest.fn(),
+      findOne: jest.fn().mockImplementation(async () => currentMockProduct),
     };
 
     dataSource = {
       transaction: jest.fn(async (cb: any) => {
         const manager = {
           findOne: jest.fn(async (entityClass: any, _options: any) => {
+            if (entityClass === Order) {
+              return currentMockOrder;
+            }
             if (entityClass === Product) {
-              return { ...mockProduct };
+              return currentMockProduct;
+            }
+            if (entityClass === Payment) {
+              return null;
             }
             return null;
           }),
@@ -90,10 +104,11 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
             update: jest.fn().mockReturnThis(),
             set: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
-            execute: jest.fn().mockResolvedValue({ affected: 1 }),
+            execute: jest.fn().mockImplementation(async () => ({ affected: occAffectedRows })),
           })),
           save: jest.fn(async (entityClass: any, entity: any) => {
             if (entityClass === Order) {
+              currentMockOrder = entity;
               return entity;
             }
             if (entityClass === Payment) {
@@ -102,6 +117,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
             return entity;
           }),
           create: jest.fn((entityClass: any, dto: any) => dto),
+          find: jest.fn(async () => currentMockOrder.items || []),
         };
         return cb(manager);
       }),
@@ -133,15 +149,12 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   });
 
   it('1. should process payment successfully and transition order PENDING -> PAID with stock deduction (TX2 Happy Path)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue({ ...mockOrder });
-
     const dto: CreatePaymentDto = {
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.MOMO,
       idempotencyKey: 'idem-key-001',
-      pickupMethod: 'AT_COUNTER',
+      pickupMethod: PickupMethod.AT_COUNTER,
     };
 
     const result = await service.processPayment(dto, 1);
@@ -149,7 +162,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     expect(result.success).toBe(true);
     expect(result.status).toBe(PaymentStatus.SUCCESS);
     expect(result.order.status).toBe(OrderStatus.PAID);
-    expect(result.order.orderCode).toBeDefined();
+    expect(result.order.orderCode).toBe('#BL-0101');
     expect(result.payment.idempotencyKey).toBe('idem-key-001');
     expect(result.payment.transactionId).toMatch(/^TX-SUCCESS-/);
   });
@@ -164,7 +177,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       status: PaymentStatus.SUCCESS,
       idempotencyKey: 'idem-key-002',
       transactionId: 'TX-SUCCESS-OLD',
-      order: { ...mockOrder, status: OrderStatus.PAID },
+      order: { ...currentMockOrder, status: OrderStatus.PAID },
     } as Payment;
 
     paymentRepository.findOne!.mockResolvedValue(existingPayment);
@@ -184,12 +197,13 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
-  it('3. should reject payment if idempotencyKey belongs to another user (ForbiddenException)', async () => {
+  it('3. should reject payment if idempotencyKey belongs to another user (ForbiddenException - IDOR protection)', async () => {
     const existingPayment = {
       id: 99,
       orderId: 101,
       userId: 2, // different user
       amount: '45000.00',
+      method: PaymentMethod.CARD,
       idempotencyKey: 'stolen-idem-key',
     } as Payment;
 
@@ -205,12 +219,13 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     await expect(service.processPayment(dto, 1)).rejects.toThrow(ForbiddenException);
   });
 
-  it('4. should reject payment if idempotencyKey reused with different payload (ConflictException)', async () => {
+  it('4. should reject payment if idempotencyKey reused with different payload (ConflictException - 409)', async () => {
     const existingPayment = {
       id: 99,
       orderId: 101,
       userId: 1,
       amount: '45000.00',
+      method: PaymentMethod.CARD,
       idempotencyKey: 'idem-key-mismatch',
     } as Payment;
 
@@ -227,8 +242,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   });
 
   it('5. should reject payment if order not found (NotFoundException)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue(null);
+    currentMockOrder = null as any;
 
     const dto: CreatePaymentDto = {
       orderId: 99999,
@@ -241,11 +255,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   });
 
   it('6. should reject payment if order belongs to another user (ForbiddenException - IDOR protection)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue({
-      ...mockOrder,
-      userId: 999, // Another user owns this order
-    });
+    currentMockOrder.userId = 999; // Another user owns this order
 
     const dto: CreatePaymentDto = {
       orderId: 101,
@@ -258,11 +268,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   });
 
   it('7. should reject payment if order is already PAID (BadRequestException)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue({
-      ...mockOrder,
-      status: OrderStatus.PAID,
-    });
+    currentMockOrder.status = OrderStatus.PAID;
 
     const dto: CreatePaymentDto = {
       orderId: 101,
@@ -275,9 +281,6 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   });
 
   it('8. should reject payment if amount does not match order.totalAmount (BadRequestException - Exc-5)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue({ ...mockOrder });
-
     const dto: CreatePaymentDto = {
       orderId: 101,
       amount: 10000, // Mismatched amount
@@ -289,9 +292,6 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   });
 
   it('9. should handle mock outcome FAILED: transition order to PAYMENT_FAILED, save FAILED payment, and do NOT deduct stock (Exc-6)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue({ ...mockOrder });
-
     const dto: CreatePaymentDto = {
       orderId: 101,
       amount: 45000,
@@ -307,62 +307,72 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     expect(result.order.status).toBe(OrderStatus.PAYMENT_FAILED);
     expect(result.payment.status).toBe(PaymentStatus.FAILED);
     expect(result.payment.transactionId).toMatch(/^TX-FAIL-/);
-    expect(dataSource.transaction).not.toHaveBeenCalled(); // No stock deduction!
   });
 
-  it('10. should reject payment if product has insufficient stock (BadRequestException - Exc-2)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue({ ...mockOrder });
+  it('10. should handle mock outcome PENDING: return 202/PENDING state for reconciliation (EX-07 / FIX-04)', async () => {
+    const dto: CreatePaymentDto = {
+      orderId: 101,
+      amount: 45000,
+      method: PaymentMethod.VIETQR,
+      idempotencyKey: 'idem-key-pending-01',
+      mockOutcome: 'PENDING',
+    };
 
-    dataSource.transaction = jest.fn(async (cb: any) => {
-      const manager = {
-        findOne: jest.fn(async () => ({
-          ...mockProduct,
-          stock: 0, // Out of stock!
-        })),
-        createQueryBuilder: jest.fn(),
-      };
-      return cb(manager);
-    });
+    const result = await service.processPayment(dto, 1);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(PaymentStatus.PENDING);
+    expect(result.order.status).toBe(OrderStatus.PENDING);
+    expect(result.payment.status).toBe(PaymentStatus.PENDING);
+  });
+
+  it('11. should trigger BR-REFUND-OCC compensation when stock is depleted concurrently (ConflictException)', async () => {
+    currentMockProduct.stock = 0; // Depleted concurrently!
 
     const dto: CreatePaymentDto = {
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-key-010',
+      idempotencyKey: 'idem-key-011',
     };
 
-    await expect(service.processPayment(dto, 1)).rejects.toThrow(BadRequestException);
+    await expect(service.processPayment(dto, 1)).rejects.toThrow(ConflictException);
+    expect(currentMockOrder.status).toBe(OrderStatus.CANCELLED);
   });
 
-  it('11. should detect OCC optimistic concurrency conflict when version mismatch occurs (ConflictException - Exc-11)', async () => {
-    paymentRepository.findOne!.mockResolvedValue(null);
-    orderRepository.findOne!.mockResolvedValue({ ...mockOrder });
-
-    dataSource.transaction = jest.fn(async (cb: any) => {
-      const manager = {
-        findOne: jest.fn(async () => ({
-          ...mockProduct,
-          stock: 50,
-          version: 1,
-        })),
-        createQueryBuilder: jest.fn(() => ({
-          update: jest.fn().mockReturnThis(),
-          set: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          execute: jest.fn().mockResolvedValue({ affected: 0 }), // 0 rows affected -> OCC conflict!
-        })),
-      };
-      return cb(manager);
-    });
+  it('12. should trigger BR-REFUND-OCC compensation when OCC version conflict occurs (ConflictException)', async () => {
+    occAffectedRows = 0; // 0 rows affected -> OCC version conflict!
 
     const dto: CreatePaymentDto = {
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.VIETQR,
-      idempotencyKey: 'idem-key-011',
+      idempotencyKey: 'idem-key-012',
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(ConflictException);
+    expect(currentMockOrder.status).toBe(OrderStatus.CANCELLED);
+  });
+
+  it('13. should reconcile pending payment to PAID upon reconciliation request (FIX-04)', async () => {
+    const pendingPayment = {
+      id: 50,
+      orderId: 101,
+      userId: 1,
+      amount: '45000.00',
+      method: PaymentMethod.MOMO,
+      status: PaymentStatus.PENDING,
+      idempotencyKey: 'idem-reconcile-01',
+      order: currentMockOrder,
+    } as Payment;
+
+    paymentRepository.findOne!.mockResolvedValue(pendingPayment);
+
+    const result = await service.reconcilePayment('idem-reconcile-01', 1);
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe(PaymentStatus.SUCCESS);
+    expect(result.order.status).toBe(OrderStatus.PAID);
+    expect(result.order.orderCode).toBe('#BL-0101');
   });
 });

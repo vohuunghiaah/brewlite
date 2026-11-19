@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -26,10 +27,27 @@ export class PaymentsController {
     @CurrentUser() user: AuthenticatedUser,
     @Headers('idempotency-key') idempotencyKeyHeader?: string,
   ) {
-    if (idempotencyKeyHeader && !dto.idempotencyKey) {
-      dto.idempotencyKey = idempotencyKeyHeader;
+    const rawKey = idempotencyKeyHeader || dto.idempotencyKey;
+    if (!rawKey || typeof rawKey !== 'string' || !rawKey.trim()) {
+      throw new BadRequestException(
+        'Idempotency-Key là bắt buộc (qua HTTP Header Idempotency-Key hoặc Body idempotencyKey).',
+      );
     }
+    const key = rawKey.trim();
+    if (key.length > 128) {
+      throw new BadRequestException('Idempotency-Key không được vượt quá 128 ký tự.');
+    }
+    dto.idempotencyKey = key;
+
     return this.paymentsService.processPayment(dto, user.id);
+  }
+
+  @Post('reconcile/:idempotencyKey')
+  reconcilePayment(
+    @Param('idempotencyKey') idempotencyKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.paymentsService.reconcilePayment(idempotencyKey, user.id);
   }
 
   @Get('order/:orderId')

@@ -21,6 +21,7 @@ export enum PaymentStatus {
   PENDING = 'PENDING',
   SUCCESS = 'SUCCESS',
   FAILED = 'FAILED',
+  REFUND_PENDING = 'REFUND_PENDING',
   REFUNDED = 'REFUNDED',
 }
 
@@ -35,14 +36,14 @@ export class Payment {
   @Column({ type: 'integer' })
   orderId: number;
 
-  @ManyToOne(() => Order, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Order, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'orderId', foreignKeyConstraintName: 'FK_payments_orderId' })
   order: Order;
 
   @Column({ type: 'integer' })
   userId: number;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'userId', foreignKeyConstraintName: 'FK_payments_userId' })
   user: User;
 
@@ -79,6 +80,34 @@ export class Payment {
     nullable: true,
   })
   transactionId: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  merchantReference: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 30,
+    nullable: true,
+  })
+  buzzerCode: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
+  refundKey: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
+  payloadHash: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

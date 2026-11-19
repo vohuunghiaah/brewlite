@@ -419,8 +419,15 @@ export function createAuthController() {
 }
 
 /**
- * Tạo khóa Idempotency duy nhất cho giao dịch thanh toán (UC-10 / FR-08)
+ * Tạo khóa Idempotency duy nhất chuẩn UUID v4 cho giao dịch thanh toán (UC-10 / FR-08)
  */
-export function generatePaymentIdempotencyKey(orderId) {
-  return `idem-${orderId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+export function generatePaymentIdempotencyKey() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }

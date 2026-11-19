@@ -70,6 +70,8 @@ describe('Payments Endpoints (e2e / integration)', () => {
       const manager = {
         findOne: jest.fn(async (entityClass: any) => {
           if (entityClass === Product) return { ...mockProduct };
+          if (entityClass === Order) return { ...mockOrder };
+          if (entityClass === Payment) return null;
           return null;
         }),
         createQueryBuilder: jest.fn(() => ({
@@ -84,6 +86,7 @@ describe('Payments Endpoints (e2e / integration)', () => {
           return entity;
         }),
         create: jest.fn((entityClass: any, dto: any) => dto),
+        find: jest.fn(async () => mockOrder.items || []),
       };
       return cb(manager);
     }),
@@ -158,6 +161,27 @@ describe('Payments Endpoints (e2e / integration)', () => {
     expect(res.body.status).toBe(PaymentStatus.SUCCESS);
     expect(res.body.order.status).toBe(OrderStatus.PAID);
     expect(res.body.order.orderCode).toMatch(/^#BL-/);
+  });
+
+  it('POST /payments - supports Idempotency-Key provided exclusively via HTTP header (FR-08)', async () => {
+    mockPaymentRepository.findOne.mockResolvedValueOnce(null);
+    mockOrderRepository.findOne.mockResolvedValueOnce({ ...mockOrder });
+
+    const payload = {
+      orderId: 101,
+      amount: 45000,
+      method: PaymentMethod.MOMO,
+      pickupMethod: 'AT_COUNTER',
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/payments')
+      .set('Idempotency-Key', 'header-only-uuid-001')
+      .send(payload)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.payment.idempotencyKey).toBe('header-only-uuid-001');
   });
 
   it('POST /payments - handles mockOutcome=FAILED with payment failure and PAYMENT_FAILED status', async () => {

@@ -8,6 +8,8 @@ export class AddPaymentsAndStockOcc1732147200000 implements MigrationInterface {
     }
 
     // 1. Thêm cột tồn kho stock và version khóa lạc quan OCC cho bảng products
+    // Chính sách tồn kho: Khởi tạo mặc định stock=50 ly cho môi trường phát triển & kiểm thử MVP;
+    // Môi trường production áp dụng quy trình kiểm kê và nhập kho thực tế.
     await queryRunner.query(`
       ALTER TABLE "products"
       ADD COLUMN IF NOT EXISTS "stock" integer NOT NULL DEFAULT 50,
@@ -22,7 +24,7 @@ export class AddPaymentsAndStockOcc1732147200000 implements MigrationInterface {
       ADD COLUMN IF NOT EXISTS "tableNumber" varchar(20)
     `);
 
-    // 3. Tạo bảng payments với ràng buộc toàn vẹn và idempotency key
+    // 3. Tạo bảng payments với ràng buộc toàn vẹn, idempotency key và bảo toàn lịch sử giao dịch (ON DELETE RESTRICT)
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "payments" (
         "id" SERIAL PRIMARY KEY,
@@ -33,10 +35,14 @@ export class AddPaymentsAndStockOcc1732147200000 implements MigrationInterface {
         "status" varchar(30) NOT NULL,
         "idempotencyKey" varchar(128) NOT NULL,
         "transactionId" varchar(100),
+        "merchantReference" varchar(100),
+        "buzzerCode" varchar(30),
+        "refundKey" varchar(128),
+        "payloadHash" varchar(128),
         "createdAt" timestamp NOT NULL DEFAULT now(),
         CONSTRAINT "UQ_payments_idempotencyKey" UNIQUE ("idempotencyKey"),
-        CONSTRAINT "FK_payments_orderId" FOREIGN KEY ("orderId") REFERENCES "orders" ("id") ON DELETE CASCADE,
-        CONSTRAINT "FK_payments_userId" FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE CASCADE
+        CONSTRAINT "FK_payments_orderId" FOREIGN KEY ("orderId") REFERENCES "orders" ("id") ON DELETE RESTRICT,
+        CONSTRAINT "FK_payments_userId" FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE RESTRICT
       )
     `);
 

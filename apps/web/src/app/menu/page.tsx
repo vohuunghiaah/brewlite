@@ -485,12 +485,17 @@ export default function MenuPage() {
       return;
     }
 
+    if (pickupMethod === "AT_TABLE" && !tableNumber.trim()) {
+      setPaymentError("Vui lòng nhập số bàn hợp lệ khi chọn hình thức Giao tận bàn.");
+      return;
+    }
+
     setPaymentError("");
     setPaying(true);
 
     let key = paymentIdempotencyKey;
     if (!key) {
-      key = generatePaymentIdempotencyKey(pendingOrder.id);
+      key = generatePaymentIdempotencyKey();
       setPaymentIdempotencyKey(key);
     }
 
@@ -525,12 +530,17 @@ export default function MenuPage() {
         setPaymentError(
           data.message || "Thanh toán thất bại: Số dư tài khoản không đủ hoặc thẻ bị từ chối."
         );
+        // Sau khi attempt FAILED được xác nhận, reset key để lần thanh toán thử lại tiếp theo sinh khóa mới (FIX-03 & FIX-06)
+        setPaymentIdempotencyKey("");
         return;
       }
 
       // Thanh toán THÀNH CÔNG (PAID - TX2 Commit)
       const paidOrder = data.order || {};
-      const buzzerCode = paidOrder.orderCode || `#BL-${1000 + (pendingOrder.id % 9000)}`;
+      const buzzerCode = paidOrder.orderCode;
+      if (!buzzerCode) {
+        throw new Error("Không nhận được mã chuông định danh hợp lệ từ máy chủ.");
+      }
 
       setBuzzerTicket({
         orderId: pendingOrder.id,
@@ -542,9 +552,13 @@ export default function MenuPage() {
         items: [...cartItems],
       });
 
+      // Tự động xóa giỏ hàng theo đúng FR-06 khi đã thanh toán PAID thành công
+      setCartItems([]);
+
       setIsBuzzerOpen(true);
       setIsPaymentOpen(false);
       setPendingOrder({ id: pendingOrder.id, status: "PAID" });
+      setPaymentIdempotencyKey("");
       setOrderMessage(
         `Thanh toán thành công đơn hàng #${pendingOrder.id}! Mã lấy nước: ${buzzerCode}. Trạng thái: PAID.`
       );
@@ -552,6 +566,7 @@ export default function MenuPage() {
       setPaymentError(
         err instanceof Error ? err.message : "Đã xảy ra sự cố trong quá trình thanh toán."
       );
+      // Giữ nguyên paymentIdempotencyKey khi timeout / mạng chập chờn để retry idempotent (FIX-03)
     } finally {
       setPaying(false);
     }
@@ -1967,8 +1982,20 @@ export default function MenuPage() {
                   aria-checked={selectedPaymentMethod === "MOMO"}
                   tabIndex={0}
                   className={`${ui.paymentMethodCard} ${selectedPaymentMethod === "MOMO" ? ui.paymentMethodCardActive : ""}`}
-                  onClick={() => setSelectedPaymentMethod("MOMO")}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedPaymentMethod("MOMO"); }}
+                  onClick={() => {
+                    if (selectedPaymentMethod !== "MOMO") {
+                      setSelectedPaymentMethod("MOMO");
+                      setPaymentIdempotencyKey("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (selectedPaymentMethod !== "MOMO") {
+                        setSelectedPaymentMethod("MOMO");
+                        setPaymentIdempotencyKey("");
+                      }
+                    }
+                  }}
                 >
                   <span className={ui.paymentMethodIcon}>🟣</span>
                   <div className={ui.paymentMethodDetails}>
@@ -1982,8 +2009,20 @@ export default function MenuPage() {
                   aria-checked={selectedPaymentMethod === "VIETQR"}
                   tabIndex={0}
                   className={`${ui.paymentMethodCard} ${selectedPaymentMethod === "VIETQR" ? ui.paymentMethodCardActive : ""}`}
-                  onClick={() => setSelectedPaymentMethod("VIETQR")}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedPaymentMethod("VIETQR"); }}
+                  onClick={() => {
+                    if (selectedPaymentMethod !== "VIETQR") {
+                      setSelectedPaymentMethod("VIETQR");
+                      setPaymentIdempotencyKey("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (selectedPaymentMethod !== "VIETQR") {
+                        setSelectedPaymentMethod("VIETQR");
+                        setPaymentIdempotencyKey("");
+                      }
+                    }
+                  }}
                 >
                   <span className={ui.paymentMethodIcon}>🏦</span>
                   <div className={ui.paymentMethodDetails}>
@@ -1997,8 +2036,20 @@ export default function MenuPage() {
                   aria-checked={selectedPaymentMethod === "CARD"}
                   tabIndex={0}
                   className={`${ui.paymentMethodCard} ${selectedPaymentMethod === "CARD" ? ui.paymentMethodCardActive : ""}`}
-                  onClick={() => setSelectedPaymentMethod("CARD")}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedPaymentMethod("CARD"); }}
+                  onClick={() => {
+                    if (selectedPaymentMethod !== "CARD") {
+                      setSelectedPaymentMethod("CARD");
+                      setPaymentIdempotencyKey("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (selectedPaymentMethod !== "CARD") {
+                        setSelectedPaymentMethod("CARD");
+                        setPaymentIdempotencyKey("");
+                      }
+                    }
+                  }}
                 >
                   <span className={ui.paymentMethodIcon}>💳</span>
                   <div className={ui.paymentMethodDetails}>
@@ -2101,7 +2152,7 @@ export default function MenuPage() {
                   <div className={ui.qrPlaceholder} aria-label="Mã QR nhận nước" />
                 </div>
                 <span className={ui.qrCaption}>
-                  Đưa mã QR cho Barista khi đến lấy đồ uống
+                  Mock QR Code • Đưa mã QR cho Barista khi đến lấy đồ uống
                 </span>
               </div>
 

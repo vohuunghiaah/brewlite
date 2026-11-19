@@ -10,6 +10,11 @@ import {
 } from 'class-validator';
 import { PaymentMethod } from '../entities/payment.entity';
 
+export enum PickupMethod {
+  AT_COUNTER = 'AT_COUNTER',
+  AT_TABLE = 'AT_TABLE',
+}
+
 export class CreatePaymentDto {
   @IsInt()
   @Min(1)
@@ -24,23 +29,25 @@ export class CreatePaymentDto {
   })
   method: PaymentMethod;
 
+  @IsOptional()
   @IsString()
   @MaxLength(128)
-  idempotencyKey: string;
+  idempotencyKey?: string;
 
   @IsOptional()
-  @IsEnum(['SUCCESS', 'FAILED'], {
-    message: 'mockOutcome chỉ chấp nhận SUCCESS hoặc FAILED',
+  @IsEnum(['SUCCESS', 'FAILED', 'PENDING'], {
+    message: 'mockOutcome chỉ chấp nhận SUCCESS, FAILED hoặc PENDING',
   })
-  mockOutcome?: 'SUCCESS' | 'FAILED';
+  mockOutcome?: 'SUCCESS' | 'FAILED' | 'PENDING';
+
+  @IsOptional()
+  @IsEnum(PickupMethod, {
+    message: 'Hình thức nhận hàng phải là AT_COUNTER hoặc AT_TABLE',
+  })
+  pickupMethod?: PickupMethod;
 
   @IsOptional()
   @IsString()
   @MaxLength(30)
-  pickupMethod?: 'AT_COUNTER' | 'AT_TABLE';
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
   tableNumber?: string;
 }

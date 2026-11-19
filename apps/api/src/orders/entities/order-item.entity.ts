@@ -65,6 +65,9 @@ export class OrderItem {
   })
   subtotal: string;
 
+  @Column({ type: 'integer', nullable: true })
+  orderId: number;
+
   @ManyToOne(
     () => Order,
     (order) => order.items,
