@@ -71,6 +71,42 @@ describe('MenuPage React Component Tests', () => {
           json: async () => ({ id: 101, status: 'PENDING' }),
         } as Response);
       }
+      if (urlStr.endsWith('/payments') && options?.method === 'POST') {
+        const body = options?.body ? JSON.parse(String(options.body)) : {};
+        if (body.mockOutcome === 'FAILED') {
+          return Promise.resolve({
+            ok: true,
+            status: 201,
+            json: async () => ({
+              success: false,
+              status: 'FAILED',
+              message: 'Thanh toán thất bại: Số dư tài khoản không đủ hoặc thẻ bị từ chối bởi nhà cung cấp.',
+            }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: async () => ({
+            success: true,
+            status: 'SUCCESS',
+            order: {
+              id: body.orderId || 101,
+              status: 'PAID',
+              orderCode: '#BL-1042',
+              pickupMethod: body.pickupMethod || 'AT_COUNTER',
+              tableNumber: body.tableNumber,
+            },
+            payment: {
+              id: 1,
+              orderId: body.orderId || 101,
+              amount: String(body.amount),
+              status: 'SUCCESS',
+              idempotencyKey: body.idempotencyKey,
+            },
+          }),
+        } as Response);
+      }
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -573,5 +609,126 @@ describe('MenuPage React Component Tests', () => {
     fireEvent.click(openCartBtn);
     const cartSection = document.getElementById('cart')!;
     expect(cartSection).toHaveTextContent('Cà phê Latte');
+  });
+
+  it('completes cashless checkout flow (Figma Screen 05): selects method, pickup at table, and displays Digital Buzzer Ticket (Figma Screen 06)', async () => {
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // 1. Thêm món vào giỏ
+    const addQuickBtn = screen.getByRole('button', { name: /thêm nhanh cà phê latte vào giỏ/i });
+    fireEvent.click(addQuickBtn);
+
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
+
+    // 2. Tiếp tục đặt hàng (UC-04)
+    const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+    fireEvent.click(checkoutBtn);
+
+    const nameInput = screen.getByLabelText(/tên khách hàng/i);
+    const phoneInput = screen.getByLabelText(/số điện thoại/i);
+    fireEvent.change(nameInput, { target: { value: 'Khách Hàng UC-10' } });
+    fireEvent.change(phoneInput, { target: { value: '0901234567' } });
+
+    const confirmBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
+    fireEvent.click(confirmBtn);
+
+    // Đơn hàng PENDING tạo thành công - Nút tiếp tục thanh toán xuất hiện
+    const payNowBtn = await screen.findByRole('button', { name: /tiếp tục thanh toán đơn #101/i });
+    expect(payNowBtn).toBeInTheDocument();
+    fireEvent.click(payNowBtn);
+
+    const payDialog = await screen.findByRole('dialog', { name: /thanh toán đơn #101/i });
+    expect(payDialog).toBeInTheDocument();
+    expect(payDialog).toHaveAttribute('aria-modal', 'true');
+
+    // 4. Chọn phương thức nhận hàng: Giao tận bàn & nhập số bàn
+    const atTableBtn = screen.getByRole('button', { name: /giao tận bàn/i });
+    fireEvent.click(atTableBtn);
+    const tableInput = screen.getByLabelText(/số bàn \*/i);
+    fireEvent.change(tableInput, { target: { value: 'Bàn số 8' } });
+
+    // 5. Chọn cổng thanh toán VietQR
+    const vietqrCard = screen.getByText(/chuyển khoản vietqr \/ napas247/i);
+    fireEvent.click(vietqrCard);
+
+    // 6. Xác nhận thanh toán
+    const submitPayBtn = screen.getByRole('button', { name: /xác nhận thanh toán/i });
+    fireEvent.click(submitPayBtn);
+
+    // 7. Vé Chuông Điện Tử xuất hiện (Figma Screen 06)
+    const buzzerDialog = await screen.findByRole('dialog', { name: /#BL-1042/i });
+    expect(buzzerDialog).toBeInTheDocument();
+    expect(buzzerDialog).toHaveTextContent(/BrewLite Digital Buzzer/i);
+    expect(buzzerDialog).toHaveTextContent(/Bàn số 8/i);
+    expect(buzzerDialog).toHaveTextContent(/PAID/i);
+
+    // 8. Đóng vé chuông và kiểm tra giỏ hàng đã được làm trống đúng FR-06
+    const dismissBtns = screen.getAllByRole('button', { name: /đóng vé chuông/i });
+    fireEvent.click(dismissBtns[0]);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /#BL-1042/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /giỏ hàng: 0 món/i })).toBeInTheDocument();
+    });
+  });
+
+  it('handles mock payment failure in Developer Test Mode (EX-06) and allows retry', async () => {
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // Thêm món và tạo đơn hàng
+    const addQuickBtn = screen.getByRole('button', { name: /thêm nhanh cà phê latte vào giỏ/i });
+    fireEvent.click(addQuickBtn);
+
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
+
+    const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+    fireEvent.click(checkoutBtn);
+
+    const nameInput = screen.getByLabelText(/tên khách hàng/i);
+    const phoneInput = screen.getByLabelText(/số điện thoại/i);
+    fireEvent.change(nameInput, { target: { value: 'Tester EX-06' } });
+    fireEvent.change(phoneInput, { target: { value: '0901234567' } });
+
+    const confirmBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
+    fireEvent.click(confirmBtn);
+
+    // Đơn hàng PENDING tạo thành công - Nút tiếp tục thanh toán xuất hiện
+    const payNowBtn = await screen.findByRole('button', { name: /tiếp tục thanh toán đơn #101/i });
+    expect(payNowBtn).toBeInTheDocument();
+    fireEvent.click(payNowBtn);
+
+    await screen.findByRole('dialog', { name: /thanh toán đơn #101/i });
+
+    // Bật chế độ Giả lập Thất bại (EX-06)
+    const failOptionBtn = screen.getByRole('button', { name: /giả lập thất bại/i });
+    fireEvent.click(failOptionBtn);
+
+    const submitPayBtn = screen.getByRole('button', { name: /xác nhận thanh toán/i });
+    fireEvent.click(submitPayBtn);
+
+    // Hiển thị thông báo thất bại rõ ràng
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/thanh toán thất bại/i);
+    });
+
+    // Chuyển lại sang Thanh toán Thành công và bấm thử lại
+    const successOptionBtn = screen.getByRole('button', { name: /thanh toán thành công/i });
+    fireEvent.click(successOptionBtn);
+
+    fireEvent.click(submitPayBtn);
+
+    // Vé chuông xuất hiện thành công
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /#BL-1042/i })).toBeInTheDocument();
+    });
   });
 });

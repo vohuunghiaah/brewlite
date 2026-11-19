@@ -7,8 +7,10 @@ import { AppService } from './app.service';
 import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 import { AuthModule } from './auth/auth.module';
+import { PaymentsModule } from './payments/payments.module';
 import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1731974400000-AddCustomizationAndNoteToOrderItems';
 import { AddAccountAuthentication1732060800000 } from './migrations/1732060800000-add-account-authentication';
+import { AddPaymentsAndStockOcc1732147200000 } from './migrations/1732147200000-add-payments-and-stock-occ';
 
 @Module({
   imports: [
@@ -50,6 +52,7 @@ import { AddAccountAuthentication1732060800000 } from './migrations/173206080000
         migrations: [
           AddCustomizationAndNoteToOrderItems1731974400000,
           AddAccountAuthentication1732060800000,
+          AddPaymentsAndStockOcc1732147200000,
         ],
 
         // Vô hiệu hóa query logging để tránh rò rỉ credentials/passwords vào logs
@@ -64,6 +67,7 @@ import { AddAccountAuthentication1732060800000 } from './migrations/173206080000
     ProductsModule,
     AuthModule,
     OrdersModule,
+    PaymentsModule,
   ],
 
   controllers: [AppController],

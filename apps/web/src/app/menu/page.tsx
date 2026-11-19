@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { fetchProducts } from "./products.mjs";
 import {
   createAuthController,
+  generatePaymentIdempotencyKey,
   createMenuModalController,
   getCategory,
   AVAILABLE_SIZES,
@@ -172,6 +173,31 @@ export default function MenuPage() {
 
   // Đơn hàng PENDING đã tạo (Chống tạo đơn lặp ngoài ý muốn)
   const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string } | null>(null);
+
+  // ================= THANH TOÁN MÔ PHỎNG & VÉ CHUÔNG (TASK 5.1.3 & FIGMA SCREENS 05 & 06) =================
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"MOMO" | "VIETQR" | "CARD">("MOMO");
+  const [pickupMethod, setPickupMethod] = useState<"AT_COUNTER" | "AT_TABLE">("AT_COUNTER");
+  const [tableNumber, setTableNumber] = useState("");
+  const [testMode, setTestMode] = useState<"SUCCESS" | "FAILED" | "PENDING">("SUCCESS");
+  const [paying, setPaying] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("");
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>("");
+
+  interface BuzzerTicketData {
+    orderId: number;
+    orderCode: string;
+    status: string;
+    pickupMethod: string;
+    tableNumber?: string;
+    totalAmount: number;
+    items: CartItem[];
+  }
+  const [buzzerTicket, setBuzzerTicket] = useState<BuzzerTicketData | null>(null);
+  const [isBuzzerOpen, setIsBuzzerOpen] = useState(false);
+  const paymentModalRef = useRef<HTMLDivElement>(null);
+  const buzzerModalRef = useRef<HTMLDivElement>(null);
 
   // Thông tin đặt hàng
   const [showCheckout, setShowCheckout] = useState(false);
@@ -415,6 +441,243 @@ export default function MenuPage() {
       setAuthError(err instanceof Error ? err.message : "Đã có lỗi xảy ra.");
     } finally {
       setAuthLoading(false);
+    }
+  }
+
+  // Focus trap & Escape cho Cashless Checkout Modal
+  useEffect(() => {
+    if (!isPaymentOpen) return;
+
+    paymentModalRef.current?.focus();
+
+    function handlePaymentKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsPaymentOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handlePaymentKeyDown);
+    return () => window.removeEventListener("keydown", handlePaymentKeyDown);
+  }, [isPaymentOpen]);
+
+  // Focus trap & Escape cho Buzzer Ticket Modal
+  useEffect(() => {
+    if (!isBuzzerOpen) return;
+
+    buzzerModalRef.current?.focus();
+
+    function handleBuzzerKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsBuzzerOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleBuzzerKeyDown);
+    return () => window.removeEventListener("keydown", handleBuzzerKeyDown);
+  }, [isBuzzerOpen]);
+
+  // Xử lý thanh toán mô phỏng (Task 5.1.3 & UC-10 & FIX-13)
+  async function handleProcessPayment() {
+    if (!pendingOrder || paying) return;
+    if (!authToken) {
+      openAuthModal("login", false);
+      return;
+    }
+
+    if (pickupMethod === "AT_TABLE" && !tableNumber.trim()) {
+      setPaymentError("Vui lòng nhập số bàn hợp lệ khi chọn hình thức Giao tận bàn.");
+      return;
+    }
+
+    setPaymentError("");
+    setPaymentMessage("");
+    setPaying(true);
+
+    let key = paymentIdempotencyKey;
+    if (!key) {
+      key = generatePaymentIdempotencyKey();
+      setPaymentIdempotencyKey(key);
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/payments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+          "Idempotency-Key": key,
+        },
+        body: JSON.stringify({
+          orderId: pendingOrder.id,
+          amount: totalPrice,
+          method: selectedPaymentMethod,
+          idempotencyKey: key,
+          mockOutcome: testMode,
+          pickupMethod,
+          tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      // Xử lý xung đột hoặc bồi hoàn BR-REFUND-OCC (HTTP 409) (FIX-12 & FIX-13)
+      if (res.status === 409) {
+        if (data.status === "REFUNDED") {
+          setPendingOrder((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+          setPaymentError(
+            `Rất tiếc, sản phẩm vừa hết hàng khi bạn đang thanh toán. Giao dịch đã được bồi hoàn hoàn tiền tự động (Mã hoàn: ${
+              data.refundKey || "Đã bồi hoàn"
+            }). Đơn hàng đã được hủy an toàn theo BR-REFUND-OCC.`
+          );
+          setPaymentIdempotencyKey("");
+          return;
+        }
+
+        if (data.status === "REFUND_PENDING") {
+          setPaymentError(
+            `Xung đột tồn kho đồng thời. Tiến trình hoàn tiền đang được xử lý (Mã: ${
+              data.refundKey || "Đang hoàn"
+            }). Vui lòng kiểm tra lại trạng thái sau.`
+          );
+          return;
+        }
+
+        throw new Error(data.message || "Xung đột giao dịch đồng thời.");
+      }
+
+      if (!res.ok) {
+        const detail = data?.message || `Lỗi thanh toán: HTTP ${res.status}`;
+        throw new Error(Array.isArray(detail) ? detail.join(", ") : detail);
+      }
+
+      // Xử lý trường hợp PENDING / Timeout (EX-07 / FIX-13)
+      if (data.status === "PENDING") {
+        setPaymentMessage(
+          data.message ||
+            "Giao dịch đang chờ phản hồi từ cổng thanh toán. Đơn hàng và giỏ hàng được bảo lưu an toàn. Bạn có thể bấm 'Đối soát' để kiểm tra kết quả."
+        );
+        // Không coi là PAYMENT_FAILED, giữ giỏ hàng, giữ order PENDING và giữ idempotency key
+        return;
+      }
+
+      // Xử lý trường hợp FAILED xác nhận (EX-06 / FIX-13)
+      if (data.status === "FAILED" || !data.success) {
+        setPendingOrder((prev) => (prev ? { ...prev, status: "PAYMENT_FAILED" } : null));
+        setPaymentError(
+          data.message || "Thanh toán thất bại: Số dư tài khoản không đủ hoặc thẻ bị từ chối."
+        );
+        // Sau khi attempt FAILED được xác nhận, reset key để lần thanh toán thử lại tiếp theo sinh khóa mới (FIX-03 & FIX-06)
+        setPaymentIdempotencyKey("");
+        return;
+      }
+
+      // Thanh toán THÀNH CÔNG (PAID - TX2 Commit)
+      const paidOrder = data.order || {};
+      const buzzerCode = paidOrder.orderCode;
+      if (!buzzerCode) {
+        throw new Error("Không nhận được mã chuông định danh hợp lệ từ máy chủ.");
+      }
+
+      setBuzzerTicket({
+        orderId: pendingOrder.id,
+        orderCode: buzzerCode,
+        status: "PAID",
+        pickupMethod,
+        tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
+        totalAmount: totalPrice,
+        items: [...cartItems],
+      });
+
+      // Tự động xóa giỏ hàng theo đúng FR-06 khi đã thanh toán PAID thành công
+      setCartItems([]);
+
+      setIsBuzzerOpen(true);
+      setIsPaymentOpen(false);
+      setPendingOrder({ id: pendingOrder.id, status: "PAID" });
+      setPaymentIdempotencyKey("");
+      setOrderMessage(
+        `Thanh toán thành công đơn hàng #${pendingOrder.id}! Mã lấy nước: ${buzzerCode}. Trạng thái: PAID.`
+      );
+    } catch (err: unknown) {
+      setPaymentError(
+        err instanceof Error ? err.message : "Đã xảy ra sự cố trong quá trình thanh toán."
+      );
+      // Giữ nguyên paymentIdempotencyKey khi timeout / mạng chập chờn để retry idempotent (FIX-03 & FIX-13)
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  // Đối soát giao dịch PENDING (FIX-09, FIX-11 & FIX-13)
+  async function handleReconcilePayment() {
+    if (!paymentIdempotencyKey || !authToken || paying) return;
+    setPaymentError("");
+    setPaymentMessage("");
+    setPaying(true);
+
+    try {
+      const res = await fetch(`${API_URL}/payments/reconcile/${paymentIdempotencyKey}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 409 && data.status === "REFUNDED") {
+        setPendingOrder((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+        setPaymentError(
+          `Giao dịch đã được bồi hoàn hoàn tiền do hết hàng (Mã hoàn: ${data.refundKey}). Đơn hàng đã được hủy.`
+        );
+        setPaymentIdempotencyKey("");
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Đối soát chưa thành công.");
+      }
+
+      if (data.status === "PENDING") {
+        setPaymentMessage(
+          data.message || "Giao dịch vẫn đang chờ xử lý từ cổng thanh toán. Vui lòng thử lại sau ít phút."
+        );
+        return;
+      }
+
+      if (data.status === "FAILED") {
+        setPendingOrder((prev) => (prev ? { ...prev, status: "PAYMENT_FAILED" } : null));
+        setPaymentError(data.message || "Thanh toán thất bại sau đối soát.");
+        setPaymentIdempotencyKey("");
+        return;
+      }
+
+      if (data.status === "SUCCESS") {
+        const buzzerCode = data.order?.orderCode || data.payment?.buzzerCode;
+        setBuzzerTicket({
+          orderId: pendingOrder!.id,
+          orderCode: buzzerCode,
+          status: "PAID",
+          pickupMethod,
+          tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
+          totalAmount: totalPrice,
+          items: [...cartItems],
+        });
+        setCartItems([]);
+        setIsBuzzerOpen(true);
+        setIsPaymentOpen(false);
+        setPendingOrder({ id: pendingOrder!.id, status: "PAID" });
+        setPaymentIdempotencyKey("");
+        setOrderMessage(
+          `Đối soát thành công đơn hàng #${pendingOrder!.id}! Mã chuông: ${buzzerCode}. Trạng thái: PAID.`
+        );
+      }
+    } catch (err: unknown) {
+      setPaymentError(err instanceof Error ? err.message : "Lỗi khi đối soát giao dịch.");
+    } finally {
+      setPaying(false);
     }
   }
 
@@ -1028,9 +1291,8 @@ export default function MenuPage() {
                   type="button"
                   className={ui.payNowBtn}
                   onClick={() => {
-                    setOrderMessage(
-                      `Đơn hàng #${pendingOrder.id} đang chờ thanh toán qua cổng thanh toán (Sprint 2 - Task 5.1.2).`
-                    );
+                    setPaymentError("");
+                    setIsPaymentOpen(true);
                   }}
                 >
                   💳 Tiếp tục thanh toán đơn #{pendingOrder.id}
@@ -1746,6 +2008,345 @@ export default function MenuPage() {
                     </button>
                   </p>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ================= MODAL THANH TOÁN KHÔNG TIỀN MẶT (TASK 5.1.3 & FIGMA SCREEN 05) ================= */}
+      {isPaymentOpen && pendingOrder && (
+        <div
+          className={ui.authModalOverlay}
+          role="presentation"
+          onClick={() => setIsPaymentOpen(false)}
+        >
+          <div
+            ref={paymentModalRef}
+            tabIndex={-1}
+            className={ui.authModalCard}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="checkout-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={ui.authModalHeader}>
+              <button
+                type="button"
+                className={ui.authModalClose}
+                onClick={() => setIsPaymentOpen(false)}
+                aria-label="Đóng cửa sổ thanh toán"
+              >
+                ✕
+              </button>
+              <h2 id="checkout-modal-title" className={ui.authModalTitle}>
+                Thanh toán đơn #{pendingOrder.id}
+              </h2>
+              <p className={ui.authModalSubtitle}>
+                Tổng thanh toán: <strong>{formatPrice(totalPrice)}</strong>
+              </p>
+            </div>
+
+            <div className={ui.authBody}>
+              {/* PHƯƠNG THỨC NHẬN HÀNG */}
+              <h3 className={ui.checkoutSectionTitle}>1. Phương thức nhận hàng</h3>
+              <div className={ui.segmentedControl} role="group" aria-label="Phương thức nhận hàng">
+                <button
+                  type="button"
+                  className={`${ui.segmentedBtn} ${pickupMethod === "AT_COUNTER" ? ui.segmentedBtnActive : ""}`}
+                  onClick={() => setPickupMethod("AT_COUNTER")}
+                >
+                  🏪 Lấy tại quầy
+                </button>
+                <button
+                  type="button"
+                  className={`${ui.segmentedBtn} ${pickupMethod === "AT_TABLE" ? ui.segmentedBtnActive : ""}`}
+                  onClick={() => setPickupMethod("AT_TABLE")}
+                >
+                  🍽️ Giao tận bàn
+                </button>
+              </div>
+
+              {pickupMethod === "AT_TABLE" && (
+                <div className={ui.tableInputRow}>
+                  <label htmlFor="table-number-input" className={ui.authLabel}>
+                    Số bàn *
+                  </label>
+                  <input
+                    id="table-number-input"
+                    type="text"
+                    value={tableNumber}
+                    onChange={(e) => setTableNumber(e.target.value)}
+                    placeholder="Ví dụ: Bàn số 4"
+                    className={ui.tableInput}
+                    required
+                  />
+                </div>
+              )}
+
+              {/* PHƯƠNG THỨC THANH TOÁN (3 PHƯƠNG THỨC FIGMA) */}
+              <h3 className={ui.checkoutSectionTitle}>2. Chọn cổng thanh toán</h3>
+              <div className={ui.paymentMethodsGrid} role="radiogroup" aria-label="Phương thức thanh toán">
+                <div
+                  role="radio"
+                  aria-checked={selectedPaymentMethod === "MOMO"}
+                  tabIndex={0}
+                  className={`${ui.paymentMethodCard} ${selectedPaymentMethod === "MOMO" ? ui.paymentMethodCardActive : ""}`}
+                  onClick={() => {
+                    if (selectedPaymentMethod !== "MOMO") {
+                      setSelectedPaymentMethod("MOMO");
+                      setPaymentIdempotencyKey("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (selectedPaymentMethod !== "MOMO") {
+                        setSelectedPaymentMethod("MOMO");
+                        setPaymentIdempotencyKey("");
+                      }
+                    }
+                  }}
+                >
+                  <span className={ui.paymentMethodIcon}>🟣</span>
+                  <div className={ui.paymentMethodDetails}>
+                    <span className={ui.paymentMethodName}>Ví điện tử MoMo / ZaloPay</span>
+                    <span className={ui.paymentMethodSub}>Quét mã QR qua ứng dụng Ví</span>
+                  </div>
+                </div>
+
+                <div
+                  role="radio"
+                  aria-checked={selectedPaymentMethod === "VIETQR"}
+                  tabIndex={0}
+                  className={`${ui.paymentMethodCard} ${selectedPaymentMethod === "VIETQR" ? ui.paymentMethodCardActive : ""}`}
+                  onClick={() => {
+                    if (selectedPaymentMethod !== "VIETQR") {
+                      setSelectedPaymentMethod("VIETQR");
+                      setPaymentIdempotencyKey("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (selectedPaymentMethod !== "VIETQR") {
+                        setSelectedPaymentMethod("VIETQR");
+                        setPaymentIdempotencyKey("");
+                      }
+                    }
+                  }}
+                >
+                  <span className={ui.paymentMethodIcon}>🏦</span>
+                  <div className={ui.paymentMethodDetails}>
+                    <span className={ui.paymentMethodName}>Chuyển khoản VietQR / Napas247</span>
+                    <span className={ui.paymentMethodSub}>Quét mã chuyển khoản ngân hàng 24/7</span>
+                  </div>
+                </div>
+
+                <div
+                  role="radio"
+                  aria-checked={selectedPaymentMethod === "CARD"}
+                  tabIndex={0}
+                  className={`${ui.paymentMethodCard} ${selectedPaymentMethod === "CARD" ? ui.paymentMethodCardActive : ""}`}
+                  onClick={() => {
+                    if (selectedPaymentMethod !== "CARD") {
+                      setSelectedPaymentMethod("CARD");
+                      setPaymentIdempotencyKey("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (selectedPaymentMethod !== "CARD") {
+                        setSelectedPaymentMethod("CARD");
+                        setPaymentIdempotencyKey("");
+                      }
+                    }
+                  }}
+                >
+                  <span className={ui.paymentMethodIcon}>💳</span>
+                  <div className={ui.paymentMethodDetails}>
+                    <span className={ui.paymentMethodName}>Thẻ quốc tế Visa / Mastercard</span>
+                    <span className={ui.paymentMethodSub}>Thanh toán an toàn bảo mật PCI-DSS</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* DEVELOPER TEST MODE SWITCH (FIGMA SCREEN 05) */}
+              <div className={ui.testModeContainer}>
+                <div className={ui.testModeHeader}>
+                  <span className={ui.testModeLabel}>🛠️ Chế độ thử nghiệm</span>
+                  <span className={ui.testModeBadge}>Dev Mode</span>
+                </div>
+                <div className={ui.testModeSwitches} role="group" aria-label="Chế độ thanh toán giả lập">
+                  <button
+                    type="button"
+                    className={`${ui.testModeOption} ${testMode === "SUCCESS" ? ui.testModeOptionSuccess : ""}`}
+                    onClick={() => setTestMode("SUCCESS")}
+                  >
+                    ✓ Thanh toán Thành công
+                  </button>
+                  <button
+                    type="button"
+                    className={`${ui.testModeOption} ${testMode === "FAILED" ? ui.testModeOptionFailed : ""}`}
+                    onClick={() => setTestMode("FAILED")}
+                  >
+                    ✕ Giả lập Thất bại (EX-06)
+                  </button>
+                  <button
+                    type="button"
+                    className={`${ui.testModeOption} ${testMode === "PENDING" ? ui.testModeOptionFailed : ""}`}
+                    onClick={() => setTestMode("PENDING")}
+                  >
+                    ⏱️ Chờ duyệt (EX-07)
+                  </button>
+                </div>
+              </div>
+
+              {paymentMessage && (
+                <div
+                  role="status"
+                  className={ui.authSuccess}
+                  style={{
+                    marginTop: "12px",
+                    background: "#fef3c7",
+                    color: "#92400e",
+                    border: "1px solid #fde68a",
+                    fontSize: "0.875rem",
+                    lineHeight: "1.4",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                  }}
+                >
+                  ⏳ {paymentMessage}
+                </div>
+              )}
+
+              {paymentError && (
+                <div role="alert" className={ui.authError} style={{ marginTop: "12px" }}>
+                  {paymentError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={paying}
+                onClick={handleProcessPayment}
+                className={ui.paySubmitBtn}
+              >
+                {paying ? "Đang xử lý giao dịch..." : `💳 Xác nhận thanh toán • ${formatPrice(totalPrice)}`}
+              </button>
+
+              {paymentIdempotencyKey && pendingOrder?.status === "PENDING" && (
+                <button
+                  type="button"
+                  disabled={paying}
+                  onClick={handleReconcilePayment}
+                  className={ui.paySubmitBtn}
+                  style={{
+                    marginTop: "8px",
+                    background: "#f59e0b",
+                    borderColor: "#d97706",
+                  }}
+                >
+                  🔄 Đối soát / Kiểm tra kết quả
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL VÉ CHUÔNG ĐIỆN TỬ (TASK 5.1.3 & FIGMA SCREEN 06) ================= */}
+      {isBuzzerOpen && buzzerTicket && (
+        <div
+          className={ui.buzzerOverlay}
+          role="presentation"
+          onClick={() => setIsBuzzerOpen(false)}
+        >
+          <div
+            ref={buzzerModalRef}
+            tabIndex={-1}
+            className={ui.buzzerCard}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="buzzer-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={ui.buzzerHeader}>
+              <button
+                type="button"
+                className={ui.buzzerClose}
+                onClick={() => setIsBuzzerOpen(false)}
+                aria-label="Đóng vé chuông"
+              >
+                ✕
+              </button>
+              <div className={ui.buzzerBrand}>BrewLite Digital Buzzer</div>
+              <h2 id="buzzer-modal-title" className={ui.buzzerCode}>
+                {buzzerTicket.orderCode}
+              </h2>
+              <p className={ui.buzzerPickupInfo}>
+                {buzzerTicket.pickupMethod === "AT_TABLE"
+                  ? `🍽️ Giao tận bàn: ${buzzerTicket.tableNumber || "Chưa ghi số bàn"}`
+                  : "🏪 Lấy nước tại quầy khi chuông báo rung"}
+              </p>
+            </div>
+
+            {/* RĂNG CƯA PHÂN CÁCH VÉ RUNG (PERFORATION) */}
+            <div className={ui.buzzerPerforation} aria-hidden="true">
+              <span className={ui.perforationHoleLeft} />
+              <span className={ui.perforationLine} />
+              <span className={ui.perforationHoleRight} />
+            </div>
+
+            <div className={ui.buzzerBody}>
+              {/* QR CODE MÃ HÓA */}
+              <div className={ui.qrContainer}>
+                <div className={ui.qrBox}>
+                  <div className={ui.qrPlaceholder} aria-label="Mã QR nhận nước" />
+                </div>
+                <span className={ui.qrCaption}>
+                  Mock QR Code • Đưa mã QR cho Barista khi đến lấy đồ uống
+                </span>
+              </div>
+
+              {/* INTERACTIVE 4-STAGE TIMELINE */}
+              <div className={ui.timeline} role="list" aria-label="Tiến trình đơn hàng">
+                <div className={`${ui.timelineStep} ${ui.timelineActive}`} role="listitem">
+                  <div className={ui.timelineNode}>✓</div>
+                  <span className={ui.timelineLabel}>PAID<br />Đã trả</span>
+                </div>
+                <div className={ui.timelineStep} role="listitem">
+                  <div className={ui.timelineNode}>2</div>
+                  <span className={ui.timelineLabel}>PREP<br />Pha chế</span>
+                </div>
+                <div className={ui.timelineStep} role="listitem">
+                  <div className={ui.timelineNode}>3</div>
+                  <span className={ui.timelineLabel}>READ<br />Sẵn sàng</span>
+                </div>
+                <div className={ui.timelineStep} role="listitem">
+                  <div className={ui.timelineNode}>4</div>
+                  <span className={ui.timelineLabel}>COMP<br />Hoàn tất</span>
+                </div>
+              </div>
+
+              <div className={ui.buzzerActions}>
+                <button
+                  type="button"
+                  className={ui.buzzerNewOrderBtn}
+                  onClick={() => {
+                    setIsBuzzerOpen(false);
+                    setBuzzerTicket(null);
+                    setPendingOrder(null);
+                    clearCart();
+                  }}
+                >
+                  + Đặt đơn hàng mới
+                </button>
+                <button
+                  type="button"
+                  className={ui.buzzerDismissBtn}
+                  onClick={() => setIsBuzzerOpen(false)}
+                >
+                  Đóng vé chuông
+                </button>
               </div>
             </div>
           </div>

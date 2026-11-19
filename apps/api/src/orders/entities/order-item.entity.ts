@@ -65,6 +65,9 @@ export class OrderItem {
   })
   subtotal: string;
 
+  @Column({ type: 'integer', nullable: true })
+  orderId: number;
+
   @ManyToOne(
     () => Order,
     (order) => order.items,
@@ -74,6 +77,9 @@ export class OrderItem {
   )
   @JoinColumn({ name: 'orderId' })
   order: Order;
+
+  @Column({ type: 'integer', nullable: true })
+  productId: number;
 
   @ManyToOne(
     () => Product,

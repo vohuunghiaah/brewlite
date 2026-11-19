@@ -5,6 +5,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 
 @Entity('products')
@@ -43,6 +44,17 @@ export class Product {
     default: true,
   })
   isAvailable!: boolean;
+
+  @Column({
+    type: 'int',
+    default: 50,
+  })
+  stock!: number;
+
+  @VersionColumn({
+    default: 1,
+  })
+  version!: number;
 
   @CreateDateColumn()
   createdAt!: Date;

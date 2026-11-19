@@ -3,12 +3,27 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   quality:
     name: ${{ matrix.app }} lint, test, build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: brewlite
+          POSTGRES_PASSWORD: brewlite_dev_password
+          POSTGRES_DB: brewlite_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       fail-fast: false
       matrix:
@@ -27,7 +42,14 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-      - name: Unit Test
+      - name: Unit & Integration Tests
         run: npm test
+        env:
+          RUN_PG_TESTS: 'true'
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '5432'
+          POSTGRES_USER: brewlite
+          POSTGRES_PASSWORD: brewlite_dev_password
+          POSTGRES_DB: brewlite_test
       - name: Build
         run: npm run build

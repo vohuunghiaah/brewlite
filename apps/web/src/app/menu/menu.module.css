@@ -1792,6 +1792,471 @@
   padding: 0 4px;
 }
 
+/* ================= SCREEN 05: CASHLESS CHECKOUT FLOW (TASK 5.1.3 & FIGMA) ================= */
+.checkoutPanel {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e8dfd8;
+  padding: 20px;
+  margin-top: 16px;
+  animation: fadeIn 200ms ease;
+}
+
+.checkoutSectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #3d261d;
+  margin: 16px 0 8px;
+}
+
+.segmentedControl {
+  display: flex;
+  background: #faf6f0;
+  border: 1px solid #e8dfd8;
+  border-radius: 10px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.segmentedBtn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #7c695e;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.segmentedBtnActive {
+  background: #ffffff;
+  color: #3d261d;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.tableInputRow {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tableInput {
+  padding: 10px 12px;
+  border: 1.5px solid #d4c2b2;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.tableInput:focus {
+  outline: none;
+  border-color: #c28d58;
+}
+
+.paymentMethodsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.paymentMethodCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1.5px solid #e8dfd8;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.paymentMethodCard:hover {
+  border-color: #c28d58;
+  background: #fdfbf9;
+}
+
+.paymentMethodCardActive {
+  border-color: #c28d58;
+  background: #faf6f0;
+  box-shadow: 0 0 0 1px #c28d58;
+}
+
+.paymentMethodIcon {
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #ebd9c8;
+}
+
+.paymentMethodDetails {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.paymentMethodName {
+  font-size: 14px;
+  font-weight: 700;
+  color: #3d261d;
+}
+
+.paymentMethodSub {
+  font-size: 12px;
+  color: #8c7566;
+}
+
+.testModeContainer {
+  background: #f8fafc;
+  border: 1.5px dashed #94a3b8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 16px;
+}
+
+.testModeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.testModeLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.testModeBadge {
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.testModeSwitches {
+  display: flex;
+  gap: 8px;
+}
+
+.testModeOption {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  text-align: center;
+  transition: all 160ms ease;
+}
+
+.testModeOptionSuccess {
+  border-color: #22c55e;
+  background: #f0fdf4;
+  color: #15803d;
+  font-weight: 700;
+}
+
+.testModeOptionFailed {
+  border-color: #ef4444;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.paySubmitBtn {
+  width: 100%;
+  padding: 14px;
+  background: #c28d58;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 16px;
+  transition: background 160ms ease;
+}
+
+.paySubmitBtn:hover:not(:disabled) {
+  background: #ab7744;
+}
+
+.paySubmitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ================= SCREEN 06: DIGITAL BUZZER TICKET (TASK 5.1.3 & FIGMA) ================= */
+.buzzerOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 1100;
+  animation: fadeIn 200ms ease;
+}
+
+.buzzerCard {
+  width: 100%;
+  max-width: 440px;
+  background: #ffffff;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
+  outline: none;
+  animation: modalScale 200ms ease;
+  position: relative;
+}
+
+.buzzerHeader {
+  background: #3d261d;
+  color: #ffffff;
+  padding: 24px 20px 20px;
+  text-align: center;
+  position: relative;
+}
+
+.buzzerClose {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.buzzerBrand {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #c28d58;
+  font-weight: 800;
+}
+
+.buzzerCode {
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+  margin: 6px 0 2px;
+}
+
+.buzzerPickupInfo {
+  font-size: 13px;
+  color: #e0d5ce;
+}
+
+.buzzerPerforation {
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: 20px;
+  background: #ffffff;
+  margin: 0;
+}
+
+.perforationHoleLeft {
+  width: 20px;
+  height: 20px;
+  border-radius: 0 10px 10px 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.perforationLine {
+  flex: 1;
+  border-bottom: 2px dashed #d4c2b2;
+}
+
+.perforationHoleRight {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px 0 0 10px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.buzzerBody {
+  padding: 20px 24px 24px;
+}
+
+.qrContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #faf6f0;
+  border: 1px solid #ebd9c8;
+  border-radius: 16px;
+  margin-bottom: 20px;
+}
+
+.qrBox {
+  width: 140px;
+  height: 140px;
+  background: #ffffff;
+  padding: 8px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qrPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    45deg,
+    #3d261d 0,
+    #3d261d 8px,
+    #ffffff 8px,
+    #ffffff 16px
+  );
+  border-radius: 8px;
+  opacity: 0.85;
+}
+
+.qrCaption {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #7c695e;
+  font-weight: 600;
+}
+
+/* Timeline 4 trạng thái */
+.timeline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20px 0;
+  position: relative;
+}
+
+.timeline::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 20px;
+  right: 20px;
+  height: 2px;
+  background: #ebd9c8;
+  z-index: 0;
+}
+
+.timelineStep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.timelineNode {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #ebd9c8;
+  color: #8c7566;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  transition: all 160ms ease;
+}
+
+.timelineActive .timelineNode {
+  background: #c28d58;
+  border-color: #c28d58;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(194, 141, 88, 0.2);
+}
+
+.timelineLabel {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7c695e;
+  text-align: center;
+}
+
+.timelineActive .timelineLabel {
+  color: #3d261d;
+  font-weight: 800;
+}
+
+.buzzerActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.buzzerNewOrderBtn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: #c28d58;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.buzzerNewOrderBtn:hover {
+  background: #ab7744;
+}
+
+.buzzerDismissBtn {
+  flex: 1;
+  padding: 12px;
+  border: 1.5px solid #3d261d;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #3d261d;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.buzzerDismissBtn:hover {
+  background: #faf6f0;
+}
+
 .newOrderBtn {
   flex: 1;
   min-width: 140px;
