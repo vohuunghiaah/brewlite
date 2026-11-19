@@ -1,5 +1,72 @@
 import { fetchProducts, fetchProductById } from './products.mjs';
 
+export const AVAILABLE_SIZES = [
+  { id: 'SMALL', name: 'Nhỏ (S)', surcharge: 0 },
+  { id: 'MEDIUM', name: 'Vừa (M)', surcharge: 5000 },
+  { id: 'LARGE', name: 'Lớn (L)', surcharge: 10000 },
+];
+
+export const AVAILABLE_TOPPINGS = [
+  { name: 'Kem cheese', price: 10000 },
+  { name: 'Trân châu trắng', price: 8000 },
+  { name: 'Thạch đào', price: 8000 },
+  { name: 'Sốt caramel', price: 6000 },
+  { name: 'Thạch sương sáo', price: 6000 },
+];
+
+export const SIZE_PRICE_MODIFIERS = {
+  SMALL: 0,
+  MEDIUM: 5000,
+  LARGE: 10000,
+};
+
+export const TOPPING_PRICES = {
+  'Kem cheese': 10000,
+  'Trân châu trắng': 8000,
+  'Thạch đào': 8000,
+  'Sốt caramel': 6000,
+  'Thạch sương sáo': 6000,
+};
+
+export const AVAILABLE_ICE_LEVELS = ['Không đá', 'Ít đá', 'Đá đầy'];
+export const AVAILABLE_SUGAR_LEVELS = ['0%', '30%', '70%', '100%'];
+
+/**
+ * Kết hợp mức đá, mức đường và ghi chú tự do thành một chuỗi duy nhất,
+ * tránh trùng lặp, bảo toàn thông tin và khống chế tối đa 255 ký tự (DB constraint).
+ */
+export function combineItemNote(ice = 'Đá đầy', sugar = '100%', customNote = '') {
+  const parts = [];
+  if (ice) {
+    parts.push(ice);
+  }
+  if (sugar) {
+    parts.push(`${sugar} đường`);
+  }
+  const trimmed = (customNote || '').trim();
+  if (trimmed) {
+    const lower = trimmed.toLowerCase();
+    const isIceDuplicate = ice && lower === ice.toLowerCase();
+    const isSugarDuplicate = sugar && lower === `${sugar} đường`.toLowerCase();
+    if (!isIceDuplicate && !isSugarDuplicate) {
+      parts.push(trimmed);
+    }
+  }
+  const combined = parts.join(', ');
+  return combined.slice(0, 255);
+}
+
+export function calculateItemPrice(basePrice, size = 'SMALL', toppings = []) {
+  const sizeMod = SIZE_PRICE_MODIFIERS[size] ?? 0;
+  const toppingTotal = (toppings || []).reduce((sum, t) => sum + (TOPPING_PRICES[t] ?? 0), 0);
+  return Math.max(0, Number(basePrice || 0) + sizeMod + toppingTotal);
+}
+
+export function buildCartItemKey(productId, size = 'SMALL', toppings = [], note = '') {
+  const sortedTops = (toppings || []).slice().sort().join('+');
+  return `${productId}__${size}__${sortedTops}__${(note || '').trim().toLowerCase()}`;
+}
+
 /**
  * Phân loại đồ uống tự động dựa trên tên và mô tả sản phẩm
  */
