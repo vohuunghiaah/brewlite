@@ -288,10 +288,19 @@ export class MockPaymentGateway {
         };
       }
 
-      const refundOutcome = req.mockOutcome === 'FAILED' ? 'FAILED' : 'SUCCESS';
+      const refundOutcome =
+        req.mockOutcome === 'FAILED'
+          ? 'FAILED'
+          : req.mockOutcome === 'PENDING'
+          ? 'PENDING'
+          : 'SUCCESS';
       const refundTxId = `GW-REFUND-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const refundReason =
-        refundOutcome === 'FAILED' ? 'Cổng thanh toán từ chối hoàn tiền.' : null;
+        refundOutcome === 'FAILED'
+          ? 'Cổng thanh toán từ chối hoàn tiền.'
+          : refundOutcome === 'PENDING'
+          ? 'Cổng thanh toán đang xử lý hoàn tiền.'
+          : null;
 
       try {
         await this.dataSource.query(
@@ -331,12 +340,22 @@ export class MockPaymentGateway {
       return record.refunds[req.refundKey];
     }
 
-    const refundOutcome = req.mockOutcome === 'FAILED' ? 'FAILED' : 'SUCCESS';
+    const refundOutcome =
+      req.mockOutcome === 'FAILED'
+        ? 'FAILED'
+        : req.mockOutcome === 'PENDING'
+        ? 'PENDING'
+        : 'SUCCESS';
     const refundTxId = `GW-REFUND-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     const refundRecord: GatewayRefundResult = {
       status: refundOutcome,
       refundTransactionId: refundTxId,
-      reason: refundOutcome === 'FAILED' ? 'Cổng thanh toán từ chối hoàn tiền.' : undefined,
+      reason:
+        refundOutcome === 'FAILED'
+          ? 'Cổng thanh toán từ chối hoàn tiền.'
+          : refundOutcome === 'PENDING'
+          ? 'Cổng thanh toán đang xử lý hoàn tiền.'
+          : undefined,
     };
 
     if (!record.refunds) {
@@ -354,20 +373,47 @@ export class MockPaymentGateway {
   async setRefundStatus(
     refundKey: string,
     status: 'SUCCESS' | 'FAILED' | 'PENDING',
+    merchantReference?: string,
+    amount?: number,
   ): Promise<void> {
     if (this.dataSource && this.dataSource.isInitialized) {
       await this.ensureTables();
-      await this.dataSource.query(
-        `UPDATE "mock_gateway_refunds" SET "status" = $1 WHERE "refundKey" = $2`,
-        [status, refundKey],
+      const existing = await this.dataSource.query(
+        `SELECT * FROM "mock_gateway_refunds" WHERE "refundKey" = $1`,
+        [refundKey],
       );
+      if (existing.length > 0) {
+        await this.dataSource.query(
+          `UPDATE "mock_gateway_refunds" SET "status" = $1 WHERE "refundKey" = $2`,
+          [status, refundKey],
+        );
+      } else {
+        const mRef = merchantReference || 'TEST-MERCHANT-REF';
+        const amt = amount || 0;
+        await this.dataSource.query(
+          `INSERT INTO "mock_gateway_refunds" ("merchantReference", "refundKey", "refundTransactionId", "status", "amount", "reason")
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [mRef, refundKey, `GW-REFUND-INIT-${Date.now()}`, status, amt, null],
+        );
+      }
     }
 
     this.loadStateFromFile();
+    let found = false;
     for (const tx of Object.values(this.inMemoryCache)) {
       if (tx.refunds && tx.refunds[refundKey]) {
         tx.refunds[refundKey].status = status;
+        found = true;
       }
+    }
+    if (!found && merchantReference && this.inMemoryCache[merchantReference]) {
+      if (!this.inMemoryCache[merchantReference].refunds) {
+        this.inMemoryCache[merchantReference].refunds = {};
+      }
+      this.inMemoryCache[merchantReference].refunds[refundKey] = {
+        status,
+        refundTransactionId: `GW-REFUND-INIT-${Date.now()}`,
+      };
     }
     this.persistStateToFile();
   }

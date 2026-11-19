@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, QueryRunner, Repository } from 'typeorm';
 
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
@@ -513,7 +513,7 @@ export class PaymentsService {
   }
 
   /**
-   * Thực hiện giao dịch độc lập TX3 bồi hoàn BR-REFUND-OCC theo đúng chu trình FIX-16
+   * Thực hiện giao dịch độc lập TX3 bồi hoàn BR-REFUND-OCC theo đúng chu trình FIX-16 & FIX-24
    */
   private async executeTx3Compensation(
     orderId: number,
@@ -525,19 +525,14 @@ export class PaymentsService {
   ): Promise<{ payment: Payment; order: Order }> {
     const refundKey = `refund-${idempotencyKey}`;
 
-    // 1. TX3: Ghi Payment REFUND_PENDING, refundKey và CANCELLED Order rồi COMMIT (FIX-16)
-    const { pendingRefundPayment, cancelledOrder } = await this.dataSource.transaction(
+    // 1. TX3: Ghi Payment REFUND_PENDING và refundKey bền vững rồi COMMIT (FIX-16 & FIX-24)
+    // TUYỆT ĐỐI KHÔNG chuyển Order thành CANCELLED trước khi hoàn tiền được gateway xác nhận (FIX-24)
+    const { pendingRefundPayment, currentOrder } = await this.dataSource.transaction(
       async (tx3Manager: EntityManager) => {
         const order = await tx3Manager.findOne(Order, {
           where: { id: orderId },
           lock: { mode: 'pessimistic_write' },
         });
-
-        let updatedOrder = order;
-        if (order && order.status !== OrderStatus.CANCELLED) {
-          order.status = OrderStatus.CANCELLED;
-          updatedOrder = await tx3Manager.save(Order, order);
-        }
 
         // Tìm payment hiện có cho key này hoặc tạo mới
         let paymentRecord = await tx3Manager.findOne(Payment, {
@@ -565,18 +560,19 @@ export class PaymentsService {
           paymentRecord = await tx3Manager.save(Payment, paymentRecord);
         }
 
-        return { pendingRefundPayment: paymentRecord, cancelledOrder: updatedOrder! };
+        return { pendingRefundPayment: paymentRecord, currentOrder: order! };
       },
     );
 
-    // 2. Gọi mockGateway.refund() BÊN NGOÀI TX3 (FIX-16: không giữ DB transaction hay lock)
+    // 2. Gọi mockGateway.refund() BÊN NGOÀI TX3 (FIX-16 & FIX-24: không giữ DB transaction hay lock)
     const refundResult = await this.mockGateway.refund({
       merchantReference,
       refundKey,
       amount: dto.amount,
     });
 
-    // 3. Nếu Gateway SUCCESS: Cập nhật Payment REFUNDED và Order CANCELLED trong cùng transaction TX4 (FIX-21)
+    // 3. Nếu Gateway SUCCESS: Cập nhật Payment REFUNDED và Order CANCELLED trong cùng transaction TX4 (FIX-21 & FIX-24)
+    let finalOrder = currentOrder;
     if (refundResult.status === 'SUCCESS') {
       try {
         await this.dataSource.transaction(async (tx4Manager) => {
@@ -586,7 +582,7 @@ export class PaymentsService {
           });
           if (freshOrder && freshOrder.status !== OrderStatus.CANCELLED) {
             freshOrder.status = OrderStatus.CANCELLED;
-            await tx4Manager.save(Order, freshOrder);
+            finalOrder = await tx4Manager.save(Order, freshOrder);
           }
 
           const fresh = await tx4Manager.findOne(Payment, {
@@ -602,11 +598,11 @@ export class PaymentsService {
           }
         });
       } catch {
-        // Nếu DB update thất bại, payment vẫn ở REFUND_PENDING để reconcile hoàn tất sau
+        // Nếu DB update thất bại, payment vẫn ở REFUND_PENDING, order giữ nguyên để reconcile hoàn tất sau
       }
     }
 
-    return { payment: pendingRefundPayment, order: cancelledOrder };
+    return { payment: pendingRefundPayment, order: finalOrder };
   }
 
   /**
@@ -853,8 +849,8 @@ export class PaymentsService {
   private isReconcilingGlobal = false;
 
   /**
-   * Đối soát hàng loạt các giao dịch dở dang phục vụ recovery sau restart ứng dụng (FIX-17 & FIX-19)
-   * Sử dụng atomic coordination (PostgreSQL advisory lock) để bảo đảm an toàn khi nhiều worker cùng chạy.
+   * Đối soát hàng loạt các giao dịch dở dang phục vụ recovery sau restart ứng dụng (FIX-17, FIX-19 & FIX-23)
+   * Sử dụng QueryRunner giữ một kết nối duy nhất cho toàn bộ thời gian giữ session-level advisory lock (FIX-23).
    */
   async reconcilePendingPayments(): Promise<{ reconciledCount: number }> {
     if (this.isReconcilingGlobal) {
@@ -874,21 +870,39 @@ export class PaymentsService {
 
       let count = 0;
       for (const p of pendings) {
-        let lockAcquired = true;
-        if (this.dataSource && this.dataSource.isInitialized) {
-          try {
-            const lockResult = await this.dataSource.query(
-              `SELECT pg_try_advisory_lock(hashtext($1)) as locked`,
-              [`reconcile_lock_${p.idempotencyKey}`],
-            );
-            lockAcquired = lockResult?.[0]?.locked === true;
-          } catch {
-            lockAcquired = true;
-          }
+        if (
+          !this.dataSource ||
+          !this.dataSource.isInitialized ||
+          typeof this.dataSource.createQueryRunner !== 'function'
+        ) {
+          continue;
+        }
+
+        let lockRunner: QueryRunner | null = null;
+        let lockAcquired = false;
+
+        try {
+          lockRunner = this.dataSource.createQueryRunner();
+          await lockRunner.connect();
+          const lockResult = await lockRunner.query(
+            `SELECT pg_try_advisory_lock(hashtext($1)) as locked`,
+            [`reconcile_lock_${p.idempotencyKey}`],
+          );
+          lockAcquired = lockResult?.[0]?.locked === true;
+        } catch {
+          // Bất kỳ lỗi nào khi acquire lock đều coi là không có khóa (FIX-23)
+          lockAcquired = false;
         }
 
         if (!lockAcquired) {
-          // Worker khác đang xử lý giao dịch này
+          // Worker khác đang xử lý giao dịch này hoặc không lấy được khóa -> không tiếp tục xử lý
+          if (lockRunner) {
+            try {
+              await lockRunner.release();
+            } catch {
+              // Ignore release error
+            }
+          }
           continue;
         }
 
@@ -898,14 +912,22 @@ export class PaymentsService {
         } catch {
           // Bỏ qua lỗi đơn lẻ để tiếp tục các giao dịch khác
         } finally {
-          if (this.dataSource && this.dataSource.isInitialized) {
+          if (lockRunner) {
             try {
-              await this.dataSource.query(
-                `SELECT pg_advisory_unlock(hashtext($1))`,
-                [`reconcile_lock_${p.idempotencyKey}`],
-              );
+              if (lockAcquired) {
+                await lockRunner.query(
+                  `SELECT pg_advisory_unlock(hashtext($1))`,
+                  [`reconcile_lock_${p.idempotencyKey}`],
+                );
+              }
             } catch {
               // Ignore unlock error
+            } finally {
+              try {
+                await lockRunner.release();
+              } catch {
+                // Ignore release error
+              }
             }
           }
         }

@@ -1326,5 +1326,178 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
       const orderAfter = await orderRepo.findOneByOrFail({ id: order.id });
       expect(orderAfter.status).toBe(orderBefore.status);
     });
+
+    it('Acceptance 16: PostgreSQL Advisory Lock Session Safety với 2 DataSource độc lập và zero lingering lock (FIX-23)', async () => {
+      // 1. Chuẩn bị đơn hàng và payment PENDING
+      const { product, order } = await createTestProductAndOrder(10, 1);
+      const key = crypto.randomUUID();
+
+      const res = await service.processPayment(
+        {
+          orderId: order.id,
+          amount: 40000,
+          method: PaymentMethod.MOMO,
+          idempotencyKey: key,
+          mockOutcome: 'PENDING',
+        },
+        testUser1.id,
+      );
+      expect(res.status).toBe(PaymentStatus.PENDING);
+
+      // Cổng thanh toán chuyển sang SUCCESS
+      await mockGateway.setTransactionStatus(res.payment.merchantReference!, 'SUCCESS');
+
+      // 2. Tạo DataSource thứ 2 hoàn toàn độc lập (riêng biệt connection pool)
+      const dataSource2 = new DataSource({
+        type: 'postgres',
+        host: process.env.POSTGRES_HOST || 'localhost',
+        port: Number(process.env.POSTGRES_PORT || 5432),
+        username: process.env.POSTGRES_USER || 'brewlite',
+        password: process.env.POSTGRES_PASSWORD || 'brewlite_dev_password',
+        database: process.env.POSTGRES_DB || 'brewlite_test',
+        entities: [User, Product, Order, OrderItem, Payment],
+        synchronize: false,
+      });
+      await dataSource2.initialize();
+
+      const worker1 = new PaymentsService(
+        dataSource.getRepository(Payment),
+        dataSource.getRepository(Order),
+        dataSource.getRepository(Product),
+        dataSource,
+        mockGateway,
+      );
+
+      const worker2 = new PaymentsService(
+        dataSource2.getRepository(Payment),
+        dataSource2.getRepository(Order),
+        dataSource2.getRepository(Product),
+        dataSource2,
+        mockGateway,
+      );
+
+      try {
+        // Chạy reconcile đồng thời trên 2 worker thuộc 2 connection pool / session độc lập
+        const [w1Result, w2Result] = await Promise.all([
+          worker1.reconcilePendingPayments(),
+          worker2.reconcilePendingPayments(),
+        ]);
+
+        // Một worker acquire được lock và xử lý; worker kia nhận false và skip an toàn
+        const totalReconciled = w1Result.reconciledCount + w2Result.reconciledCount;
+        expect(totalReconciled).toBeGreaterThanOrEqual(1);
+
+        // Giao dịch cụ thể này được đối soát thành công
+        const paymentAfter = await paymentRepo.findOneByOrFail({ idempotencyKey: key });
+        expect(paymentAfter.status).toBe(PaymentStatus.SUCCESS);
+
+        // Đơn hàng thành PAID và tồn kho chỉ trừ đúng 1 lần
+        const freshOrder = await orderRepo.findOneByOrFail({ id: order.id });
+        expect(freshOrder.status).toBe(OrderStatus.PAID);
+
+        const freshProduct = await productRepo.findOneByOrFail({ id: product.id });
+        expect(freshProduct.stock).toBe(9);
+        expect(freshProduct.version).toBe(2);
+
+        // 3. Xác minh không có bất kỳ advisory lock nào bị rò rỉ sau khi xử lý xong
+        const activeLocks = await dataSource.query(
+          `SELECT count(*) as count FROM pg_locks WHERE locktype = 'advisory'`,
+        );
+        expect(Number(activeLocks[0].count)).toBe(0);
+      } finally {
+        await dataSource2.destroy();
+      }
+    });
+
+    it('Acceptance 17: Kiểm tra trạng thái trung gian hoàn tiền (PENDING, FAILED, SUCCESS) theo hợp đồng BR-REFUND-OCC (FIX-24)', async () => {
+      // 1. Chuẩn bị sản phẩm tồn kho 1 ly, đặt 2 ly để gây lỗi OCC stock depletion
+      const { product, order } = await createTestProductAndOrder(1, 2);
+      const key = crypto.randomUUID();
+      const refundKey = `refund-${key}`;
+      const merchantReference = `BL-REF-${order.id}-${key.replace(/-/g, '').slice(0, 16)}`;
+
+      // Giả lập cổng thanh toán: charge SUCCESS, nhưng refund trả về PENDING ban đầu
+      await mockGateway.charge({
+        merchantReference,
+        amount: 80000,
+        method: PaymentMethod.MOMO,
+      });
+      await mockGateway.setRefundStatus(refundKey, 'PENDING', merchantReference, 80000);
+
+      // Thực hiện thanh toán: OCC thất bại, TX3 commit Payment REFUND_PENDING
+      await expect(
+        service.processPayment(
+          {
+            orderId: order.id,
+            amount: 80000,
+            method: PaymentMethod.MOMO,
+            idempotencyKey: key,
+          },
+          testUser1.id,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      // --- TRẠNG THÁI TRUNG GIAN 1 (Gateway Refund đang PENDING) ---
+      // Payment phải ở REFUND_PENDING kèm refundKey
+      const intermediatePayment = await paymentRepo.findOneByOrFail({ idempotencyKey: key });
+      expect(intermediatePayment.status).toBe(PaymentStatus.REFUND_PENDING);
+      expect(intermediatePayment.refundKey).toBe(refundKey);
+
+      // Đơn hàng TUYỆT ĐỐI CHƯA được chuyển sang CANCELLED khi refund chưa hoàn tất (FIX-24 requirement 2)
+      const intermediateOrder = await orderRepo.findOneByOrFail({ id: order.id });
+      expect(intermediateOrder.status).toBe(OrderStatus.PENDING);
+
+      // Tồn kho không bị trừ sai (vẫn còn 1 ly) (FIX-24 requirement 7)
+      const prodCheck1 = await productRepo.findOneByOrFail({ id: product.id });
+      expect(prodCheck1.stock).toBe(1);
+
+      // Chặn tạo payment mới cho đơn hàng này với key khác khi đang REFUND_PENDING (FIX-24 requirement 3)
+      const otherKey = crypto.randomUUID();
+      await expect(
+        service.processPayment(
+          {
+            orderId: order.id,
+            amount: 80000,
+            method: PaymentMethod.CARD,
+            idempotencyKey: otherKey,
+          },
+          testUser1.id,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      // --- TRẠNG THÁI TRUNG GIAN 2 (Cổng thanh toán tạm thời FAILED / TIMEOUT) ---
+      await mockGateway.setRefundStatus(refundKey, 'FAILED');
+      const reconcileFailedResult = await service.reconcilePayment(key, testUser1.id);
+      expect(reconcileFailedResult.status).toBe(PaymentStatus.REFUND_PENDING);
+
+      // Order vẫn giữ PENDING để cho phép retry
+      const orderAfterFailed = await orderRepo.findOneByOrFail({ id: order.id });
+      expect(orderAfterFailed.status).toBe(OrderStatus.PENDING);
+
+      // --- TRẠNG THÁI HOÀN TẤT (Gateway chuyển sang SUCCESS sau retry/restart) ---
+      // Giả lập cổng thanh toán xác nhận hoàn tiền thành công
+      await mockGateway.setRefundStatus(refundKey, 'SUCCESS');
+
+      // Worker hoặc reconcile thực hiện đối soát lại với cùng refundKey (FIX-24 requirement 6)
+      const worker = new PaymentsRecoveryWorker(service);
+      const recoveryResult = await worker.runRecovery('refund-success-test');
+      expect(recoveryResult.reconciledCount).toBeGreaterThanOrEqual(1);
+
+      // Sau khi Gateway SUCCESS: TX4 cập nhật nguyên tử Payment REFUNDED và Order CANCELLED (FIX-24 requirement 4)
+      const finalPayment = await paymentRepo.findOneByOrFail({ idempotencyKey: key });
+      expect(finalPayment.status).toBe(PaymentStatus.REFUNDED);
+
+      const finalOrder = await orderRepo.findOneByOrFail({ id: order.id });
+      expect(finalOrder.status).toBe(OrderStatus.CANCELLED);
+
+      // Tồn kho vẫn bảo toàn 1 ly, không bị trừ âm hay lệch version (FIX-24 requirement 7)
+      const prodFinal = await productRepo.findOneByOrFail({ id: product.id });
+      expect(prodFinal.stock).toBe(1);
+
+      // Gọi lại lần nữa với cùng key để xác minh không hoàn tiền 2 lần (idempotent duplicate)
+      const dupReconcile = await service.reconcilePayment(key, testUser1.id);
+      expect(dupReconcile.isDuplicate).toBe(true);
+      expect(dupReconcile.status).toBe(PaymentStatus.REFUNDED);
+    });
   });
 });
