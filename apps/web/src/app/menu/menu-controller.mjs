@@ -417,3 +417,10 @@ export function createAuthController() {
     clearSession,
   };
 }
+
+/**
+ * Tạo khóa Idempotency duy nhất cho giao dịch thanh toán (UC-10 / FR-08)
+ */
+export function generatePaymentIdempotencyKey(orderId) {
+  return `idem-${orderId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
