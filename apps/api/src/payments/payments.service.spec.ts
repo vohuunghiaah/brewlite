@@ -13,9 +13,11 @@ import { Payment, PaymentMethod, PaymentStatus } from './entities/payment.entity
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 import { CreatePaymentDto, PickupMethod } from './dto/create-payment.dto';
+import { MockPaymentGateway } from './mock-payment-gateway.service';
 
 describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-10)', () => {
   let service: PaymentsService;
+  let mockGateway: MockPaymentGateway;
   let paymentRepository: Partial<Record<keyof Repository<Payment>, jest.Mock>>;
   let orderRepository: Partial<Record<keyof Repository<Order>, jest.Mock>>;
   let productRepository: Partial<Record<keyof Repository<Product>, jest.Mock>>;
@@ -24,6 +26,21 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
   let currentMockOrder: Order;
   let currentMockProduct: Product;
   let occAffectedRows = 1;
+
+  const validUuid1 = '11111111-1111-4111-8111-111111111111';
+  const validUuid2 = '22222222-2222-4222-8222-222222222222';
+  const validUuid3 = '33333333-3333-4333-8333-333333333333';
+  const validUuid4 = '44444444-4444-4444-8444-444444444444';
+  const validUuid5 = '55555555-5555-4555-8555-555555555555';
+  const validUuid6 = '66666666-6666-4666-8666-666666666666';
+  const validUuid7 = '77777777-7777-4777-8777-777777777777';
+  const validUuid8 = '88888888-8888-4888-8888-888888888888';
+  const validUuid9 = '99999999-9999-4999-8999-999999999999';
+  const validUuid10 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const validUuid11 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const validUuid12 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const validUuid13 = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const validUuid14 = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
   const mockProduct = {
     id: 1,
@@ -126,6 +143,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
+        MockPaymentGateway,
         {
           provide: getRepositoryToken(Payment),
           useValue: paymentRepository,
@@ -146,6 +164,8 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     }).compile();
 
     service = module.get<PaymentsService>(PaymentsService);
+    mockGateway = module.get<MockPaymentGateway>(MockPaymentGateway);
+    mockGateway.clear();
   });
 
   it('1. should process payment successfully and transition order PENDING -> PAID with stock deduction (TX2 Happy Path)', async () => {
@@ -153,7 +173,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-key-001',
+      idempotencyKey: validUuid1,
       pickupMethod: PickupMethod.AT_COUNTER,
     };
 
@@ -163,8 +183,8 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     expect(result.status).toBe(PaymentStatus.SUCCESS);
     expect(result.order.status).toBe(OrderStatus.PAID);
     expect(result.order.orderCode).toBe('#BL-0101');
-    expect(result.payment.idempotencyKey).toBe('idem-key-001');
-    expect(result.payment.transactionId).toMatch(/^TX-SUCCESS-/);
+    expect(result.payment.idempotencyKey).toBe(validUuid1);
+    expect(result.payment.transactionId).toMatch(/^GW-TX-/);
   });
 
   it('2. should return existing payment if same idempotencyKey is used (Idempotency - Alt-5 / Exc-8)', async () => {
@@ -175,8 +195,8 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       amount: '45000.00',
       method: PaymentMethod.VIETQR,
       status: PaymentStatus.SUCCESS,
-      idempotencyKey: 'idem-key-002',
-      transactionId: 'TX-SUCCESS-OLD',
+      idempotencyKey: validUuid2,
+      transactionId: 'GW-TX-SUCCESS-OLD',
       order: { ...currentMockOrder, status: OrderStatus.PAID },
     } as Payment;
 
@@ -186,7 +206,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.VIETQR,
-      idempotencyKey: 'idem-key-002',
+      idempotencyKey: validUuid2,
     };
 
     const result = await service.processPayment(dto, 1);
@@ -204,7 +224,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       userId: 2, // different user
       amount: '45000.00',
       method: PaymentMethod.CARD,
-      idempotencyKey: 'stolen-idem-key',
+      idempotencyKey: validUuid3,
     } as Payment;
 
     paymentRepository.findOne!.mockResolvedValue(existingPayment);
@@ -213,7 +233,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.CARD,
-      idempotencyKey: 'stolen-idem-key',
+      idempotencyKey: validUuid3,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(ForbiddenException);
@@ -226,7 +246,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       userId: 1,
       amount: '45000.00',
       method: PaymentMethod.CARD,
-      idempotencyKey: 'idem-key-mismatch',
+      idempotencyKey: validUuid4,
     } as Payment;
 
     paymentRepository.findOne!.mockResolvedValue(existingPayment);
@@ -235,7 +255,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 102, // Different order!
       amount: 90000,
       method: PaymentMethod.CARD,
-      idempotencyKey: 'idem-key-mismatch',
+      idempotencyKey: validUuid4,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(ConflictException);
@@ -248,7 +268,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 99999,
       amount: 45000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-key-005',
+      idempotencyKey: validUuid5,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(NotFoundException);
@@ -261,7 +281,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-key-006',
+      idempotencyKey: validUuid6,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(ForbiddenException);
@@ -274,7 +294,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-key-007',
+      idempotencyKey: validUuid7,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(BadRequestException);
@@ -285,7 +305,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 10000, // Mismatched amount
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-key-008',
+      idempotencyKey: validUuid8,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(BadRequestException);
@@ -296,7 +316,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.CARD,
-      idempotencyKey: 'idem-key-009',
+      idempotencyKey: validUuid9,
       mockOutcome: 'FAILED',
     };
 
@@ -306,7 +326,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(result.order.status).toBe(OrderStatus.PAYMENT_FAILED);
     expect(result.payment.status).toBe(PaymentStatus.FAILED);
-    expect(result.payment.transactionId).toMatch(/^TX-FAIL-/);
+    expect(result.payment.transactionId).toMatch(/^GW-TX-/);
   });
 
   it('10. should handle mock outcome PENDING: return 202/PENDING state for reconciliation (EX-07 / FIX-04)', async () => {
@@ -314,7 +334,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.VIETQR,
-      idempotencyKey: 'idem-key-pending-01',
+      idempotencyKey: validUuid10,
       mockOutcome: 'PENDING',
     };
 
@@ -333,7 +353,7 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-key-011',
+      idempotencyKey: validUuid11,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(ConflictException);
@@ -347,14 +367,23 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.VIETQR,
-      idempotencyKey: 'idem-key-012',
+      idempotencyKey: validUuid12,
     };
 
     await expect(service.processPayment(dto, 1)).rejects.toThrow(ConflictException);
     expect(currentMockOrder.status).toBe(OrderStatus.CANCELLED);
   });
 
-  it('13. should reconcile pending payment to PAID upon reconciliation request (FIX-04)', async () => {
+  it('13. should reconcile pending payment to PAID when gateway confirmed SUCCESS (FIX-09 & FIX-11)', async () => {
+    const merchantReference = 'BL-REF-101-test-reconcile';
+    // Đăng ký trạng thái SUCCESS tại mock gateway
+    await mockGateway.charge({
+      merchantReference,
+      amount: 45000,
+      method: PaymentMethod.MOMO,
+      mockOutcome: 'SUCCESS',
+    });
+
     const pendingPayment = {
       id: 50,
       orderId: 101,
@@ -362,17 +391,61 @@ describe('PaymentsService - Mock Payment & OCC Concurrency Acceptance Tests (UC-
       amount: '45000.00',
       method: PaymentMethod.MOMO,
       status: PaymentStatus.PENDING,
-      idempotencyKey: 'idem-reconcile-01',
+      idempotencyKey: validUuid13,
+      merchantReference,
       order: currentMockOrder,
     } as Payment;
 
     paymentRepository.findOne!.mockResolvedValue(pendingPayment);
 
-    const result = await service.reconcilePayment('idem-reconcile-01', 1);
+    const result = await service.reconcilePayment(validUuid13, 1);
 
     expect(result.success).toBe(true);
     expect(result.status).toBe(PaymentStatus.SUCCESS);
     expect(result.order.status).toBe(OrderStatus.PAID);
     expect(result.order.orderCode).toBe('#BL-0101');
+  });
+
+  it('14. should reject invalid idempotencyKey format with BadRequestException (FIX-10)', async () => {
+    const dto: CreatePaymentDto = {
+      orderId: 101,
+      amount: 45000,
+      method: PaymentMethod.MOMO,
+      idempotencyKey: 'not-a-valid-uuid-v4',
+    };
+
+    await expect(service.processPayment(dto, 1)).rejects.toThrow(BadRequestException);
+  });
+
+  it('15. should block new payment key when order has active PENDING payment (FIX-11)', async () => {
+    const inFlightPendingPayment = {
+      id: 88,
+      orderId: 101,
+      userId: 1,
+      amount: '45000.00',
+      method: PaymentMethod.CARD,
+      status: PaymentStatus.PENDING,
+      idempotencyKey: validUuid10,
+    } as Payment;
+
+    dataSource.transaction = jest.fn(async (cb: any) => {
+      const manager = {
+        findOne: jest.fn(async (entityClass: any) => {
+          if (entityClass === Order) return currentMockOrder;
+          if (entityClass === Payment) return inFlightPendingPayment;
+          return null;
+        }),
+      };
+      return cb(manager);
+    });
+
+    const dto: CreatePaymentDto = {
+      orderId: 101,
+      amount: 45000,
+      method: PaymentMethod.MOMO,
+      idempotencyKey: validUuid14,
+    };
+
+    await expect(service.processPayment(dto, 1)).rejects.toThrow(ConflictException);
   });
 });

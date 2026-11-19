@@ -34,16 +34,30 @@ export class PaymentsController {
       );
     }
     const key = rawKey.trim();
-    if (key.length > 128) {
-      throw new BadRequestException('Idempotency-Key không được vượt quá 128 ký tự.');
-    }
+    this.paymentsService.validateIdempotencyKeyFormat(key);
     dto.idempotencyKey = key;
 
     return this.paymentsService.processPayment(dto, user.id);
   }
 
   @Post('reconcile/:idempotencyKey')
-  reconcilePayment(
+  reconcilePaymentPost(
+    @Param('idempotencyKey') idempotencyKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.paymentsService.reconcilePayment(idempotencyKey, user.id);
+  }
+
+  @Get('reconcile/:idempotencyKey')
+  reconcilePaymentGet(
+    @Param('idempotencyKey') idempotencyKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.paymentsService.reconcilePayment(idempotencyKey, user.id);
+  }
+
+  @Get('status/:idempotencyKey')
+  getPaymentStatus(
     @Param('idempotencyKey') idempotencyKey: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {

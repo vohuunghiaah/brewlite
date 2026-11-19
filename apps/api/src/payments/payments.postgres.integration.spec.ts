@@ -1,7 +1,9 @@
+import * as crypto from 'crypto';
 import { DataSource, Repository } from 'typeorm';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 
 import { PaymentsService } from './payments.service';
+import { MockPaymentGateway } from './mock-payment-gateway.service';
 import { Payment, PaymentMethod, PaymentStatus } from './entities/payment.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { OrderItem, ProductSize } from '../orders/entities/order-item.entity';
@@ -12,6 +14,7 @@ import { CreatePaymentDto, PickupMethod } from './dto/create-payment.dto';
 describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integration Tests (UC-10 / FR-06 / FR-08 / FR-09)', () => {
   let dataSource: DataSource;
   let service: PaymentsService;
+  let mockGateway: MockPaymentGateway;
   let paymentRepo: Repository<Payment>;
   let orderRepo: Repository<Order>;
   let orderItemRepo: Repository<OrderItem>;
@@ -20,40 +23,24 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
 
   let testUser1: User;
   let testUser2: User;
-  let isPostgresAvailable = false;
 
   beforeAll(async () => {
-    // Nếu trong môi trường CI không có service container PostgreSQL, bỏ qua bài test tích hợp này
-    if (process.env.CI === 'true' && process.env.RUN_PG_TESTS !== 'true') {
-      console.warn(
-        '[NOTICE] CI environment detected without RUN_PG_TESTS=true. Skipping real PostgreSQL integration tests in quality pipeline.',
-      );
-      isPostgresAvailable = false;
-      return;
-    }
+    // FIX-08: Kết nối thực sự tới PostgreSQL; nếu không kết nối được thì FAIL trực tiếp
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: process.env.POSTGRES_HOST || 'localhost',
+      port: Number(process.env.POSTGRES_PORT || 5432),
+      username: process.env.POSTGRES_USER || 'brewlite',
+      password: process.env.POSTGRES_PASSWORD || 'brewlite_dev_password',
+      database: process.env.POSTGRES_DB || 'brewlite_test',
+      entities: [User, Product, Order, OrderItem, Payment],
+      synchronize: false,
+    });
 
-    try {
-      dataSource = new DataSource({
-        type: 'postgres',
-        host: process.env.POSTGRES_HOST || 'localhost',
-        port: Number(process.env.POSTGRES_PORT || 5432),
-        username: process.env.POSTGRES_USER || 'brewlite',
-        password: process.env.POSTGRES_PASSWORD || 'brewlite_dev_password',
-        database: process.env.POSTGRES_DB || 'brewlite',
-        entities: [User, Product, Order, OrderItem, Payment],
-        synchronize: false,
-        connectTimeoutMS: 2000,
-      });
+    await dataSource.initialize();
 
-      await dataSource.initialize();
-      isPostgresAvailable = true;
-    } catch {
-      console.warn(
-        '[NOTICE] Real PostgreSQL container is not reachable on localhost:5432. Skipping real PostgreSQL integration tests in this environment.',
-      );
-      isPostgresAvailable = false;
-      return;
-    }
+    // Đồng bộ cấu trúc schema trên database kiểm thử để sẵn sàng cho các test concurrency
+    await dataSource.synchronize();
 
     paymentRepo = dataSource.getRepository(Payment);
     orderRepo = dataSource.getRepository(Order);
@@ -61,7 +48,8 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
     productRepo = dataSource.getRepository(Product);
     userRepo = dataSource.getRepository(User);
 
-    service = new PaymentsService(paymentRepo, orderRepo, productRepo, dataSource);
+    mockGateway = new MockPaymentGateway();
+    service = new PaymentsService(paymentRepo, orderRepo, productRepo, dataSource, mockGateway);
 
     // Tạo test users cho kiểm thử thực tế
     const email1 = `test-pg-user1-${Date.now()}@brewlite.vn`;
@@ -86,6 +74,10 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
     if (dataSource && dataSource.isInitialized) {
       await dataSource.destroy();
     }
+  });
+
+  beforeEach(() => {
+    mockGateway.clear();
   });
 
   // Helper tạo sản phẩm và đơn hàng thực tế trong PostgreSQL
@@ -129,9 +121,8 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
   }
 
   it('1. PENDING -> PAID, trừ stock đúng một lần trên PostgreSQL thật', async () => {
-    if (!isPostgresAvailable) return;
     const { product, order } = await createTestProductAndOrder(10, 2);
-    const key = `pg-idem-${Date.now()}-1`;
+    const key = crypto.randomUUID();
 
     const dto: CreatePaymentDto = {
       orderId: order.id,
@@ -159,9 +150,8 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
   });
 
   it('2. Hai request cùng key gửi đồng thời: chỉ 1 transaction trừ kho, request còn lại nhận kết quả cũ', async () => {
-    if (!isPostgresAvailable) return;
     const { product, order } = await createTestProductAndOrder(10, 2);
-    const key = `pg-race-same-key-${Date.now()}`;
+    const key = crypto.randomUUID();
 
     const dto: CreatePaymentDto = {
       orderId: order.id,
@@ -190,10 +180,9 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
   });
 
   it('3. Hai request khác key gửi đồng thời cho cùng một order: chỉ 1 request thành công, request còn lại bị chặn (FIX-01)', async () => {
-    if (!isPostgresAvailable) return;
     const { product, order } = await createTestProductAndOrder(10, 1);
-    const key1 = `pg-race-diff-key1-${Date.now()}`;
-    const key2 = `pg-race-diff-key2-${Date.now()}`;
+    const key1 = crypto.randomUUID();
+    const key2 = crypto.randomUUID();
 
     const dto1: CreatePaymentDto = {
       orderId: order.id,
@@ -227,7 +216,6 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
   });
 
   it('4. Hai khách mua sản phẩm cuối cùng (stock = 1): 1 đơn PAID, 1 đơn bồi hoàn hoàn tiền BR-REFUND-OCC', async () => {
-    if (!isPostgresAvailable) return;
     // Sản phẩm chỉ còn 1 ly duy nhất trong kho
     const product = await productRepo.save(
       productRepo.create({
@@ -287,14 +275,14 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
       orderId: order1.id,
       amount: 40000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: `last-cup-u1-${Date.now()}`,
+      idempotencyKey: crypto.randomUUID(),
     };
 
     const dto2: CreatePaymentDto = {
       orderId: order2.id,
       amount: 40000,
       method: PaymentMethod.VIETQR,
-      idempotencyKey: `last-cup-u2-${Date.now()}`,
+      idempotencyKey: crypto.randomUUID(),
     };
 
     const results = await Promise.allSettled([
@@ -324,9 +312,8 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
   });
 
   it('5. FAILED không trừ kho thành phẩm trong PostgreSQL', async () => {
-    if (!isPostgresAvailable) return;
     const { product, order } = await createTestProductAndOrder(15, 2);
-    const key = `pg-fail-${Date.now()}`;
+    const key = crypto.randomUUID();
 
     const dto: CreatePaymentDto = {
       orderId: order.id,
@@ -352,11 +339,10 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
   });
 
   it('6. FAILED -> retry với key mới -> SUCCESS (chuyển PAID và trừ kho)', async () => {
-    if (!isPostgresAvailable) return;
     const { product, order } = await createTestProductAndOrder(20, 2);
 
     // Lần 1: Thanh toán FAILED
-    const failKey = `pg-retry-fail-${Date.now()}`;
+    const failKey = crypto.randomUUID();
     await service.processPayment(
       {
         orderId: order.id,
@@ -369,7 +355,7 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
     );
 
     // Lần 2: Retry với KEY MỚI và phương thức khác (VIETQR) -> SUCCESS
-    const newKey = `pg-retry-success-${Date.now()}`;
+    const newKey = crypto.randomUUID();
     const retryResult = await service.processPayment(
       {
         orderId: order.id,
@@ -395,10 +381,9 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
     expect(payments.some((p) => p.status === PaymentStatus.SUCCESS)).toBe(true);
   });
 
-  it('7. Timeout / PENDING -> đối soát reconcile thành công sang PAID (FIX-04)', async () => {
-    if (!isPostgresAvailable) return;
-    const { order } = await createTestProductAndOrder(10, 1);
-    const key = `pg-timeout-${Date.now()}`;
+  it('7. Timeout / PENDING -> đối soát reconcile thành công sang PAID và trừ tồn kho OCC (FIX-04, FIX-09 & FIX-11)', async () => {
+    const { product, order } = await createTestProductAndOrder(10, 1);
+    const key = crypto.randomUUID();
 
     const dto: CreatePaymentDto = {
       orderId: order.id,
@@ -411,19 +396,39 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
     const res1 = await service.processPayment(dto, testUser1.id);
     expect(res1.status).toBe(PaymentStatus.PENDING);
 
-    // Đơn hàng duy trì PENDING
+    // Đơn hàng duy trì PENDING và CHƯA bị trừ kho trong CSDL
     const freshOrder1 = await orderRepo.findOneByOrFail({ id: order.id });
     expect(freshOrder1.status).toBe(OrderStatus.PENDING);
 
-    // Thực hiện đối soát giao dịch
+    const productBeforeReconcile = await productRepo.findOneByOrFail({ id: product.id });
+    expect(productBeforeReconcile.stock).toBe(10); // Chưa trừ kho
+    expect(productBeforeReconcile.version).toBe(1);
+
+    // Giả lập cổng thanh toán cập nhật trạng thái SUCCESS sau timeout
+    const merchantRef = res1.payment.merchantReference!;
+    mockGateway.setTransactionStatus(merchantRef, 'SUCCESS');
+
+    // Thực hiện đối soát giao dịch (reconciliation)
     const reconcileResult = await service.reconcilePayment(key, testUser1.id);
     expect(reconcileResult.success).toBe(true);
     expect(reconcileResult.status).toBe(PaymentStatus.SUCCESS);
     expect(reconcileResult.order.status).toBe(OrderStatus.PAID);
+
+    // FIX-09: Xác minh trực tiếp trong CSDL PostgreSQL rằng tồn kho đã được trừ và version đã tăng
+    const productAfterReconcile = await productRepo.findOneByOrFail({ id: product.id });
+    expect(productAfterReconcile.stock).toBe(9); // Đã trừ 1 ly: 10 -> 9
+    expect(productAfterReconcile.version).toBe(2); // Version tăng: 1 -> 2
+
+    // Gọi lại reconcile lần 2: phải trả kết quả cũ (idempotency) và KHÔNG trừ kho thêm lần nào
+    const reconcileAgain = await service.reconcilePayment(key, testUser1.id);
+    expect(reconcileAgain.isDuplicate).toBe(true);
+    expect(reconcileAgain.status).toBe(PaymentStatus.SUCCESS);
+
+    const productAfterSecondReconcile = await productRepo.findOneByOrFail({ id: product.id });
+    expect(productAfterSecondReconcile.stock).toBe(9); // Vẫn là 9 ly
   });
 
-  it('8. Gateway SUCCESS nhưng OCC fail -> bồi hoàn hoàn tiền BR-REFUND-OCC', async () => {
-    if (!isPostgresAvailable) return;
+  it('8. Gateway SUCCESS nhưng OCC fail -> bồi hoàn hoàn tiền BR-REFUND-OCC (FIX-12)', async () => {
     // Tạo sản phẩm ban đầu có 1 ly
     const { order } = await createTestProductAndOrder(1, 2); // Đơn đặt 2 ly > tồn kho 1 ly
 
@@ -431,7 +436,7 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
       orderId: order.id,
       amount: 80000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: `pg-occ-comp-${Date.now()}`,
+      idempotencyKey: crypto.randomUUID(),
     };
 
     await expect(service.processPayment(dto, testUser1.id)).rejects.toThrow(ConflictException);
@@ -449,21 +454,19 @@ describe('PaymentsService - Real PostgreSQL Concurrency & Idempotency Integratio
   });
 
   it('9. Owner/IDOR: User 2 không thể thanh toán đơn hàng của User 1', async () => {
-    if (!isPostgresAvailable) return;
     const { order } = await createTestProductAndOrder(10, 1, testUser1);
 
     const dto: CreatePaymentDto = {
       orderId: order.id,
       amount: 40000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: `pg-idor-${Date.now()}`,
+      idempotencyKey: crypto.randomUUID(),
     };
 
     await expect(service.processPayment(dto, testUser2.id)).rejects.toThrow(ForbiddenException);
   });
 
   it('10. Database Schema Safety: Foreign Keys và cấu trúc bảng được bảo toàn', async () => {
-    if (!isPostgresAvailable) return;
     const rawFk = await dataSource.query(`
       SELECT tc.constraint_name, rc.delete_rule
       FROM information_schema.table_constraints AS tc

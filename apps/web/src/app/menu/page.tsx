@@ -179,9 +179,10 @@ export default function MenuPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"MOMO" | "VIETQR" | "CARD">("MOMO");
   const [pickupMethod, setPickupMethod] = useState<"AT_COUNTER" | "AT_TABLE">("AT_COUNTER");
   const [tableNumber, setTableNumber] = useState("");
-  const [testMode, setTestMode] = useState<"SUCCESS" | "FAILED">("SUCCESS");
+  const [testMode, setTestMode] = useState<"SUCCESS" | "FAILED" | "PENDING">("SUCCESS");
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("");
   const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>("");
 
   interface BuzzerTicketData {
@@ -477,7 +478,7 @@ export default function MenuPage() {
     return () => window.removeEventListener("keydown", handleBuzzerKeyDown);
   }, [isBuzzerOpen]);
 
-  // Xử lý thanh toán mô phỏng (Task 5.1.3 & UC-10)
+  // Xử lý thanh toán mô phỏng (Task 5.1.3 & UC-10 & FIX-13)
   async function handleProcessPayment() {
     if (!pendingOrder || paying) return;
     if (!authToken) {
@@ -491,6 +492,7 @@ export default function MenuPage() {
     }
 
     setPaymentError("");
+    setPaymentMessage("");
     setPaying(true);
 
     let key = paymentIdempotencyKey;
@@ -520,12 +522,48 @@ export default function MenuPage() {
 
       const data = await res.json().catch(() => ({}));
 
+      // Xử lý xung đột hoặc bồi hoàn BR-REFUND-OCC (HTTP 409) (FIX-12 & FIX-13)
+      if (res.status === 409) {
+        if (data.status === "REFUNDED") {
+          setPendingOrder((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+          setPaymentError(
+            `Rất tiếc, sản phẩm vừa hết hàng khi bạn đang thanh toán. Giao dịch đã được bồi hoàn hoàn tiền tự động (Mã hoàn: ${
+              data.refundKey || "Đã bồi hoàn"
+            }). Đơn hàng đã được hủy an toàn theo BR-REFUND-OCC.`
+          );
+          setPaymentIdempotencyKey("");
+          return;
+        }
+
+        if (data.status === "REFUND_PENDING") {
+          setPaymentError(
+            `Xung đột tồn kho đồng thời. Tiến trình hoàn tiền đang được xử lý (Mã: ${
+              data.refundKey || "Đang hoàn"
+            }). Vui lòng kiểm tra lại trạng thái sau.`
+          );
+          return;
+        }
+
+        throw new Error(data.message || "Xung đột giao dịch đồng thời.");
+      }
+
       if (!res.ok) {
         const detail = data?.message || `Lỗi thanh toán: HTTP ${res.status}`;
         throw new Error(Array.isArray(detail) ? detail.join(", ") : detail);
       }
 
-      if (!data.success) {
+      // Xử lý trường hợp PENDING / Timeout (EX-07 / FIX-13)
+      if (data.status === "PENDING") {
+        setPaymentMessage(
+          data.message ||
+            "Giao dịch đang chờ phản hồi từ cổng thanh toán. Đơn hàng và giỏ hàng được bảo lưu an toàn. Bạn có thể bấm 'Đối soát' để kiểm tra kết quả."
+        );
+        // Không coi là PAYMENT_FAILED, giữ giỏ hàng, giữ order PENDING và giữ idempotency key
+        return;
+      }
+
+      // Xử lý trường hợp FAILED xác nhận (EX-06 / FIX-13)
+      if (data.status === "FAILED" || !data.success) {
         setPendingOrder((prev) => (prev ? { ...prev, status: "PAYMENT_FAILED" } : null));
         setPaymentError(
           data.message || "Thanh toán thất bại: Số dư tài khoản không đủ hoặc thẻ bị từ chối."
@@ -566,7 +604,78 @@ export default function MenuPage() {
       setPaymentError(
         err instanceof Error ? err.message : "Đã xảy ra sự cố trong quá trình thanh toán."
       );
-      // Giữ nguyên paymentIdempotencyKey khi timeout / mạng chập chờn để retry idempotent (FIX-03)
+      // Giữ nguyên paymentIdempotencyKey khi timeout / mạng chập chờn để retry idempotent (FIX-03 & FIX-13)
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  // Đối soát giao dịch PENDING (FIX-09, FIX-11 & FIX-13)
+  async function handleReconcilePayment() {
+    if (!paymentIdempotencyKey || !authToken || paying) return;
+    setPaymentError("");
+    setPaymentMessage("");
+    setPaying(true);
+
+    try {
+      const res = await fetch(`${API_URL}/payments/reconcile/${paymentIdempotencyKey}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 409 && data.status === "REFUNDED") {
+        setPendingOrder((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+        setPaymentError(
+          `Giao dịch đã được bồi hoàn hoàn tiền do hết hàng (Mã hoàn: ${data.refundKey}). Đơn hàng đã được hủy.`
+        );
+        setPaymentIdempotencyKey("");
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Đối soát chưa thành công.");
+      }
+
+      if (data.status === "PENDING") {
+        setPaymentMessage(
+          data.message || "Giao dịch vẫn đang chờ xử lý từ cổng thanh toán. Vui lòng thử lại sau ít phút."
+        );
+        return;
+      }
+
+      if (data.status === "FAILED") {
+        setPendingOrder((prev) => (prev ? { ...prev, status: "PAYMENT_FAILED" } : null));
+        setPaymentError(data.message || "Thanh toán thất bại sau đối soát.");
+        setPaymentIdempotencyKey("");
+        return;
+      }
+
+      if (data.status === "SUCCESS") {
+        const buzzerCode = data.order?.orderCode || data.payment?.buzzerCode;
+        setBuzzerTicket({
+          orderId: pendingOrder!.id,
+          orderCode: buzzerCode,
+          status: "PAID",
+          pickupMethod,
+          tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
+          totalAmount: totalPrice,
+          items: [...cartItems],
+        });
+        setCartItems([]);
+        setIsBuzzerOpen(true);
+        setIsPaymentOpen(false);
+        setPendingOrder({ id: pendingOrder!.id, status: "PAID" });
+        setPaymentIdempotencyKey("");
+        setOrderMessage(
+          `Đối soát thành công đơn hàng #${pendingOrder!.id}! Mã chuông: ${buzzerCode}. Trạng thái: PAID.`
+        );
+      }
+    } catch (err: unknown) {
+      setPaymentError(err instanceof Error ? err.message : "Lỗi khi đối soát giao dịch.");
     } finally {
       setPaying(false);
     }
@@ -2080,8 +2189,34 @@ export default function MenuPage() {
                   >
                     ✕ Giả lập Thất bại (EX-06)
                   </button>
+                  <button
+                    type="button"
+                    className={`${ui.testModeOption} ${testMode === "PENDING" ? ui.testModeOptionFailed : ""}`}
+                    onClick={() => setTestMode("PENDING")}
+                  >
+                    ⏱️ Chờ duyệt (EX-07)
+                  </button>
                 </div>
               </div>
+
+              {paymentMessage && (
+                <div
+                  role="status"
+                  className={ui.authSuccess}
+                  style={{
+                    marginTop: "12px",
+                    background: "#fef3c7",
+                    color: "#92400e",
+                    border: "1px solid #fde68a",
+                    fontSize: "0.875rem",
+                    lineHeight: "1.4",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                  }}
+                >
+                  ⏳ {paymentMessage}
+                </div>
+              )}
 
               {paymentError && (
                 <div role="alert" className={ui.authError} style={{ marginTop: "12px" }}>
@@ -2097,6 +2232,22 @@ export default function MenuPage() {
               >
                 {paying ? "Đang xử lý giao dịch..." : `💳 Xác nhận thanh toán • ${formatPrice(totalPrice)}`}
               </button>
+
+              {paymentIdempotencyKey && pendingOrder?.status === "PENDING" && (
+                <button
+                  type="button"
+                  disabled={paying}
+                  onClick={handleReconcilePayment}
+                  className={ui.paySubmitBtn}
+                  style={{
+                    marginTop: "8px",
+                    background: "#f59e0b",
+                    borderColor: "#d97706",
+                  }}
+                >
+                  🔄 Đối soát / Kiểm tra kết quả
+                </button>
+              )}
             </div>
           </div>
         </div>

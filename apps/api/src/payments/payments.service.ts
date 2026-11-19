@@ -15,6 +15,7 @@ import { assertOrderTransition } from '../orders/state-machine/order-state-machi
 import { Product } from '../products/entities/product.entity';
 import { CreatePaymentDto, PickupMethod } from './dto/create-payment.dto';
 import { Payment, PaymentStatus } from './entities/payment.entity';
+import { MockPaymentGateway } from './mock-payment-gateway.service';
 
 export class OccCompensationNeededException extends Error {
   constructor(message: string) {
@@ -32,6 +33,9 @@ export interface PaymentProcessResult {
   order: Order;
 }
 
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -42,13 +46,56 @@ export class PaymentsService {
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
     private readonly dataSource: DataSource,
+    private readonly mockGateway: MockPaymentGateway,
   ) {}
+
+  public validateIdempotencyKeyFormat(key: string): void {
+    if (!key || typeof key !== 'string' || !UUID_V4_REGEX.test(key.trim())) {
+      throw new BadRequestException(
+        'Idempotency-Key phải có định dạng chuẩn UUID v4 (RFC 4122).',
+      );
+    }
+  }
 
   private computePayloadHash(userId: number, dto: CreatePaymentDto): string {
     const normalized = `${userId}:${dto.orderId}:${Number(dto.amount).toFixed(2)}:${dto.method}`;
     return crypto.createHash('sha256').update(normalized).digest('hex');
   }
 
+  /**
+   * Xác minh tính hợp lệ và toàn vẹn của giao dịch cũ theo FR-08 (FIX-10)
+   */
+  private validateIdempotentMatch(
+    existingPayment: Payment,
+    userId: number,
+    dto: CreatePaymentDto,
+    payloadHash: string,
+  ): void {
+    // 1. Kiểm tra IDOR: không tiết lộ dữ liệu của tài khoản khác
+    if (existingPayment.userId !== userId) {
+      throw new ForbiddenException(
+        'Khóa idempotency đã được sử dụng bởi tài khoản khác.',
+      );
+    }
+
+    // 2. Đối chiếu toàn bộ trường định danh nghiệp vụ
+    const isSameOrder = existingPayment.orderId === dto.orderId;
+    const isSameAmount =
+      Math.abs(Number(existingPayment.amount) - dto.amount) <= 0.01;
+    const isSameMethod = existingPayment.method === dto.method;
+    const isSameHash =
+      !existingPayment.payloadHash || existingPayment.payloadHash === payloadHash;
+
+    if (!isSameOrder || !isSameAmount || !isSameMethod || !isSameHash) {
+      throw new ConflictException(
+        'Idempotency key đã được sử dụng cho một giao dịch khác với thông tin khác nhau.',
+      );
+    }
+  }
+
+  /**
+   * Khởi tạo và xử lý giao dịch thanh toán
+   */
   async processPayment(
     dto: CreatePaymentDto,
     userId: number,
@@ -57,34 +104,18 @@ export class PaymentsService {
     if (!idempotencyKey) {
       throw new BadRequestException('Idempotency-Key là bắt buộc.');
     }
+    this.validateIdempotencyKeyFormat(idempotencyKey);
 
     const payloadHash = this.computePayloadHash(userId, dto);
 
-    // 1. Kiểm tra Idempotency trước transaction (FR-08 & EX-08)
+    // 1. Kiểm tra Idempotency trước transaction (FR-08 & EX-08 & FIX-10)
     const existingPayment = await this.paymentRepository.findOne({
       where: { idempotencyKey },
       relations: { order: true },
     });
 
     if (existingPayment) {
-      // Bảo vệ IDOR: không tiết lộ dữ liệu của tài khoản khác
-      if (existingPayment.userId !== userId) {
-        throw new ForbiddenException(
-          'Khóa idempotency đã được sử dụng bởi tài khoản khác.',
-        );
-      }
-
-      // Đối chiếu toàn bộ trường định danh nghiệp vụ
-      const isSameOrder = existingPayment.orderId === dto.orderId;
-      const isSameAmount =
-        Math.abs(Number(existingPayment.amount) - dto.amount) <= 0.01;
-      const isSameMethod = existingPayment.method === dto.method;
-
-      if (!isSameOrder || !isSameAmount || !isSameMethod) {
-        throw new ConflictException(
-          'Idempotency key đã được sử dụng cho một giao dịch khác với thông tin khác nhau.',
-        );
-      }
+      this.validateIdempotentMatch(existingPayment, userId, dto, payloadHash);
 
       return {
         isDuplicate: true,
@@ -93,16 +124,21 @@ export class PaymentsService {
         message:
           existingPayment.status === PaymentStatus.SUCCESS
             ? 'Giao dịch đã được ghi nhận thành công trước đó.'
-            : `Giao dịch trước đó đã kết thúc với trạng thái ${existingPayment.status}.`,
+            : existingPayment.status === PaymentStatus.PENDING
+              ? 'Giao dịch đang chờ xác thực từ cổng thanh toán.'
+              : `Giao dịch trước đó đã kết thúc với trạng thái ${existingPayment.status}.`,
         payment: existingPayment,
         order: existingPayment.order,
       };
     }
 
-    // 2. Thực thi giao dịch nguyên tử TX2 với khóa dòng bi quan (Pessimistic Lock) chống race condition (FIX-01)
+    // Sinh merchantReference ổn định trước khi gọi gateway (FIX-12)
+    const merchantReference = `BL-REF-${dto.orderId}-${idempotencyKey.replace(/-/g, '').slice(0, 16)}`;
+
+    // 2. Thực thi giao dịch nguyên tử TX2 với khóa dòng bi quan (Pessimistic Lock) (FIX-01)
     try {
       return await this.dataSource.transaction(async (manager: EntityManager) => {
-        // Độc quyền khóa dòng Order bằng pessimistic_write (chỉ lock bảng orders, tránh outer join lock trên Postgres)
+        // Độc quyền khóa dòng Order bằng pessimistic_write (chỉ lock bảng orders)
         const order = await manager.findOne(Order, {
           where: { id: dto.orderId },
           lock: { mode: 'pessimistic_write' },
@@ -112,15 +148,18 @@ export class PaymentsService {
           throw new NotFoundException(`Đơn hàng #${dto.orderId} không tồn tại.`);
         }
 
-        // Kiểm tra xem đơn hàng này đã được ghi nhận thanh toán bởi chính khóa idempotencyKey này chưa (chống race condition cùng key)
+        // Kiểm tra IDOR quyền sở hữu đơn hàng
+        if (order.userId !== userId) {
+          throw new ForbiddenException('Bạn không có quyền thanh toán cho đơn hàng này.');
+        }
+
+        // Kiểm tra in-lock existing payment cho chính idempotencyKey này
         const inLockExistingPayment = await manager.findOne(Payment, {
           where: { idempotencyKey },
           relations: { order: true },
         });
         if (inLockExistingPayment) {
-          if (inLockExistingPayment.userId !== userId) {
-            throw new ForbiddenException('Khóa idempotency đã được sử dụng bởi tài khoản khác.');
-          }
+          this.validateIdempotentMatch(inLockExistingPayment, userId, dto, payloadHash);
           return {
             isDuplicate: true,
             success: inLockExistingPayment.status === PaymentStatus.SUCCESS,
@@ -131,24 +170,24 @@ export class PaymentsService {
           };
         }
 
-        const items = await manager.find(OrderItem, {
-          where: { order: { id: order.id } },
-          relations: { product: true },
+        // Kiểm tra xem đơn hàng này có đang trong giao dịch PENDING nào khác không (FIX-11)
+        const pendingPayment = await manager.findOne(Payment, {
+          where: { orderId: order.id, status: PaymentStatus.PENDING },
         });
-        order.items = items;
-
-        if (order.userId !== userId) {
-          throw new ForbiddenException('Bạn không có quyền thanh toán cho đơn hàng này.');
+        if (pendingPayment && pendingPayment.idempotencyKey !== idempotencyKey) {
+          throw new ConflictException(
+            'Đơn hàng đang có một giao dịch thanh toán đang chờ xử lý (PENDING). Vui lòng đối soát hoặc chờ kết quả trước khi thử lại.',
+          );
         }
 
         // Kiểm tra máy trạng thái đơn hàng (FR-07)
         if (order.status === OrderStatus.PAID) {
-          // Kiểm tra xem đơn này đã được thanh toán bởi chính idempotencyKey này chưa
           const paidPayment = await manager.findOne(Payment, {
             where: { orderId: order.id, idempotencyKey },
             relations: { order: true },
           });
           if (paidPayment) {
+            this.validateIdempotentMatch(paidPayment, userId, dto, payloadHash);
             return {
               isDuplicate: true,
               success: true,
@@ -179,7 +218,7 @@ export class PaymentsService {
           );
         }
 
-        // Kiểm tra đã có payment SUCCESS cho đơn hàng này chưa (chống 2 request khác khóa cùng thành công)
+        // Kiểm tra nếu đã có payment SUCCESS cho đơn hàng này
         const existingSuccessPayment = await manager.findOne(Payment, {
           where: { orderId: order.id, status: PaymentStatus.SUCCESS },
         });
@@ -189,7 +228,7 @@ export class PaymentsService {
           );
         }
 
-        // Kiểm tra khớp số tiền (EX-04)
+        // Kiểm tra khớp số tiền
         if (Math.abs(Number(order.totalAmount) - dto.amount) > 0.01) {
           throw new BadRequestException(
             `Số tiền thanh toán (${dto.amount}) không khớp với tổng tiền đơn hàng (${order.totalAmount}).`,
@@ -199,7 +238,9 @@ export class PaymentsService {
         // Cập nhật và kiểm tra hình thức nhận hàng (FIX-05)
         if (dto.pickupMethod === PickupMethod.AT_TABLE) {
           if (!dto.tableNumber || !dto.tableNumber.trim()) {
-            throw new BadRequestException('Vui lòng nhập số bàn hợp lệ khi chọn hình thức nhận tại bàn.');
+            throw new BadRequestException(
+              'Vui lòng nhập số bàn hợp lệ khi chọn hình thức nhận tại bàn.',
+            );
           }
           order.pickupMethod = PickupMethod.AT_TABLE;
           order.tableNumber = dto.tableNumber.trim();
@@ -208,134 +249,83 @@ export class PaymentsService {
           order.tableNumber = null;
         }
 
-        // 3. Xử lý trường hợp Giả lập Thất bại từ Developer Test Mode (EX-06 / FIX-03)
-        if (dto.mockOutcome === 'FAILED') {
+        // Lưu payment attempt PENDING bền vững trước khi gọi mock gateway (FIX-12)
+        const paymentAttempt = manager.create(Payment, {
+          orderId: order.id,
+          userId,
+          amount: Number(dto.amount).toFixed(2),
+          method: dto.method,
+          status: PaymentStatus.PENDING,
+          idempotencyKey,
+          transactionId: null,
+          merchantReference,
+          buzzerCode: null,
+          refundKey: null,
+          payloadHash,
+        });
+        const savedAttempt = await manager.save(Payment, paymentAttempt);
+
+        // Gọi Mock Payment Gateway (FIX-12)
+        const gwResult = await this.mockGateway.charge({
+          merchantReference,
+          amount: dto.amount,
+          method: dto.method,
+          mockOutcome: dto.mockOutcome,
+        });
+
+        // 3. Xử lý khi Gateway FAILED (EX-06 / FIX-03)
+        if (gwResult.status === 'FAILED') {
           assertOrderTransition(order.status, OrderStatus.PAYMENT_FAILED, order.id);
           order.status = OrderStatus.PAYMENT_FAILED;
           const updatedOrder = await manager.save(Order, order);
 
-          const failedPayment = manager.create(Payment, {
-            orderId: order.id,
-            userId,
-            amount: Number(dto.amount).toFixed(2),
-            method: dto.method,
-            status: PaymentStatus.FAILED,
-            idempotencyKey,
-            transactionId: `TX-FAIL-${Date.now()}`,
-            merchantReference: `REF-${order.id}-${Date.now()}`,
-            buzzerCode: null,
-            payloadHash,
-          });
-          const savedPayment = await manager.save(Payment, failedPayment);
+          savedAttempt.status = PaymentStatus.FAILED;
+          savedAttempt.transactionId = gwResult.transactionId;
+          const savedFailedPayment = await manager.save(Payment, savedAttempt);
 
           return {
             success: false,
             status: PaymentStatus.FAILED,
             message:
-              'Thanh toán thất bại: Số dư tài khoản không đủ hoặc thẻ bị từ chối bởi nhà cung cấp.',
-            payment: savedPayment,
+              gwResult.reason ||
+              'Thanh toán thất bại: Số dư tài khoản không đủ hoặc thẻ bị từ chối.',
+            payment: savedFailedPayment,
             order: updatedOrder,
           };
         }
 
-        // 4. Xử lý trường hợp Timeout / Đang xử lý (EX-07 / FIX-04)
-        if (dto.mockOutcome === 'PENDING') {
-          const pendingPayment = manager.create(Payment, {
-            orderId: order.id,
-            userId,
-            amount: Number(dto.amount).toFixed(2),
-            method: dto.method,
-            status: PaymentStatus.PENDING,
-            idempotencyKey,
-            transactionId: `TX-PENDING-${Date.now()}`,
-            merchantReference: `REF-${order.id}-${Date.now()}`,
-            buzzerCode: null,
-            payloadHash,
-          });
-          const savedPayment = await manager.save(Payment, pendingPayment);
+        // 4. Xử lý khi Gateway PENDING / Timeout (EX-07 / FIX-11)
+        if (gwResult.status === 'PENDING') {
+          savedAttempt.status = PaymentStatus.PENDING;
+          savedAttempt.transactionId = gwResult.transactionId;
+          const savedPendingPayment = await manager.save(Payment, savedAttempt);
 
           return {
             success: false,
             status: PaymentStatus.PENDING,
             message:
               'Giao dịch đang chờ phản hồi từ cổng thanh toán. Vui lòng đối soát hoặc kiểm tra lại sau.',
-            payment: savedPayment,
+            payment: savedPendingPayment,
             order,
           };
         }
 
-        // 5. Kiểm tra tồn kho & trừ kho Khóa lạc quan OCC (FR-09, EX-09, BR-REFUND-OCC)
-        for (const item of order.items) {
-          if (!item.productId) continue;
-
-          const product = await manager.findOne(Product, {
-            where: { id: item.productId },
-          });
-
-          if (!product || !product.isAvailable || product.stock < item.quantity) {
-            // Hết hàng đồng thời: ném exception để rollback TX2 và kích hoạt TX3 bồi hoàn
-            throw new OccCompensationNeededException(
-              `Sản phẩm '${product?.name ?? item.productName}' hiện không đủ số lượng tồn kho (còn ${
-                product?.stock ?? 0
-              } ly). Đã kích hoạt hoàn tiền bồi hoàn.`,
-            );
-          }
-
-          // Cập nhật với điều kiện OCC version
-          const updateResult = await manager
-            .createQueryBuilder()
-            .update(Product)
-            .set({
-              stock: () => `stock - ${item.quantity}`,
-              version: () => `version + 1`,
-            })
-            .where('id = :id AND version = :version AND stock >= :qty', {
-              id: item.productId,
-              version: product.version,
-              qty: item.quantity,
-            })
-            .execute();
-
-          if (updateResult.affected === 0) {
-            // Xung đột phiên bản OCC: ném exception để rollback TX2 và kích hoạt TX3 bồi hoàn
-            throw new OccCompensationNeededException(
-              `Xung đột tồn kho đồng thời đối với sản phẩm '${product.name}'. Giao dịch đã được bồi hoàn tự động.`,
-            );
-          }
-        }
-
-        // 6. Hoàn tất thanh toán thành công: Chuyển Order sang PAID và cấp Buzzer Code duy nhất (FIX-07)
-        assertOrderTransition(order.status, OrderStatus.PAID, order.id);
-        const buzzerCode = `#BL-${order.id.toString().padStart(4, '0')}`;
-        order.status = OrderStatus.PAID;
-        order.orderCode = buzzerCode;
-        const paidOrder = await manager.save(Order, order);
-
-        const payment = manager.create(Payment, {
-          orderId: order.id,
-          userId,
-          amount: Number(dto.amount).toFixed(2),
-          method: dto.method,
-          status: PaymentStatus.SUCCESS,
-          idempotencyKey,
-          transactionId: `TX-SUCCESS-${Date.now()}`,
-          merchantReference: `REF-${order.id}-${Date.now()}`,
-          buzzerCode,
-          payloadHash,
+        // 5. Gateway SUCCESS: Thực hiện trừ kho OCC và finalize (TX2) (FIX-09)
+        const items = await manager.find(OrderItem, {
+          where: { order: { id: order.id } },
+          relations: { product: true },
         });
-        const savedPayment = await manager.save(Payment, payment);
+        order.items = items;
 
-        return {
-          success: true,
-          status: PaymentStatus.SUCCESS,
-          message: 'Thanh toán thành công.',
-          payment: savedPayment,
-          order: paidOrder,
-        };
+        return await this.finalizeSuccessfulPaymentWithOcc(
+          manager,
+          order,
+          savedAttempt,
+          gwResult.transactionId,
+        );
       });
     } catch (err: unknown) {
-      // Khi gặp xung đột tồn kho OCC: TX2 đã được rollback an toàn (không trừ kho)
-      // Thực hiện giao dịch độc lập TX3 (Compensation Transaction) theo BR-REFUND-OCC
+      // Khi gặp xung đột tồn kho OCC: TX2 đã rollback, thực thi TX3 Compensation (FIX-12 / BR-REFUND-OCC)
       if (err instanceof OccCompensationNeededException) {
         const compensationResult = await this.executeTx3Compensation(
           dto.orderId,
@@ -343,25 +333,27 @@ export class PaymentsService {
           dto,
           idempotencyKey,
           payloadHash,
+          merchantReference,
         );
 
         throw new ConflictException({
           statusCode: 409,
           message: err.message,
-          status: PaymentStatus.REFUNDED,
+          status: compensationResult.payment.status,
           refundKey: compensationResult.payment.refundKey,
           payment: compensationResult.payment,
           order: compensationResult.order,
         });
       }
 
-      // Bắt lỗi Unique Constraint Violation (PostgreSQL 23505) khi có 2 request cùng khóa chạy song song
+      // Xử lý race condition Unique Constraint (PostgreSQL 23505) (FIX-10)
       if ((err as { code?: string })?.code === '23505') {
         const racePayment = await this.paymentRepository.findOne({
           where: { idempotencyKey },
           relations: { order: true },
         });
         if (racePayment) {
+          this.validateIdempotentMatch(racePayment, userId, dto, payloadHash);
           return {
             isDuplicate: true,
             success: racePayment.status === PaymentStatus.SUCCESS,
@@ -377,8 +369,72 @@ export class PaymentsService {
   }
 
   /**
-   * Thực hiện giao dịch độc lập TX3 theo quy trình BR-REFUND-OCC:
-   * Chuyển Order sang CANCELLED và ghi nhận Payment REFUNDED với refundKey cố định.
+   * Cơ chế chung hoàn tất thanh toán và trừ kho OCC cho cả luồng chính và reconciliation (FIX-09)
+   */
+  private async finalizeSuccessfulPaymentWithOcc(
+    manager: EntityManager,
+    order: Order,
+    payment: Payment,
+    transactionId: string,
+  ): Promise<PaymentProcessResult> {
+    for (const item of order.items) {
+      if (!item.productId) continue;
+
+      const product = await manager.findOne(Product, {
+        where: { id: item.productId },
+      });
+
+      if (!product || !product.isAvailable || product.stock < item.quantity) {
+        throw new OccCompensationNeededException(
+          `Sản phẩm '${product?.name ?? item.productName}' hiện không đủ số lượng tồn kho (còn ${
+            product?.stock ?? 0
+          } ly). Đã kích hoạt hoàn tiền bồi hoàn.`,
+        );
+      }
+
+      const updateResult = await manager
+        .createQueryBuilder()
+        .update(Product)
+        .set({
+          stock: () => `stock - ${item.quantity}`,
+          version: () => `version + 1`,
+        })
+        .where('id = :id AND version = :version AND stock >= :qty', {
+          id: item.productId,
+          version: product.version,
+          qty: item.quantity,
+        })
+        .execute();
+
+      if (updateResult.affected === 0) {
+        throw new OccCompensationNeededException(
+          `Xung đột tồn kho đồng thời đối với sản phẩm '${product.name}'. Giao dịch đã được bồi hoàn tự động.`,
+        );
+      }
+    }
+
+    assertOrderTransition(order.status, OrderStatus.PAID, order.id);
+    const buzzerCode = `#BL-${order.id.toString().padStart(4, '0')}`;
+    order.status = OrderStatus.PAID;
+    order.orderCode = buzzerCode;
+    const paidOrder = await manager.save(Order, order);
+
+    payment.status = PaymentStatus.SUCCESS;
+    payment.transactionId = transactionId;
+    payment.buzzerCode = buzzerCode;
+    const savedPayment = await manager.save(Payment, payment);
+
+    return {
+      success: true,
+      status: PaymentStatus.SUCCESS,
+      message: 'Thanh toán thành công.',
+      payment: savedPayment,
+      order: paidOrder,
+    };
+  }
+
+  /**
+   * Thực hiện giao dịch độc lập TX3 bồi hoàn BR-REFUND-OCC qua Mock Gateway (FIX-12)
    */
   private async executeTx3Compensation(
     orderId: number,
@@ -386,7 +442,10 @@ export class PaymentsService {
     dto: CreatePaymentDto,
     idempotencyKey: string,
     payloadHash: string,
+    merchantReference: string,
   ): Promise<{ payment: Payment; order: Order }> {
+    const refundKey = `refund-${idempotencyKey}`;
+
     return await this.dataSource.transaction(async (tx3Manager: EntityManager) => {
       const order = await tx3Manager.findOne(Order, {
         where: { id: orderId },
@@ -399,35 +458,52 @@ export class PaymentsService {
         cancelledOrder = await tx3Manager.save(Order, order);
       }
 
+      // 1. Ghi nhận Payment REFUND_PENDING
       const refundPayment = tx3Manager.create(Payment, {
         orderId,
         userId,
         amount: Number(dto.amount).toFixed(2),
         method: dto.method,
-        status: PaymentStatus.REFUNDED,
+        status: PaymentStatus.REFUND_PENDING,
         idempotencyKey,
         transactionId: `TX-COMPENSATED-${Date.now()}`,
-        merchantReference: `REF-${orderId}-${Date.now()}`,
+        merchantReference,
         buzzerCode: null,
-        refundKey: `refund-${idempotencyKey}`,
+        refundKey,
         payloadHash,
       });
-      const savedRefund = await tx3Manager.save(Payment, refundPayment);
 
+      // 2. Thực hiện mock refund qua gateway (FIX-12)
+      const refundResult = await this.mockGateway.refund({
+        merchantReference,
+        refundKey,
+        amount: dto.amount,
+      });
+
+      if (refundResult.status === 'SUCCESS') {
+        refundPayment.status = PaymentStatus.REFUNDED;
+        refundPayment.transactionId = refundResult.refundTransactionId;
+      } else {
+        refundPayment.status = PaymentStatus.REFUND_PENDING;
+      }
+
+      const savedRefund = await tx3Manager.save(Payment, refundPayment);
       return { payment: savedRefund, order: cancelledOrder! };
     });
   }
 
   /**
-   * Đối soát giao dịch PENDING / TIMEOUT (EX-07 / FIX-04)
+   * Đối soát giao dịch PENDING / TIMEOUT với kiểm tra OCC và gateway thực (FIX-09 & FIX-11)
    */
   async reconcilePayment(
     idempotencyKey: string,
     userId: number,
   ): Promise<PaymentProcessResult> {
+    this.validateIdempotencyKeyFormat(idempotencyKey);
+
     const payment = await this.paymentRepository.findOne({
       where: { idempotencyKey },
-      relations: { order: { items: { product: true } } },
+      relations: { order: true },
     });
 
     if (!payment) {
@@ -438,52 +514,179 @@ export class PaymentsService {
       throw new ForbiddenException('Bạn không có quyền truy cập giao dịch này.');
     }
 
-    if (payment.status !== PaymentStatus.PENDING) {
+    // Nếu đã hoàn tất SUCCESS, FAILED hoặc REFUNDED -> trả kết quả đã lưu
+    if (payment.status === PaymentStatus.SUCCESS) {
       return {
         isDuplicate: true,
-        success: payment.status === PaymentStatus.SUCCESS,
-        status: payment.status,
-        message: `Giao dịch đã được xử lý trước đó với trạng thái ${payment.status}.`,
+        success: true,
+        status: PaymentStatus.SUCCESS,
+        message: 'Giao dịch đã được ghi nhận thành công trước đó.',
         payment,
         order: payment.order,
       };
     }
 
-    return await this.dataSource.transaction(async (manager) => {
-      const order = await manager.findOne(Order, {
-        where: { id: payment.orderId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!order) {
-        throw new NotFoundException(`Đơn hàng #${payment.orderId} không tồn tại.`);
-      }
-
-      const items = await manager.find(OrderItem, {
-        where: { order: { id: order.id } },
-        relations: { product: true },
-      });
-      order.items = items;
-
-      assertOrderTransition(order.status, OrderStatus.PAID, order.id);
-      const buzzerCode = `#BL-${order.id.toString().padStart(4, '0')}`;
-      order.status = OrderStatus.PAID;
-      order.orderCode = buzzerCode;
-      const paidOrder = await manager.save(Order, order);
-
-      payment.status = PaymentStatus.SUCCESS;
-      payment.buzzerCode = buzzerCode;
-      payment.transactionId = `TX-RECONCILED-${Date.now()}`;
-      const savedPayment = await manager.save(Payment, payment);
-
+    if (payment.status === PaymentStatus.FAILED) {
       return {
-        success: true,
-        status: PaymentStatus.SUCCESS,
-        message: 'Đối soát thành công: Giao dịch đã được hoàn tất sang PAID.',
-        payment: savedPayment,
-        order: paidOrder,
+        isDuplicate: true,
+        success: false,
+        status: PaymentStatus.FAILED,
+        message: 'Giao dịch đã thất bại trước đó.',
+        payment,
+        order: payment.order,
       };
-    });
+    }
+
+    if (payment.status === PaymentStatus.REFUNDED) {
+      return {
+        isDuplicate: true,
+        success: false,
+        status: PaymentStatus.REFUNDED,
+        message: 'Giao dịch đã được bồi hoàn hoàn tiền trước đó.',
+        payment,
+        order: payment.order,
+      };
+    }
+
+    if (payment.status === PaymentStatus.REFUND_PENDING) {
+      // Thử hoàn tất thao tác refund đang dở dang tại gateway
+      const refundResult = await this.mockGateway.refund({
+        merchantReference: payment.merchantReference!,
+        refundKey: payment.refundKey!,
+        amount: Number(payment.amount),
+      });
+      if (refundResult.status === 'SUCCESS') {
+        payment.status = PaymentStatus.REFUNDED;
+        payment.transactionId = refundResult.refundTransactionId;
+        const updated = await this.paymentRepository.save(payment);
+        return {
+          isDuplicate: true,
+          success: false,
+          status: PaymentStatus.REFUNDED,
+          message: 'Bồi hoàn hoàn tiền đã được hoàn tất thành công.',
+          payment: updated,
+          order: payment.order,
+        };
+      }
+      return {
+        isDuplicate: true,
+        success: false,
+        status: PaymentStatus.REFUND_PENDING,
+        message: 'Tiến trình hoàn tiền vẫn đang được xử lý tại cổng thanh toán.',
+        payment,
+        order: payment.order,
+      };
+    }
+
+    // Tra cứu trạng thái thực tế từ Mock Gateway (FIX-11)
+    const gwResult = await this.mockGateway.queryTransaction(
+      payment.merchantReference ?? '',
+    );
+
+    if (!gwResult || gwResult.status === 'PENDING') {
+      return {
+        isDuplicate: true,
+        success: false,
+        status: PaymentStatus.PENDING,
+        message:
+          'Giao dịch vẫn đang chờ xử lý từ cổng thanh toán. Vui lòng đối soát lại sau.',
+        payment,
+        order: payment.order,
+      };
+    }
+
+    if (gwResult.status === 'FAILED') {
+      return await this.dataSource.transaction(async (manager) => {
+        const order = await manager.findOne(Order, {
+          where: { id: payment.orderId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (order && order.status !== OrderStatus.PAYMENT_FAILED) {
+          order.status = OrderStatus.PAYMENT_FAILED;
+          await manager.save(Order, order);
+        }
+        payment.status = PaymentStatus.FAILED;
+        payment.transactionId = gwResult.transactionId;
+        const saved = await manager.save(Payment, payment);
+
+        return {
+          success: false,
+          status: PaymentStatus.FAILED,
+          message: 'Giao dịch thất bại tại cổng thanh toán.',
+          payment: saved,
+          order: order!,
+        };
+      });
+    }
+
+    // Gateway báo SUCCESS: Thực hiện trừ kho OCC và finalize (TX2) (FIX-09)
+    try {
+      return await this.dataSource.transaction(async (manager: EntityManager) => {
+        const order = await manager.findOne(Order, {
+          where: { id: payment.orderId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!order) {
+          throw new NotFoundException(`Đơn hàng #${payment.orderId} không tồn tại.`);
+        }
+
+        // Kiểm tra xem đã có ai hoàn tất reconcile trước chưa (chống concurrent reconcile)
+        if (order.status === OrderStatus.PAID) {
+          const freshPayment = await manager.findOne(Payment, {
+            where: { id: payment.id },
+            relations: { order: true },
+          });
+          return {
+            isDuplicate: true,
+            success: true,
+            status: PaymentStatus.SUCCESS,
+            message: 'Giao dịch đã được đối soát thành công trước đó.',
+            payment: freshPayment!,
+            order,
+          };
+        }
+
+        const items = await manager.find(OrderItem, {
+          where: { order: { id: order.id } },
+          relations: { product: true },
+        });
+        order.items = items;
+
+        return await this.finalizeSuccessfulPaymentWithOcc(
+          manager,
+          order,
+          payment,
+          gwResult.transactionId,
+        );
+      });
+    } catch (err: unknown) {
+      if (err instanceof OccCompensationNeededException) {
+        const compensationResult = await this.executeTx3Compensation(
+          payment.orderId,
+          userId,
+          {
+            orderId: payment.orderId,
+            amount: Number(payment.amount),
+            method: payment.method,
+            idempotencyKey: payment.idempotencyKey,
+          },
+          idempotencyKey,
+          payment.payloadHash || '',
+          payment.merchantReference || '',
+        );
+
+        throw new ConflictException({
+          statusCode: 409,
+          message: err.message,
+          status: compensationResult.payment.status,
+          refundKey: compensationResult.payment.refundKey,
+          payment: compensationResult.payment,
+          order: compensationResult.order,
+        });
+      }
+      throw err;
+    }
   }
 
   async findByOrder(orderId: number, userId: number): Promise<Payment[]> {

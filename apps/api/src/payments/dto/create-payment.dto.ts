@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -30,8 +31,9 @@ export class CreatePaymentDto {
   method: PaymentMethod;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(128)
+  @IsUUID('4', {
+    message: 'Idempotency-Key phải có định dạng chuẩn UUID v4',
+  })
   idempotencyKey?: string;
 
   @IsOptional()

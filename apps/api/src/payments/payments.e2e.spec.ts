@@ -7,6 +7,7 @@ import { App } from 'supertest/types';
 
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { MockPaymentGateway } from './mock-payment-gateway.service';
 import { Payment, PaymentMethod, PaymentStatus } from './entities/payment.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { Product } from '../products/entities/product.entity';
@@ -14,6 +15,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 describe('Payments Endpoints (e2e / integration)', () => {
   let app: INestApplication<App>;
+  let mockGateway: MockPaymentGateway;
+
+  const validUuid1 = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1';
+  const validUuid2 = 'b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2';
+  const validUuid3 = 'c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3';
+  const validUuid4 = 'd4d4d4d4-d4d4-4d4d-844d-d4d4d4d4d4d4';
 
   const mockProduct = {
     id: 1,
@@ -97,6 +104,7 @@ describe('Payments Endpoints (e2e / integration)', () => {
       controllers: [PaymentsController],
       providers: [
         PaymentsService,
+        MockPaymentGateway,
         {
           provide: getRepositoryToken(Payment),
           useValue: mockPaymentRepository,
@@ -125,6 +133,7 @@ describe('Payments Endpoints (e2e / integration)', () => {
       })
       .compile();
 
+    mockGateway = moduleFixture.get<MockPaymentGateway>(MockPaymentGateway);
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
       new ValidationPipe({
@@ -140,6 +149,10 @@ describe('Payments Endpoints (e2e / integration)', () => {
     await app.close();
   });
 
+  beforeEach(() => {
+    mockGateway.clear();
+  });
+
   it('POST /payments - successfully processes payment and returns 201 with SUCCESS status', async () => {
     mockPaymentRepository.findOne.mockResolvedValueOnce(null);
     mockOrderRepository.findOne.mockResolvedValueOnce({ ...mockOrder });
@@ -148,7 +161,7 @@ describe('Payments Endpoints (e2e / integration)', () => {
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.MOMO,
-      idempotencyKey: 'idem-e2e-001',
+      idempotencyKey: validUuid1,
       pickupMethod: 'AT_COUNTER',
     };
 
@@ -176,12 +189,12 @@ describe('Payments Endpoints (e2e / integration)', () => {
 
     const res = await request(app.getHttpServer())
       .post('/payments')
-      .set('Idempotency-Key', 'header-only-uuid-001')
+      .set('Idempotency-Key', validUuid2)
       .send(payload)
       .expect(201);
 
     expect(res.body.success).toBe(true);
-    expect(res.body.payment.idempotencyKey).toBe('header-only-uuid-001');
+    expect(res.body.payment.idempotencyKey).toBe(validUuid2);
   });
 
   it('POST /payments - handles mockOutcome=FAILED with payment failure and PAYMENT_FAILED status', async () => {
@@ -192,7 +205,7 @@ describe('Payments Endpoints (e2e / integration)', () => {
       orderId: 101,
       amount: 45000,
       method: PaymentMethod.CARD,
-      idempotencyKey: 'idem-e2e-failed',
+      idempotencyKey: validUuid3,
       mockOutcome: 'FAILED',
     };
 
@@ -204,6 +217,35 @@ describe('Payments Endpoints (e2e / integration)', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.status).toBe(PaymentStatus.FAILED);
     expect(res.body.order.status).toBe(OrderStatus.PAYMENT_FAILED);
+  });
+
+  it('POST /payments/reconcile/:idempotencyKey - reconciles pending payment (FIX-09 & FIX-11)', async () => {
+    const merchantRef = 'BL-REF-101-reconcile-e2e';
+    await mockGateway.charge({
+      merchantReference: merchantRef,
+      amount: 45000,
+      method: PaymentMethod.MOMO,
+      mockOutcome: 'SUCCESS',
+    });
+
+    mockPaymentRepository.findOne.mockResolvedValueOnce({
+      id: 1,
+      orderId: 101,
+      userId: 1,
+      amount: '45000.00',
+      method: PaymentMethod.MOMO,
+      status: PaymentStatus.PENDING,
+      idempotencyKey: validUuid4,
+      merchantReference: merchantRef,
+      order: { ...mockOrder },
+    });
+
+    const res = await request(app.getHttpServer())
+      .post(`/payments/reconcile/${validUuid4}`)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.status).toBe(PaymentStatus.SUCCESS);
   });
 
   it('GET /payments/order/:orderId - returns payment records for order', async () => {
