@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 
 import { OrdersService } from './orders.service';
 import { Order } from './entities/order.entity';
@@ -33,6 +33,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
     orderRepository = {
       find: jest.fn(),
       findOne: jest.fn(),
+      existsBy: jest.fn().mockResolvedValue(false),
       create: jest.fn((dto) => dto as Order),
       save: jest.fn((entity) => Promise.resolve(Object.assign({ id: 101 }, entity) as Order)),
     };
@@ -108,7 +109,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    const result = await service.create(dto);
+    const result = await service.create(dto, 1);
     expect(result).toBeDefined();
     expect(result.status).toBe('PENDING');
     expect(result.items.length).toBe(1);
@@ -132,7 +133,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    const result = await service.create(dto);
+    const result = await service.create(dto, 1);
     expect(result).toBeDefined();
     expect(result.status).toBe('PENDING');
     // 45.000 (base) + 5.000 (MEDIUM) + 10.000 (Kem cheese) = 60.000
@@ -157,7 +158,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    const result = await service.create(dto);
+    const result = await service.create(dto, 1);
     expect(result).toBeDefined();
     // 45.000 (base) + 10.000 (LARGE) + 8.000 + 8.000 = 71.000
     expect(result.items[0].unitPrice).toBe('71000.00');
@@ -178,7 +179,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+    await expect(service.create(dto, 1)).rejects.toThrow(BadRequestException);
   });
 
   it('5. should reject order with invalid topping', async () => {
@@ -195,7 +196,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+    await expect(service.create(dto, 1)).rejects.toThrow(BadRequestException);
   });
 
   it('6. should reject order when product is unavailable', async () => {
@@ -210,7 +211,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+    await expect(service.create(dto, 1)).rejects.toThrow(BadRequestException);
   });
 
   it('7. should reject order when product does not exist', async () => {
@@ -225,7 +226,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    await expect(service.create(dto)).rejects.toThrow(NotFoundException);
+    await expect(service.create(dto, 1)).rejects.toThrow(NotFoundException);
   });
 
   it('8. should retrieve all orders via findAll', async () => {
@@ -233,7 +234,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       { id: 1, status: 'PENDING', totalAmount: '60000.00' },
     ]);
 
-    const orders = await service.findAll();
+    const orders = await service.findAll(1);
     expect(orders).toHaveLength(1);
     expect(orderRepository.find).toHaveBeenCalled();
   });
@@ -244,11 +245,11 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       status: 'PENDING',
     });
 
-    const order = await service.findOne(1);
+    const order = await service.findOne(1, 1);
     expect(order.id).toBe(1);
 
     (orderRepository.findOne as jest.Mock).mockResolvedValueOnce(null);
-    await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
+    await expect(service.findOne(999, 1)).rejects.toThrow(NotFoundException);
   });
 
   it('10. should reject order with duplicate toppings in payload (FIX-04)', async () => {
@@ -265,8 +266,8 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    await expect(service.create(dto)).rejects.toThrow(BadRequestException);
-    await expect(service.create(dto)).rejects.toThrow(
+    await expect(service.create(dto, 1)).rejects.toThrow(BadRequestException);
+    await expect(service.create(dto, 1)).rejects.toThrow(
       'Danh sách topping không được chứa các phần tử trùng lặp',
     );
   });
@@ -287,11 +288,18 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
       ],
     };
 
-    const result = await service.create(dto);
+    const result = await service.create(dto, 1);
     expect(result).toBeDefined();
     expect(result.note).toBe('Ghi chú toàn đơn: Giao trước 9h');
     expect(result.items[0].note).toBe('30% đường, không đá');
     expect(result.items[0].size).toBe(ProductSize.MEDIUM);
     expect(result.items[0].unitPrice).toBe('60000.00');
+  });
+
+  it('12. should throw ForbiddenException when order exists but belongs to another user (IDOR protection)', async () => {
+    (orderRepository.findOne as jest.Mock).mockResolvedValueOnce(null);
+    (orderRepository.existsBy as jest.Mock).mockResolvedValueOnce(true);
+
+    await expect(service.findOne(101, 2)).rejects.toThrow(ForbiddenException);
   });
 });
