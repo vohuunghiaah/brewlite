@@ -11,6 +11,8 @@ import { Product } from '../products/entities/product.entity';
 import { User } from '../users/entities/user.entity';
 import { CreatePaymentDto, PickupMethod } from './dto/create-payment.dto';
 import { AddPaymentsAndStockOcc1732147200000 } from '../migrations/1732147200000-add-payments-and-stock-occ';
+import { PaymentsRecoveryWorker } from './payments-recovery.worker';
+import { PaymentsController } from './payments.controller';
 
 describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery Tests (FIX-08..18 / UC-10)', () => {
   let dataSource: DataSource;
@@ -1034,54 +1036,295 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
       expect(orderAfterGet.status).toBe(orderBeforeGet.status);
     });
 
-    it('Acceptance 12: Migration trên database có dữ liệu cũ (FIX-18: Real Migration Testing with Legacy Data)', async () => {
-      const queryRunner = dataSource.createQueryRunner();
-      await queryRunner.connect();
+    it('Acceptance 12: Migration trên database có dữ liệu cũ thông qua TypeORM runner thật (FIX-22)', async () => {
+      // 1. Tạo schema baseline cũ hoàn toàn không có stock, version, payments (mô phỏng trạng thái trước Task 5.1.3)
+      const setupRunner = dataSource.createQueryRunner();
+      await setupRunner.connect();
 
       try {
-        // Kiểm tra xem migration AddPaymentsAndStockOcc1732147200000 chạy an toàn trên schema có sẵn
-        const migration = new AddPaymentsAndStockOcc1732147200000();
-
-        // 1. Chạy up() trên database thật
-        await migration.up(queryRunner);
-
-        // 2. Ghi nhận lịch sử migrations
-        await queryRunner.query(`
-          CREATE TABLE IF NOT EXISTS "migrations" (
-            "id" SERIAL PRIMARY KEY,
-            "timestamp" bigint NOT NULL,
-            "name" varchar NOT NULL
-          );
-          INSERT INTO "migrations" ("timestamp", "name")
-          VALUES (1732147200000, 'AddPaymentsAndStockOcc1732147200000')
-          ON CONFLICT DO NOTHING;
+        await setupRunner.query(`
+          CREATE SCHEMA IF NOT EXISTS "legacy_migration_test";
         `);
-
-        const migrationHistory = await queryRunner.query(
-          `SELECT * FROM "migrations" WHERE "name" = 'AddPaymentsAndStockOcc1732147200000'`,
-        );
-        expect(migrationHistory.length).toBeGreaterThan(0);
-
-        // 3. Kiểm tra các bảng nghiệp vụ và dữ liệu cũ được bảo toàn
-        const productTable = await queryRunner.getTable('products');
-        expect(productTable).toBeDefined();
-        expect(productTable!.findColumnByName('stock')).toBeDefined();
-        expect(productTable!.findColumnByName('version')).toBeDefined();
-
-        const orderTable = await queryRunner.getTable('orders');
-        expect(orderTable).toBeDefined();
-        expect(orderTable!.findColumnByName('pickupMethod')).toBeDefined();
-        expect(orderTable!.findColumnByName('orderCode')).toBeDefined();
-
-        const paymentsTable = await queryRunner.getTable('payments');
-        expect(paymentsTable).toBeDefined();
-        expect(paymentsTable!.findColumnByName('idempotencyKey')).toBeDefined();
-
-        // 4. Kiểm tra chính sách forward-only migration: down() phải ném lỗi rõ ràng
-        await expect(migration.down()).rejects.toThrow(/Rollback is prohibited by project policy/);
       } finally {
-        await queryRunner.release();
+        await setupRunner.release();
       }
+
+      // 2. Cấu hình DataSource độc lập trỏ vào schema kiểm thử với synchronize = false
+      const migrationDataSource = new DataSource({
+        type: 'postgres',
+        host: process.env.POSTGRES_HOST || 'localhost',
+        port: Number(process.env.POSTGRES_PORT || 5432),
+        username: process.env.POSTGRES_USER || 'brewlite',
+        password: process.env.POSTGRES_PASSWORD || 'brewlite_dev_password',
+        database: process.env.POSTGRES_DB || 'brewlite_test',
+        schema: 'legacy_migration_test',
+        synchronize: false,
+        migrations: [AddPaymentsAndStockOcc1732147200000],
+        migrationsTableName: 'migrations',
+        extra: {
+          options: '-c search_path=legacy_migration_test',
+        },
+      });
+
+      await migrationDataSource.initialize();
+
+      try {
+        const qr = migrationDataSource.createQueryRunner();
+        await qr.connect();
+
+        // Tạo baseline schema cũ trong schema kiểm thử (PR #29 & #30 baseline)
+        await qr.query(`
+          DROP TABLE IF EXISTS "legacy_migration_test"."order_items" CASCADE;
+          DROP TABLE IF EXISTS "legacy_migration_test"."payments" CASCADE;
+          DROP TABLE IF EXISTS "legacy_migration_test"."orders" CASCADE;
+          DROP TABLE IF EXISTS "legacy_migration_test"."products" CASCADE;
+          DROP TABLE IF EXISTS "legacy_migration_test"."users" CASCADE;
+          DROP TABLE IF EXISTS "legacy_migration_test"."migrations" CASCADE;
+
+          CREATE TABLE "legacy_migration_test"."users" (
+            "id" SERIAL PRIMARY KEY,
+            "email" varchar NOT NULL,
+            "passwordHash" varchar NOT NULL,
+            "createdAt" timestamp NOT NULL DEFAULT now()
+          );
+
+          CREATE TABLE "legacy_migration_test"."products" (
+            "id" SERIAL PRIMARY KEY,
+            "name" varchar NOT NULL,
+            "price" numeric(12, 2) NOT NULL,
+            "isAvailable" boolean NOT NULL DEFAULT true
+          );
+
+          CREATE TABLE "legacy_migration_test"."orders" (
+            "id" SERIAL PRIMARY KEY,
+            "userId" integer NOT NULL,
+            "totalAmount" numeric(12, 2) NOT NULL,
+            "status" varchar(30) NOT NULL,
+            "createdAt" timestamp NOT NULL DEFAULT now(),
+            CONSTRAINT "FK_orders_userId" FOREIGN KEY ("userId") REFERENCES "legacy_migration_test"."users" ("id")
+          );
+
+          CREATE TABLE "legacy_migration_test"."order_items" (
+            "id" SERIAL PRIMARY KEY,
+            "orderId" integer NOT NULL,
+            "productId" integer NOT NULL,
+            "productName" varchar NOT NULL,
+            "quantity" integer NOT NULL,
+            "price" numeric(12, 2) NOT NULL,
+            CONSTRAINT "FK_order_items_orderId" FOREIGN KEY ("orderId") REFERENCES "legacy_migration_test"."orders" ("id"),
+            CONSTRAINT "FK_order_items_productId" FOREIGN KEY ("productId") REFERENCES "legacy_migration_test"."products" ("id")
+          );
+
+          -- Thêm dữ liệu ban đầu
+          INSERT INTO "legacy_migration_test"."users" ("id", "email", "passwordHash")
+          VALUES (1001, 'legacy_user@brewlite.vn', 'hash_legacy_123');
+
+          INSERT INTO "legacy_migration_test"."products" ("id", "name", "price", "isAvailable")
+          VALUES (2001, 'Cà phê Phin Cũ', 29000.00, true);
+
+          INSERT INTO "legacy_migration_test"."orders" ("id", "userId", "totalAmount", "status")
+          VALUES (3001, 1001, 29000.00, 'PENDING');
+
+          INSERT INTO "legacy_migration_test"."order_items" ("orderId", "productId", "productName", "quantity", "price")
+          VALUES (3001, 2001, 'Cà phê Phin Cũ', 1, 29000.00);
+        `);
+        await qr.release();
+
+        // 3. Thực thi migration thông qua TypeORM Migration Runner thật (không synchronize, không tự INSERT)
+        const executedMigrations = await migrationDataSource.runMigrations();
+        expect(executedMigrations.length).toBe(1);
+        expect(executedMigrations[0].name).toBe('AddPaymentsAndStockOcc1732147200000');
+
+        // 4. Kiểm tra bảng migrations history do TypeORM tự động ghi nhận
+        const historyRows = await migrationDataSource.query(
+          `SELECT * FROM "legacy_migration_test"."migrations" WHERE "name" = 'AddPaymentsAndStockOcc1732147200000'`,
+        );
+        expect(historyRows.length).toBe(1);
+        expect(Number(historyRows[0].timestamp)).toBe(1732147200000);
+
+        // 5. Kiểm tra dữ liệu cũ còn nguyên và schema mới được cập nhật chuẩn xác
+        const products = await migrationDataSource.query(
+          `SELECT * FROM "legacy_migration_test"."products" WHERE "id" = 2001`,
+        );
+        expect(products.length).toBe(1);
+        expect(products[0].name).toBe('Cà phê Phin Cũ');
+        expect(Number(products[0].price)).toBe(29000);
+        expect(products[0].stock).toBe(50); // Mặc định từ migration
+        expect(products[0].version).toBe(1); // Mặc định từ migration
+
+        const orders = await migrationDataSource.query(
+          `SELECT * FROM "legacy_migration_test"."orders" WHERE "id" = 3001`,
+        );
+        expect(orders.length).toBe(1);
+        expect(orders[0].pickupMethod).toBe('AT_COUNTER'); // Mặc định từ migration
+        expect(orders[0].orderCode).toBeNull();
+
+        // 6. Chạy migration lần thứ 2: Không thực hiện lại (idempotent), không thay đổi dữ liệu
+        const secondRun = await migrationDataSource.runMigrations();
+        expect(secondRun.length).toBe(0);
+
+        // 7. Xác nhận forward-only: down() ném lỗi từ chối rollback
+        const migrationInstance = new AddPaymentsAndStockOcc1732147200000();
+        const testQr = migrationDataSource.createQueryRunner();
+        await testQr.connect();
+        try {
+          await expect(migrationInstance.down(testQr)).rejects.toThrow(
+            /Rollback is prohibited by project policy/,
+          );
+        } finally {
+          await testQr.release();
+        }
+      } finally {
+        await migrationDataSource.destroy();
+      }
+    });
+
+    it('Acceptance 13: Recovery Worker tự động kích hoạt và điều phối nguyên tử sau restart (FIX-19)', async () => {
+      // 1. Tạo 2 giao dịch dở dang trong database: 1 PENDING và 1 REFUND_PENDING
+      const { product: prod1, order: ord1 } = await createTestProductAndOrder(10, 1);
+      const key1 = crypto.randomUUID();
+
+      const res1 = await service.processPayment(
+        {
+          orderId: ord1.id,
+          amount: 40000,
+          method: PaymentMethod.MOMO,
+          idempotencyKey: key1,
+          mockOutcome: 'PENDING',
+        },
+        testUser1.id,
+      );
+      expect(res1.status).toBe(PaymentStatus.PENDING);
+
+      // Cổng thanh toán ghi nhận SUCCESS sau đó cho giao dịch 1
+      await mockGateway.setTransactionStatus(res1.payment.merchantReference!, 'SUCCESS');
+
+      // Tạo giao dịch 2 bị kẹt ở REFUND_PENDING
+      const { order: ord2 } = await createTestProductAndOrder(1, 2);
+      const key2 = crypto.randomUUID();
+      const refundKey2 = `refund-${key2}`;
+      const merchantRef2 = `BL-REF-${ord2.id}-${key2.replace(/-/g, '').slice(0, 16)}`;
+
+      await paymentRepo.save(
+        paymentRepo.create({
+          orderId: ord2.id,
+          userId: testUser1.id,
+          amount: '80000.00',
+          method: PaymentMethod.MOMO,
+          status: PaymentStatus.REFUND_PENDING,
+          idempotencyKey: key2,
+          transactionId: 'TX-STUCK-REFUND',
+          merchantReference: merchantRef2,
+          refundKey: refundKey2,
+        }),
+      );
+      await mockGateway.charge({
+        merchantReference: merchantRef2,
+        amount: 80000,
+        method: PaymentMethod.MOMO,
+      });
+      await mockGateway.refund({
+        merchantReference: merchantRef2,
+        refundKey: refundKey2,
+        amount: 80000,
+      });
+
+      // 2. Khởi tạo Recovery Worker và kích hoạt chu trình phục hồi
+      const worker = new PaymentsRecoveryWorker(service);
+      const recoveryResult = await worker.runRecovery('bootstrap-test');
+      expect(recoveryResult.reconciledCount).toBeGreaterThanOrEqual(2);
+
+      // 3. Kiểm tra kết quả phục hồi trong database
+      const p1 = await paymentRepo.findOneByOrFail({ idempotencyKey: key1 });
+      expect(p1.status).toBe(PaymentStatus.SUCCESS);
+
+      const o1 = await orderRepo.findOneByOrFail({ id: ord1.id });
+      expect(o1.status).toBe(OrderStatus.PAID);
+
+      const p2 = await paymentRepo.findOneByOrFail({ idempotencyKey: key2 });
+      expect(p2.status).toBe(PaymentStatus.REFUNDED);
+
+      const o2 = await orderRepo.findOneByOrFail({ id: ord2.id });
+      expect(o2.status).toBe(OrderStatus.CANCELLED);
+
+      // Tồn kho sản phẩm 1 được trừ chính xác
+      const freshProd1 = await productRepo.findOneByOrFail({ id: prod1.id });
+      expect(freshProd1.stock).toBe(9);
+    });
+
+    it('Acceptance 14: Refund State Consistency theo BR-REFUND-OCC (FIX-21)', async () => {
+      const { order } = await createTestProductAndOrder(1, 2);
+      const key = crypto.randomUUID();
+
+      // Đặt 2 ly khi kho chỉ có 1 ly: kích hoạt TX3 bồi hoàn
+      await expect(
+        service.processPayment(
+          {
+            orderId: order.id,
+            amount: 80000,
+            method: PaymentMethod.CARD,
+            idempotencyKey: key,
+          },
+          testUser1.id,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      // Kiểm tra trong DB: Order là CANCELLED và Payment là REFUNDED trong cùng transaction
+      const p = await paymentRepo.findOneByOrFail({ idempotencyKey: key });
+      expect(p.status).toBe(PaymentStatus.REFUNDED);
+      expect(p.refundKey).toBe(`refund-${key}`);
+
+      const o = await orderRepo.findOneByOrFail({ id: order.id });
+      expect(o.status).toBe(OrderStatus.CANCELLED);
+
+      // Chặn tạo thanh toán mới cho đơn đã CANCELLED
+      const newKey = crypto.randomUUID();
+      await expect(
+        service.processPayment(
+          {
+            orderId: order.id,
+            amount: 80000,
+            method: PaymentMethod.MOMO,
+            idempotencyKey: newKey,
+          },
+          testUser1.id,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('Acceptance 15: HTTP GET Endpoint thuần đọc và không có GET reconcile (FIX-20)', async () => {
+      // 1. Kiểm tra controller không có phương thức reconcilePaymentGet (loại bỏ hoàn toàn endpoint GET /payments/reconcile/:key)
+      const controller = new PaymentsController(service);
+      expect((controller as any).reconcilePaymentGet).toBeUndefined();
+
+      // 2. Kiểm tra GET /payments/status/:idempotencyKey thuần đọc
+      const { product, order } = await createTestProductAndOrder(10, 1);
+      const key = crypto.randomUUID();
+
+      await service.processPayment(
+        {
+          orderId: order.id,
+          amount: 40000,
+          method: PaymentMethod.MOMO,
+          idempotencyKey: key,
+          mockOutcome: 'PENDING',
+        },
+        testUser1.id,
+      );
+
+      const prodBefore = await productRepo.findOneByOrFail({ id: product.id });
+      const orderBefore = await orderRepo.findOneByOrFail({ id: order.id });
+
+      const statusRes = await controller.getPaymentStatus(key, { id: testUser1.id } as any);
+      expect(statusRes.status).toBe(PaymentStatus.PENDING);
+
+      // Khẳng định không có bất kỳ thay đổi nào trên DB
+      const prodAfter = await productRepo.findOneByOrFail({ id: product.id });
+      expect(prodAfter.stock).toBe(prodBefore.stock);
+      expect(prodAfter.version).toBe(prodBefore.version);
+
+      const orderAfter = await orderRepo.findOneByOrFail({ id: order.id });
+      expect(orderAfter.status).toBe(orderBefore.status);
     });
   });
 });

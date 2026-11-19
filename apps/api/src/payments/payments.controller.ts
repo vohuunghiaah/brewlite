@@ -48,14 +48,6 @@ export class PaymentsController {
     return this.paymentsService.reconcilePayment(idempotencyKey, user.id);
   }
 
-  @Get('reconcile/:idempotencyKey')
-  reconcilePaymentGet(
-    @Param('idempotencyKey') idempotencyKey: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.paymentsService.reconcilePayment(idempotencyKey, user.id);
-  }
-
   @Get('status/:idempotencyKey')
   getPaymentStatus(
     @Param('idempotencyKey') idempotencyKey: string,

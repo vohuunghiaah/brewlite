@@ -186,16 +186,19 @@ export class PaymentsService {
               return inLockPayment;
             }
 
-            // Kiểm tra xem đơn hàng có giao dịch PENDING nào khác không (FIX-11)
+            // Kiểm tra xem đơn hàng có giao dịch PENDING hoặc REFUND_PENDING nào khác không (FIX-11 & FIX-21)
             const activePendingPayment = await manager.findOne(Payment, {
-              where: { orderId: order.id, status: PaymentStatus.PENDING },
+              where: [
+                { orderId: order.id, status: PaymentStatus.PENDING },
+                { orderId: order.id, status: PaymentStatus.REFUND_PENDING },
+              ],
             });
             if (
               activePendingPayment &&
               activePendingPayment.idempotencyKey !== idempotencyKey
             ) {
               throw new ConflictException(
-                'Đơn hàng đang có một giao dịch thanh toán đang chờ xử lý (PENDING). Vui lòng đối soát hoặc chờ kết quả trước khi thử lại.',
+                'Đơn hàng đang có một giao dịch thanh toán hoặc bồi hoàn đang chờ xử lý (PENDING/REFUND_PENDING). Vui lòng đối soát hoặc chờ kết quả trước khi thử lại.',
               );
             }
 
@@ -573,10 +576,19 @@ export class PaymentsService {
       amount: dto.amount,
     });
 
-    // 3. Nếu Gateway SUCCESS: Cập nhật REFUNDED trong transaction tiếp theo (TX4)
+    // 3. Nếu Gateway SUCCESS: Cập nhật Payment REFUNDED và Order CANCELLED trong cùng transaction TX4 (FIX-21)
     if (refundResult.status === 'SUCCESS') {
       try {
         await this.dataSource.transaction(async (tx4Manager) => {
+          const freshOrder = await tx4Manager.findOne(Order, {
+            where: { id: orderId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (freshOrder && freshOrder.status !== OrderStatus.CANCELLED) {
+            freshOrder.status = OrderStatus.CANCELLED;
+            await tx4Manager.save(Order, freshOrder);
+          }
+
           const fresh = await tx4Manager.findOne(Payment, {
             where: { id: pendingRefundPayment.id },
             lock: { mode: 'pessimistic_write' },
@@ -663,17 +675,27 @@ export class PaymentsService {
       });
 
       if (refundResult.status === 'SUCCESS') {
-        payment.status = PaymentStatus.REFUNDED;
-        payment.transactionId = refundResult.refundTransactionId;
-        const updated = await this.paymentRepository.save(payment);
-        return {
-          isDuplicate: true,
-          success: false,
-          status: PaymentStatus.REFUNDED,
-          message: 'Bồi hoàn hoàn tiền đã được hoàn tất thành công.',
-          payment: updated,
-          order: payment.order,
-        };
+        return await this.dataSource.transaction(async (manager) => {
+          const freshOrder = await manager.findOne(Order, {
+            where: { id: payment.orderId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (freshOrder && freshOrder.status !== OrderStatus.CANCELLED) {
+            freshOrder.status = OrderStatus.CANCELLED;
+            await manager.save(Order, freshOrder);
+          }
+          payment.status = PaymentStatus.REFUNDED;
+          payment.transactionId = refundResult.refundTransactionId;
+          const updated = await manager.save(Payment, payment);
+          return {
+            isDuplicate: true,
+            success: false,
+            status: PaymentStatus.REFUNDED,
+            message: 'Bồi hoàn hoàn tiền đã được hoàn tất thành công.',
+            payment: updated,
+            order: freshOrder || payment.order,
+          };
+        });
       }
 
       return {
@@ -828,28 +850,70 @@ export class PaymentsService {
     };
   }
 
+  private isReconcilingGlobal = false;
+
   /**
-   * Đối soát hàng loạt các giao dịch dở dang phục vụ recovery sau restart ứng dụng (FIX-17)
+   * Đối soát hàng loạt các giao dịch dở dang phục vụ recovery sau restart ứng dụng (FIX-17 & FIX-19)
+   * Sử dụng atomic coordination (PostgreSQL advisory lock) để bảo đảm an toàn khi nhiều worker cùng chạy.
    */
   async reconcilePendingPayments(): Promise<{ reconciledCount: number }> {
-    const pendings = await this.paymentRepository.find({
-      where: [
-        { status: PaymentStatus.PENDING },
-        { status: PaymentStatus.REFUND_PENDING },
-      ],
-      relations: { order: true },
-    });
-
-    let count = 0;
-    for (const p of pendings) {
-      try {
-        await this.reconcilePayment(p.idempotencyKey, p.userId);
-        count++;
-      } catch {
-        // Tiếp tục các giao dịch khác
-      }
+    if (this.isReconcilingGlobal) {
+      return { reconciledCount: 0 };
     }
-    return { reconciledCount: count };
+    this.isReconcilingGlobal = true;
+
+    try {
+      const pendings = await this.paymentRepository.find({
+        where: [
+          { status: PaymentStatus.PENDING },
+          { status: PaymentStatus.REFUND_PENDING },
+        ],
+        relations: { order: true },
+        order: { createdAt: 'ASC' },
+      });
+
+      let count = 0;
+      for (const p of pendings) {
+        let lockAcquired = true;
+        if (this.dataSource && this.dataSource.isInitialized) {
+          try {
+            const lockResult = await this.dataSource.query(
+              `SELECT pg_try_advisory_lock(hashtext($1)) as locked`,
+              [`reconcile_lock_${p.idempotencyKey}`],
+            );
+            lockAcquired = lockResult?.[0]?.locked === true;
+          } catch {
+            lockAcquired = true;
+          }
+        }
+
+        if (!lockAcquired) {
+          // Worker khác đang xử lý giao dịch này
+          continue;
+        }
+
+        try {
+          await this.reconcilePayment(p.idempotencyKey, p.userId);
+          count++;
+        } catch {
+          // Bỏ qua lỗi đơn lẻ để tiếp tục các giao dịch khác
+        } finally {
+          if (this.dataSource && this.dataSource.isInitialized) {
+            try {
+              await this.dataSource.query(
+                `SELECT pg_advisory_unlock(hashtext($1))`,
+                [`reconcile_lock_${p.idempotencyKey}`],
+              );
+            } catch {
+              // Ignore unlock error
+            }
+          }
+        }
+      }
+      return { reconciledCount: count };
+    } finally {
+      this.isReconcilingGlobal = false;
+    }
   }
 
   async findByOrder(orderId: number, userId: number): Promise<Payment[]> {
