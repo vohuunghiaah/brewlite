@@ -9,8 +9,11 @@ import {
   getCategory,
   AVAILABLE_SIZES,
   AVAILABLE_TOPPINGS,
+  AVAILABLE_ICE_LEVELS,
+  AVAILABLE_SUGAR_LEVELS,
   calculateItemPrice,
   buildCartItemKey,
+  combineItemNote,
 } from "./menu-controller.mjs";
 import ui from "./menu.module.css";
 
@@ -106,11 +109,21 @@ export default function MenuPage() {
   const [selectedCategory, setSelectedCategory] = useState("Tất cả");
   const [favorites, setFavorites] = useState<Record<number, boolean>>({});
 
-  // Tùy chỉnh sản phẩm trong Modal (Task 5.1.1)
+  // Tùy chỉnh sản phẩm trong Modal (Task 5.1.1 & Figma Screen 02)
   const [selectedSize, setSelectedSize] = useState<"SMALL" | "MEDIUM" | "LARGE">("SMALL");
   const [selectedToppings, setSelectedToppings] = useState<string[]>([]);
-  const [itemNote, setItemNote] = useState<string>("");
+  const [selectedIce, setSelectedIce] = useState<string>("Đá đầy");
+  const [selectedSugar, setSelectedSugar] = useState<string>("100%");
+  const [customNote, setCustomNote] = useState<string>("");
   const [itemQuantity, setItemQuantity] = useState<number>(1);
+
+  // Trạng thái Giỏ hàng Slide-over Drawer (Task 5.1.1 & Figma Screen 03)
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const cartDrawerRef = useRef<HTMLElement>(null);
+  const cartSummaryBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Đơn hàng PENDING đã tạo (Chống tạo đơn lặp ngoài ý muốn)
+  const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string } | null>(null);
 
   // Thông tin đặt hàng
   const [showCheckout, setShowCheckout] = useState(false);
@@ -142,7 +155,9 @@ export default function MenuPage() {
     (product: Product) => {
       setSelectedSize("SMALL");
       setSelectedToppings([]);
-      setItemNote("");
+      setSelectedIce("Đá đầy");
+      setSelectedSugar("100%");
+      setCustomNote("");
       setItemQuantity(1);
       void modalController.openProductDetail(product);
     },
@@ -159,6 +174,52 @@ export default function MenuPage() {
       previousFocusRef.current = null;
     }
   }, [isOpen]);
+
+  // Quản lý Drawer: Focus trap, Escape, khóa cuộn trang
+  useEffect(() => {
+    if (!isCartOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const summaryBtn = cartSummaryBtnRef.current;
+    cartDrawerRef.current?.focus();
+
+    function handleDrawerKeyDown(event: KeyboardEvent) {
+      if (modalState.isOpen) return; // Nhường phím Escape cho Product Detail Modal
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsCartOpen(false);
+        return;
+      }
+
+      if (event.key === "Tab" && cartDrawerRef.current) {
+        const focusables = cartDrawerRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [tabindex="0"], a[href], input:not(:disabled), textarea:not(:disabled)'
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleDrawerKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleDrawerKeyDown);
+      summaryBtn?.focus();
+    };
+  }, [isCartOpen, modalState.isOpen]);
 
   // Quản lý sự kiện bàn phím: Escape đóng modal & Trap Focus
   useEffect(() => {
@@ -248,6 +309,7 @@ export default function MenuPage() {
   ) {
     if (!product.isAvailable || quantity <= 0) return;
 
+    setPendingOrder(null);
     const sortedToppings = [...toppings].sort();
     const key = buildCartItemKey(product.id, size, sortedToppings, note);
     const unitPrice = calculateItemPrice(Number(product.price), size, sortedToppings);
@@ -287,6 +349,7 @@ export default function MenuPage() {
 
   // ================= CẬP NHẬT SỐ LƯỢNG MÓN TRONG GIỎ =================
   function updateCartItemQuantity(key: string, delta: number) {
+    setPendingOrder(null);
     setCartItems((prev) => {
       const next: CartItem[] = [];
       for (const item of prev) {
@@ -312,6 +375,7 @@ export default function MenuPage() {
 
   // ================= XÓA 1 MÓN KHỎI GIỎ =================
   function removeCartItem(key: string) {
+    setPendingOrder(null);
     setCartItems((prev) => prev.filter((item) => item.key !== key));
     setOrderMessage("");
     setOrderError("");
@@ -319,6 +383,7 @@ export default function MenuPage() {
 
   // ================= XÓA TOÀN BỘ GIỎ HÀNG =================
   function clearCart() {
+    setPendingOrder(null);
     setCartItems([]);
     setShowCheckout(false);
     setOrderMessage("");
@@ -337,6 +402,14 @@ export default function MenuPage() {
 
     setOrderError("");
     setOrderMessage("");
+
+    // Chống vô tình gửi lại cùng một đơn khi đã có đơn PENDING (Section D)
+    if (pendingOrder) {
+      setOrderError(
+        `Đơn hàng #${pendingOrder.id} đã được tạo và đang chờ thanh toán. Vui lòng thanh toán đơn hiện tại hoặc nhấn "Tạo đơn hàng mới" để đặt đơn khác.`
+      );
+      return;
+    }
 
     // Kiểm tra thông tin khách hàng
     if (!customerName.trim()) {
@@ -407,6 +480,9 @@ export default function MenuPage() {
 
       const orderId = data.id;
       const orderStatus = data.status || "PENDING";
+      if (orderId !== undefined) {
+        setPendingOrder({ id: orderId, status: orderStatus });
+      }
       setOrderMessage(
         `Đặt hàng thành công! ${
           orderId !== undefined ? `Mã đơn hàng: #${orderId}. ` : ""
@@ -444,17 +520,22 @@ export default function MenuPage() {
             <a href="#menu" className={ui.activeNav} aria-current="page">
               Menu
             </a>
-            <a href="#cart">Giỏ hàng</a>
+            <a
+              href="#cart"
+              onClick={(e) => {
+                e.preventDefault();
+                setIsCartOpen(true);
+              }}
+            >
+              Giỏ hàng
+            </a>
           </nav>
 
           <button
+            ref={cartSummaryBtnRef}
             type="button"
             className={ui.cartSummary}
-            onClick={() =>
-              document.getElementById("cart")?.scrollIntoView({
-                behavior: "smooth",
-              })
-            }
+            onClick={() => setIsCartOpen(true)}
             aria-label={`Giỏ hàng: ${totalItems} món, ${formatPrice(totalPrice)}`}
           >
             <span aria-hidden="true">🛒</span>
@@ -681,9 +762,88 @@ export default function MenuPage() {
           )}
         </section>
 
-        {/* ================= GIỎ HÀNG (TASK 5.1.1) ================= */}
-        <section id="cart" className={ui.cartPanel} style={styles.cartSection}>
-          <h2>🛒 Giỏ hàng của bạn</h2>
+        {/* ================= FOOTER ================= */}
+        <footer className={ui.footer}>
+          <span className={ui.footerIcon} aria-hidden="true">☕</span>
+          <p>BrewLite · Một ly ngon, một ngày vui.</p>
+        </footer>
+      </div>
+
+      {/* ================= OVERLAY GIỎ HÀNG ================= */}
+      {isCartOpen && (
+        <div
+          className={ui.drawerOverlay}
+          role="presentation"
+          onClick={() => setIsCartOpen(false)}
+        />
+      )}
+
+      {/* ================= GIỎ HÀNG SLIDE-OVER DRAWER (TASK 5.1.1 & FIGMA) ================= */}
+      <section
+        id="cart"
+        ref={cartDrawerRef}
+        tabIndex={-1}
+        className={`${ui.cartDrawer} ${isCartOpen ? ui.cartDrawerOpen : ""}`}
+        role={isCartOpen ? "dialog" : undefined}
+        aria-modal={isCartOpen ? "true" : undefined}
+        aria-label="Giỏ hàng của bạn"
+      >
+        <div className={ui.drawerHeader}>
+          <div className={ui.drawerHeaderTitle}>
+            <span aria-hidden="true">🛒</span>
+            <h2>Giỏ hàng của bạn</h2>
+            {totalItems > 0 && (
+              <span className={ui.drawerItemBadge}>{totalItems} món</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className={ui.drawerCloseBtn}
+            onClick={() => setIsCartOpen(false)}
+            aria-label="Đóng giỏ hàng"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className={ui.drawerBody}>
+          {/* Banner đơn hàng PENDING đã tạo (Chống gửi đơn lặp - Section D) */}
+          {pendingOrder && (
+            <div className={ui.pendingOrderBanner} role="status">
+              <div className={ui.pendingOrderHeader}>
+                <span className={ui.pendingBadge}>ĐƠN CHỜ THANH TOÁN</span>
+                <strong>Mã đơn hàng: #{pendingOrder.id}</strong>
+              </div>
+              <p>
+                Trạng thái: <strong>{pendingOrder.status}</strong> (Chờ thanh toán). Giỏ hàng được giữ nguyên để tiến hành thanh toán (UC-10).
+              </p>
+              <div className={ui.pendingOrderActions}>
+                <button
+                  type="button"
+                  className={ui.payNowBtn}
+                  onClick={() => {
+                    setOrderMessage(
+                      `Đơn hàng #${pendingOrder.id} đang chờ thanh toán qua cổng thanh toán (Sprint 2 - Task 5.1.2).`
+                    );
+                  }}
+                >
+                  💳 Tiếp tục thanh toán đơn #{pendingOrder.id}
+                </button>
+                <button
+                  type="button"
+                  className={ui.newOrderBtn}
+                  onClick={() => {
+                    setPendingOrder(null);
+                    setOrderMessage("");
+                    setOrderError("");
+                    setShowCheckout(true);
+                  }}
+                >
+                  + Tạo đơn hàng mới
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Thông báo thành công */}
           {orderMessage && (
@@ -701,7 +861,10 @@ export default function MenuPage() {
           )}
 
           {cartItems.length === 0 ? (
-            <p>Giỏ hàng đang trống. Hãy chọn đồ uống nhé!</p>
+            <div className={ui.drawerEmptyNotice}>
+              <span style={{ fontSize: "32px" }}>☕</span>
+              <p>Giỏ hàng đang trống. Hãy chọn đồ uống nhé!</p>
+            </div>
           ) : (
             <>
               {/* Danh sách CartItem chi tiết */}
@@ -789,6 +952,12 @@ export default function MenuPage() {
                 type="button"
                 disabled={submittingOrder}
                 onClick={() => {
+                  if (pendingOrder) {
+                    setOrderError(
+                      `Đơn hàng #${pendingOrder.id} đã được tạo và đang chờ thanh toán. Vui lòng thanh toán đơn hiện tại hoặc nhấn "Tạo đơn hàng mới" để đặt đơn khác.`
+                    );
+                    return;
+                  }
                   setOrderError("");
                   setOrderMessage("");
                   setShowCheckout(true);
@@ -898,14 +1067,8 @@ export default function MenuPage() {
               </button>
             </>
           )}
-        </section>
-
-        {/* ================= FOOTER ================= */}
-        <footer className={ui.footer}>
-          <span className={ui.footerIcon} aria-hidden="true">☕</span>
-          <p>BrewLite · Một ly ngon, một ngày vui.</p>
-        </footer>
-      </div>
+        </div>
+      </section>
 
       {/* ================= MODAL TÙY CHỈNH & CHI TIẾT SẢN PHẨM (TASK 4.3 + TASK 5.1.1) ================= */}
       {isOpen && selectedProduct && (
@@ -1081,23 +1244,83 @@ export default function MenuPage() {
                 </div>
               </div>
 
-              {/* 3. GHI CHÚ MÓN (FR-02) */}
+              {/* 3. TÙY CHỌN MỨC ĐÁ (QUICK SELECTOR) */}
+              <div className={ui.customSection}>
+                <span className={ui.customTitle} id="ice-label">
+                  MỨC ĐÁ
+                </span>
+                <div
+                  className={ui.selectorGrid}
+                  role="radiogroup"
+                  aria-labelledby="ice-label"
+                >
+                  {AVAILABLE_ICE_LEVELS.map((iceOpt) => {
+                    const isSelected = selectedIce === iceOpt;
+                    return (
+                      <button
+                        key={iceOpt}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        className={`${ui.selectorOption} ${
+                          isSelected ? ui.selectorOptionActive : ""
+                        }`}
+                        onClick={() => setSelectedIce(iceOpt)}
+                      >
+                        {iceOpt}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. TÙY CHỌN MỨC ĐƯỜNG (QUICK SELECTOR) */}
+              <div className={ui.customSection}>
+                <span className={ui.customTitle} id="sugar-label">
+                  MỨC ĐƯỜNG
+                </span>
+                <div
+                  className={ui.selectorGrid}
+                  role="radiogroup"
+                  aria-labelledby="sugar-label"
+                >
+                  {AVAILABLE_SUGAR_LEVELS.map((sugarOpt) => {
+                    const isSelected = selectedSugar === sugarOpt;
+                    return (
+                      <button
+                        key={sugarOpt}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        className={`${ui.selectorOption} ${
+                          isSelected ? ui.selectorOptionActive : ""
+                        }`}
+                        onClick={() => setSelectedSugar(sugarOpt)}
+                      >
+                        {sugarOpt}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 5. GHI CHÚ BỔ SUNG (FR-02) */}
               <div className={ui.customSection}>
                 <label className={ui.customTitle} htmlFor="modal-item-note">
-                  GHI CHÚ MÓN
+                  GHI CHÚ BỔ SUNG
                 </label>
                 <input
                   id="modal-item-note"
                   type="text"
                   className={ui.itemNoteInput}
-                  value={itemNote}
-                  onChange={(e) => setItemNote(e.target.value)}
-                  placeholder="Ví dụ: 50% đường, ít đá..."
+                  value={customNote}
+                  onChange={(e) => setCustomNote(e.target.value)}
+                  placeholder="Ví dụ: Mang đi, ít sữa, giao tận bàn..."
                   maxLength={150}
                 />
               </div>
 
-              {/* 4. ĐIỀU CHỈNH SỐ LƯỢNG */}
+              {/* 6. ĐIỀU CHỈNH SỐ LƯỢNG */}
               <div className={ui.modalQtyRow}>
                 <span className={ui.customTitle}>SỐ LƯỢNG</span>
                 <div className={ui.qtyControl}>
@@ -1138,11 +1361,16 @@ export default function MenuPage() {
                     className={ui.modalAddButton}
                     disabled={!selectedProduct.isAvailable}
                     onClick={() => {
+                      const finalNote = combineItemNote(
+                        selectedIce,
+                        selectedSugar,
+                        customNote
+                      );
                       addItemToCart(
                         selectedProduct,
                         selectedSize,
                         selectedToppings,
-                        itemNote,
+                        finalNote,
                         itemQuantity
                       );
                       modalController.closeProductDetail();

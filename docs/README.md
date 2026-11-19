@@ -42,6 +42,9 @@ docs/
 │   ├── use-case-place-order.md    # Đặc tả chi tiết Use Case trọng tâm UC-04
 │   ├── use-case-place-order.puml/.svg # Sơ đồ phân rã UC-04 & UC-10
 │   └── use-cases.md               # Danh mục chi tiết 13 Use Cases hệ thống
+├── ui/                            # Task 5.1: Đặc tả Thiết kế Giao diện Figma Make & Ảnh tham chiếu
+│   ├── assets/                    # 8 ảnh chụp màn hình tương tác từ prototype Figma Make
+│   └── figma-design-spec.md       # Đặc tả Design System, Tokens, 8 Màn hình & Gap Analysis
 ├── branching-strategy.md          # Chiến lược phân nhánh Git & quy trình PR
 ├── commit-convention.md           # Quy ước Conventional Commits
 ├── definition-of-done.md          # Tiêu chí hoàn thành (DoD 10 điểm)
@@ -58,16 +61,16 @@ docs/
 ## 2. Ma Trận Kiểm Kê & Kiểm Soát Tạo Phẩm (Document Inventory Matrix)
 
 ### Nguyên tắc và Quy tắc Đếm Tạo Phẩm (Counting Rules):
-1. **Theo Mã Định Danh Tạo Phẩm (Document ID — 37 tạo phẩm):**
+1. **Theo Mã Định Danh Tạo Phẩm (Document ID — 38 tạo phẩm):**
    - Mỗi dòng trong bảng dưới đây tương ứng với đúng một mã định danh tạo phẩm duy nhất (`Document ID`).
    - Mỗi sơ đồ bao gồm một cặp tệp (1 tệp mã nguồn `.puml` hoặc `.mmd` và 1 tệp kết xuất `.svg` đồng bộ 100%) được quản lý thống nhất dưới một mã `Document ID` duy nhất (ví dụ: `UML-ACT-01` đại diện cho cặp `ActivityDiagram.puml` và `ActivityDiagram.svg`).
-   - Bảng kiểm kê gồm **37 tạo phẩm có mã quản trị** (Task 1: 7 tạo phẩm; Task 2: 7 tạo phẩm sơ đồ; Task 3: 10 tạo phẩm kiến trúc; Kiểm toán & RTM: 2 tạo phẩm; Task 4: 11 tạo phẩm quy trình, CI và backlog bao gồm cả chỉ mục `DOC-INDEX-01`).
-2. **Theo Tệp Vật Lý Được Quản Lý Trong Git (Physical Files — 47 tệp):**
-   - **27 tệp Markdown (`.md`):** Đặc tả yêu cầu, use cases, kiến trúc, ADRs, báo cáo kiểm toán, RTM, quy trình, CI verification và backlog.
+   - Bảng kiểm kê gồm **38 tạo phẩm có mã quản trị** (Task 1: 7 tạo phẩm; Task 2: 7 tạo phẩm sơ đồ; Task 3: 10 tạo phẩm kiến trúc; Kiểm toán & RTM: 2 tạo phẩm; Task 4: 11 tạo phẩm quy trình, CI và backlog; Task 5.1: 1 tạo phẩm đặc tả UI `UI-SPEC-01`).
+2. **Theo Tệp Vật Lý Được Quản Lý Trong Git (Physical Files — 48 tệp):**
+   - **28 tệp Markdown (`.md`):** Đặc tả yêu cầu, use cases, kiến trúc, ADRs, báo cáo kiểm toán, RTM, quy trình, CI verification, backlog và đặc tả giao diện UI.
    - **9 tệp PlantUML (`.puml`):** Mã nguồn sơ đồ Use Case (2), Sơ đồ Hoạt động & Tuần tự (6), Sơ đồ Triển khai (1).
    - **1 tệp Mermaid (`.mmd`):** Mã nguồn Sơ đồ Lớp miền Khái niệm (1).
    - **10 tệp SVG (`.svg`):** Bản kết xuất trực quan đồng bộ 1:1 của 10 tệp nguồn sơ đồ trên (không có sơ đồ nào thiếu SVG hoặc ngược lại).
-   - Tổng cộng: **27 + 9 + 1 + 10 = 47 tệp vật lý** trong thư mục `docs/`.
+   - Tổng cộng: **28 + 9 + 1 + 10 = 48 tệp vật lý** trong thư mục `docs/` (kèm 8 ảnh tham chiếu tại `docs/ui/assets/`).
 
 | Document ID | Tên tạo phẩm | Phân hệ | Tệp nguồn (Source Path) | Tệp xuất (Export Path) | Phiên bản / Trạng thái | Bằng chứng Commit / PR | Yêu cầu / Use Case / ADR liên quan |
 |:---:|---|:---:|---|---|:---:|---|---|
@@ -108,6 +111,7 @@ docs/
 | **BKLG-SP2-01**| Kế hoạch Sprint 2 | Task 4.1 | [backlog/sprint-2.md](backlog/sprint-2.md) | N/A | Active | PR [#6](https://github.com/vohuunghiaah/brewlite/pull/6), PR [#25](https://github.com/vohuunghiaah/brewlite/pull/25) (`5784317c`) | Công việc `BL-03`, `BL-04` |
 | **DOC-INDEX-01**| Chỉ mục Tài liệu Tập trung | Task 4.2 | [README.md](README.md) | N/A | v2.0.0 / Active | PR [#26](https://github.com/vohuunghiaah/brewlite/pull/26) | Chỉ mục trung tâm, ma trận kiểm kê Task 1–4 |
 | **DOC-CI-01**  | Báo cáo Nghiệm thu CI/CD | Task 4.4 | [task-4.4-ci-verification.md](task-4.4-ci-verification.md) | N/A | v1.0.0 / Final | PR [#28](https://github.com/vohuunghiaah/brewlite/pull/28) | Kiểm toán CI Quality Gates & Branch Protection |
+| **UI-SPEC-01** | Đặc tả Thiết kế Giao diện Figma Make | Task 5.1 | [ui/figma-design-spec.md](ui/figma-design-spec.md) | N/A | v1.0.0 / Active | PR [#29](https://github.com/vohuunghiaah/brewlite/pull/29) | `FR-01` -> `FR-03`, `FR-05`, Giao diện 8 màn hình |
 
 ---
 
@@ -133,7 +137,8 @@ Toàn bộ các mốc hoàn thiện tài liệu đều được thực hiện th
 | **[#25](https://github.com/vohuunghiaah/brewlite/pull/25)** | `docs/task4-1-final-acceptance` | Nghiệm thu Task 4.1 — Thiết lập Repository, Backlog Sprint 1/2, DoD | `5784317c` | 18/11/2026 | PASS |
 | **[#26](https://github.com/vohuunghiaah/brewlite/pull/26)** | `docs/task4-2-document-management` | Nghiệm thu Task 4.2 — Quản lý Tài liệu, Chỉ mục tập trung & Change Control | `c8d7a012` | 18/11/2026 | PASS |
 | **[#27](https://github.com/vohuunghiaah/brewlite/pull/27)** | `feat/task4-3-menu-mvp` | Hoàn thành Task 4.3 — MVP Sprint 1 (Menu & Product Detail View) | `75503086` | 18/11/2026 | PASS |
-| **[#28](https://github.com/vohuunghiaah/brewlite/pull/28)** | `ci/task4-4-final-acceptance` | Hoàn thành Task 4.4 — Continuous Integration & Branch Protection Verification | *(Đang mở)* | 18/11/2026 | PASS |
+| **[#28](https://github.com/vohuunghiaah/brewlite/pull/28)** | `ci/task4-4-final-acceptance` | Hoàn thành Task 4.4 — Continuous Integration & Branch Protection Verification | `4517ea9b` | 18/11/2026 | PASS |
+| **[#29](https://github.com/vohuunghiaah/brewlite/pull/29)** | `feat/task5-1-1-product-customization-cart` | Hoàn thành Task 5.1.1 — Tùy biến món, Slide-over Cart Drawer, Chống đơn lặp & TypeORM Migration | *(Đang mở)* | 19/11/2026 | PASS |
 
 ---
 
@@ -146,7 +151,8 @@ Toàn bộ các mốc hoàn thiện tài liệu đều được thực hiện th
 - **Task 4.1 (Thiết lập Repository & Backlog):** **PASS** (Monorepo `apps/web`, `apps/api`, `docs`, Git flow, Backlog Sprint 1 & 2, DoD — PR #6, PR #25).
 - **Task 4.2 (Quản lý Tài liệu & Bàn giao):** **PASS** (Chỉ mục tập trung `docs/README.md`, Quy trình kiểm soát thay đổi `docs/document-control.md`, bảo toàn 100% tạo phẩm — PR #26 đã MERGED).
 - **Task 4.3 (MVP Sprint 1 — Menu & Chi tiết sản phẩm):** **PASS** (Hiển thị thực đơn mobile-first, modal chi tiết sản phẩm, API integration, 26 unit/e2e/component tests, zero hydration error — PR #27 đã MERGED).
-- **Task 4.4 (Continuous Integration & Quality Gates):** **FINAL PASS** (CI 4 bước tự động, Required Status Checks trên `main`, kiểm thử âm có kiểm soát chứng minh merge blocked khi có lỗi, biên bản nghiệm thu `DOC-CI-01` — PR #28).
+- **Task 4.4 (Continuous Integration & Quality Gates):** **FINAL PASS** (CI 4 bước tự động, Required Status Checks trên `main`, kiểm thử âm có kiểm soát chứng minh merge blocked khi có lỗi, biên bản nghiệm thu `DOC-CI-01` — PR #28 đã MERGED).
+- **Task 5.1.1 (Tùy biến món & Giỏ hàng — Figma Alignment):** **FINAL ACCEPTANCE AUDIT / READY FOR MERGE** (Tùy chọn Size S/M/L, Toppings, Mức đường, Mức đá, Slide-over Cart Drawer, Chống tạo đơn lặp PENDING, TypeORM migration an toàn, 46+ tests tự động PASS 100% — PR #29).
 
 ---
 

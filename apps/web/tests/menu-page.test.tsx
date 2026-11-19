@@ -194,4 +194,136 @@ describe('MenuPage React Component Tests', () => {
     expect(cartSection).toHaveTextContent('Cà phê Latte');
     expect(cartSection).toHaveTextContent('Size S');
   });
+
+  it('opens Slide-over Cart Drawer from header, displays role dialog and aria-modal, and closes on Escape or close button', async () => {
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // 1. Initially drawer is closed (no dialog with label "Giỏ hàng của bạn")
+    expect(screen.queryByRole('dialog', { name: /giỏ hàng của bạn/i })).not.toBeInTheDocument();
+
+    // 2. Click Header Cart Button to open drawer
+    const cartButton = screen.getByRole('button', { name: /giỏ hàng: 0 món/i });
+    fireEvent.click(cartButton);
+
+    // 3. Drawer appears with role="dialog", aria-modal="true"
+    const drawerDialog = screen.getByRole('dialog', { name: /giỏ hàng của bạn/i });
+    expect(drawerDialog).toBeInTheDocument();
+    expect(drawerDialog).toHaveAttribute('aria-modal', 'true');
+
+    // 4. Press Escape to close drawer
+    fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /giỏ hàng của bạn/i })).not.toBeInTheDocument();
+    });
+
+    // 5. Open again and close using close button '✕'
+    fireEvent.click(cartButton);
+    expect(screen.getByRole('dialog', { name: /giỏ hàng của bạn/i })).toBeInTheDocument();
+
+    const closeBtn = screen.getByRole('button', { name: /đóng giỏ hàng/i });
+    fireEvent.click(closeBtn);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /giỏ hàng của bạn/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('selects Ice and Sugar Quick Selectors, custom note, adds to cart, and prevents duplicate order submission when order is already PENDING', async () => {
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // 1. Open Product Detail Modal
+    const detailButton = screen.getAllByRole('button', { name: /chi tiết/i })[0];
+    fireEvent.click(detailButton);
+
+    const modalDialog = await screen.findByRole('dialog');
+    expect(modalDialog).toBeInTheDocument();
+
+    // 2. Select Ice "Ít đá" & Sugar "70%" Quick Selectors
+    const itDaBtn = screen.getByRole('radio', { name: /ít đá/i });
+    fireEvent.click(itDaBtn);
+    const sugar70Btn = screen.getByRole('radio', { name: /70%/i });
+    fireEvent.click(sugar70Btn);
+
+    // 3. Enter freeform custom note
+    const customNoteInput = screen.getByLabelText(/ghi chú bổ sung/i);
+    fireEvent.change(customNoteInput, { target: { value: 'Giao tận bàn 4' } });
+
+    // 4. Click Add to Cart
+    const addToCartBtn = screen.getByRole('button', { name: /thêm vào giỏ hàng/i });
+    fireEvent.click(addToCartBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    // 5. Cart section should display combined note
+    const cartSection = document.getElementById('cart')!;
+    expect(cartSection).toHaveTextContent('Ít đá, 70% đường, Giao tận bàn 4');
+
+    // 6. Proceed to checkout
+    const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+    fireEvent.click(checkoutBtn);
+
+    const nameInput = screen.getByLabelText(/tên khách hàng/i);
+    const phoneInput = screen.getByLabelText(/số điện thoại/i);
+    fireEvent.change(nameInput, { target: { value: 'Tran Thi B' } });
+    fireEvent.change(phoneInput, { target: { value: '0987654321' } });
+
+    // 7. First order submission -> Success with PENDING
+    const confirmBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/đặt hàng thành công! mã đơn hàng: #101\. trạng thái: PENDING/i)
+      ).toBeInTheDocument();
+    });
+
+    // Verify fetch POST /orders was called exactly 1 time
+    const initialPostCount = (global.fetch as jest.Mock).mock.calls.filter(
+      (call: [string, RequestInit?]) => call[0].endsWith('/orders') && call[1]?.method === 'POST'
+    ).length;
+    expect(initialPostCount).toBe(1);
+
+    // 8. User attempts to click "Tiếp tục đặt hàng" again while order #101 is already PENDING
+    const orderBtnAgain = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+    fireEvent.click(orderBtnAgain);
+
+    // 9. Should show error preventing duplicate order and NOT fire another POST /orders
+    expect(
+      screen.getByText(/đơn hàng #101 đã được tạo và đang chờ thanh toán/i)
+    ).toBeInTheDocument();
+
+    const secondPostCount = (global.fetch as jest.Mock).mock.calls.filter(
+      (call: [string, RequestInit?]) => call[0].endsWith('/orders') && call[1]?.method === 'POST'
+    ).length;
+    expect(secondPostCount).toBe(1); // Still exactly 1, no duplicate order!
+
+    // 10. Click "Tạo đơn hàng mới" clears the duplicate lock
+    const newOrderBtn = screen.getByRole('button', { name: /tạo đơn hàng mới/i });
+    fireEvent.click(newOrderBtn);
+
+    // Now re-fill and submit -> second order is allowed
+    const nameInput2 = screen.getByLabelText(/tên khách hàng/i);
+    const phoneInput2 = screen.getByLabelText(/số điện thoại/i);
+    fireEvent.change(nameInput2, { target: { value: 'Tran Thi B' } });
+    fireEvent.change(phoneInput2, { target: { value: '0987654321' } });
+
+    const confirmBtn2 = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
+    fireEvent.click(confirmBtn2);
+
+    await waitFor(() => {
+      const finalPostCount = (global.fetch as jest.Mock).mock.calls.filter(
+        (call: [string, RequestInit?]) => call[0].endsWith('/orders') && call[1]?.method === 'POST'
+      ).length;
+      expect(finalPostCount).toBe(2);
+    });
+  });
 });

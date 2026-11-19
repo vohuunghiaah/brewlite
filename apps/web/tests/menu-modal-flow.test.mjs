@@ -9,6 +9,9 @@ import {
   buildCartItemKey,
   AVAILABLE_SIZES,
   AVAILABLE_TOPPINGS,
+  AVAILABLE_ICE_LEVELS,
+  AVAILABLE_SUGAR_LEVELS,
+  combineItemNote,
 } from '../src/app/menu/menu-controller.mjs';
 
 test('1. Loading state: Menu lifecycle starts with loading true then resolves products', async () => {
@@ -282,4 +285,31 @@ test('11. Cart Item Key: buildCartItemKey produces canonical keys, normalizes to
   const keyOtherProduct = buildCartItemKey(2, 'MEDIUM', ['Kem cheese', 'Thạch đào'], 'Ít đá');
   assert.notEqual(key1, keyOtherProduct);
 });
+
+test('12. Quick Selectors: combineItemNote properly formats ice, sugar, freeform note and prevents duplicate labels', () => {
+  // Check constants
+  assert.deepEqual(AVAILABLE_ICE_LEVELS, ['Không đá', 'Ít đá', 'Đá đầy']);
+  assert.deepEqual(AVAILABLE_SUGAR_LEVELS, ['0%', '30%', '70%', '100%']);
+
+  // Default ice and sugar with no extra note
+  assert.equal(combineItemNote('Đá đầy', '100%', ''), 'Đá đầy, 100% đường');
+
+  // Custom options with extra note
+  assert.equal(
+    combineItemNote('Ít đá', '70%', 'Uống tại bàn 3'),
+    'Ít đá, 70% đường, Uống tại bàn 3'
+  );
+
+  // Duplication avoidance: user types 'Ít đá' again in custom note
+  assert.equal(
+    combineItemNote('Ít đá', '50%', 'Ít đá'),
+    'Ít đá, 50% đường'
+  );
+
+  // Long note truncation at 255 chars
+  const superLongNote = 'a'.repeat(300);
+  const combined = combineItemNote('Đá đầy', '100%', superLongNote);
+  assert.ok(combined.length <= 255, 'Combined note must never exceed 255 chars');
+});
+
 

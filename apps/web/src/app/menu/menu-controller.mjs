@@ -28,6 +28,34 @@ export const TOPPING_PRICES = {
   'Thạch sương sáo': 6000,
 };
 
+export const AVAILABLE_ICE_LEVELS = ['Không đá', 'Ít đá', 'Đá đầy'];
+export const AVAILABLE_SUGAR_LEVELS = ['0%', '30%', '70%', '100%'];
+
+/**
+ * Kết hợp mức đá, mức đường và ghi chú tự do thành một chuỗi duy nhất,
+ * tránh trùng lặp, bảo toàn thông tin và khống chế tối đa 255 ký tự (DB constraint).
+ */
+export function combineItemNote(ice = 'Đá đầy', sugar = '100%', customNote = '') {
+  const parts = [];
+  if (ice) {
+    parts.push(ice);
+  }
+  if (sugar) {
+    parts.push(`${sugar} đường`);
+  }
+  const trimmed = (customNote || '').trim();
+  if (trimmed) {
+    const lower = trimmed.toLowerCase();
+    const isIceDuplicate = ice && lower === ice.toLowerCase();
+    const isSugarDuplicate = sugar && lower === `${sugar} đường`.toLowerCase();
+    if (!isIceDuplicate && !isSugarDuplicate) {
+      parts.push(trimmed);
+    }
+  }
+  const combined = parts.join(', ');
+  return combined.slice(0, 255);
+}
+
 export function calculateItemPrice(basePrice, size = 'SMALL', toppings = []) {
   const sizeMod = SIZE_PRICE_MODIFIERS[size] ?? 0;
   const toppingTotal = (toppings || []).reduce((sum, t) => sum + (TOPPING_PRICES[t] ?? 0), 0);
