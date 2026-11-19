@@ -3,15 +3,27 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Index,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
 } from 'typeorm';
 
+import { User } from '../../users/entities/user.entity';
 import { OrderItem } from './order-item.entity';
 
 @Entity('orders')
+@Index('IDX_orders_userId', ['userId'])
 export class Order {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Column({ type: 'integer', nullable: true })
+  userId: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'userId', foreignKeyConstraintName: 'FK_orders_userId_users' })
+  user: User | null;
 
   @Column({ type: 'varchar', length: 100 })
   customerName: string;

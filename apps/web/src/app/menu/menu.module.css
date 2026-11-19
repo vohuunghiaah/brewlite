@@ -1550,6 +1550,248 @@
   background: #ab7744;
 }
 
+/* ================= AUTH MODAL & USER NAVIGATION (TASK 5.1.2 & FIGMA SCREEN 04) ================= */
+.navActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.userSession {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f4ede6;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #3d261d;
+  font-weight: 600;
+}
+
+.userEmail {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutBtn {
+  background: transparent;
+  border: none;
+  color: #8c7566;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 150ms ease;
+}
+
+.logoutBtn:hover {
+  color: #b91c1c;
+}
+
+.loginBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  color: #3d261d;
+  border: 1.5px solid #d4c2b2;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.loginBtn:hover {
+  background: #fdfbf9;
+  border-color: #c28d58;
+  color: #c28d58;
+}
+
+.authModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 1000;
+  animation: fadeIn 200ms ease;
+}
+
+.authModalCard {
+  width: 100%;
+  max-width: 440px;
+  background: #ffffff;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  outline: none;
+  animation: modalScale 200ms ease;
+}
+
+.authModalHeader {
+  background: #3d261d;
+  color: #ffffff;
+  padding: 24px 20px 20px;
+  position: relative;
+}
+
+.authModalTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.authModalSubtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #e0d5ce;
+  line-height: 1.4;
+}
+
+.authModalClose {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 160ms ease;
+}
+
+.authModalClose:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.authTabs {
+  display: flex;
+  background: #faf6f0;
+  border-bottom: 1px solid #ebd9c8;
+}
+
+.authTab {
+  flex: 1;
+  padding: 14px 16px;
+  border: none;
+  background: transparent;
+  color: #7c695e;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 160ms ease;
+}
+
+.authTabActive {
+  color: #3d261d;
+  background: #ffffff;
+  border-bottom-color: #c28d58;
+}
+
+.authBody {
+  padding: 24px 20px;
+}
+
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.authField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.authLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3d261d;
+}
+
+.authInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1.5px solid #d4c2b2;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 160ms ease;
+}
+
+.authInput:focus {
+  outline: none;
+  border-color: #c28d58;
+  box-shadow: 0 0 0 3px rgba(194, 141, 88, 0.15);
+}
+
+.authError {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #f87171;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.authSubmitBtn {
+  width: 100%;
+  padding: 14px;
+  background: #c28d58;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.authSubmitBtn:hover:not(:disabled) {
+  background: #ab7744;
+}
+
+.authSubmitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.authFooter {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 13px;
+  color: #7c695e;
+}
+
+.authSwitchBtn {
+  background: none;
+  border: none;
+  color: #c28d58;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0 4px;
+}
+
 .newOrderBtn {
   flex: 1;
   min-width: 140px;

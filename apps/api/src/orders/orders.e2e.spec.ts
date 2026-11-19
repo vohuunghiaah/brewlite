@@ -9,6 +9,7 @@ import { OrdersService } from './orders.service';
 import { Order } from './entities/order.entity';
 import { OrderItem, ProductSize } from './entities/order-item.entity';
 import { Product } from '../products/entities/product.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 describe('Orders Endpoints (e2e / integration)', () => {
   let app: INestApplication<App>;
@@ -85,7 +86,16 @@ describe('Orders Endpoints (e2e / integration)', () => {
           useValue: mockDataSource,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (context: any) => {
+          const req = context.switchToHttp().getRequest();
+          req.user = { id: 1, email: 'test@brewlite.vn' };
+          return true;
+        },
+      })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(

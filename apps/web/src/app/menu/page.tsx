@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { FormEvent } from "react";
 import { fetchProducts } from "./products.mjs";
 import {
+  createAuthController,
   createMenuModalController,
   getCategory,
   AVAILABLE_SIZES,
@@ -122,6 +123,52 @@ export default function MenuPage() {
   const cartDrawerRef = useRef<HTMLElement>(null);
   const cartSummaryBtnRef = useRef<HTMLButtonElement>(null);
   const drawerTriggerRef = useRef<HTMLElement | null>(null);
+
+  // ================= XÁC THỰC NGƯỜI DÙNG (TASK 5.1.2 & FIGMA SCREEN 04) =================
+  interface AuthUser {
+    id: number;
+    email: string;
+  }
+  interface AuthSession {
+    token: string | null;
+    user: AuthUser | null;
+  }
+
+  const authController = useMemo(() => createAuthController(), []);
+  const authState = useSyncExternalStore<AuthSession>(
+    authController.subscribe,
+    authController.getState,
+    authController.getServerSnapshot
+  );
+  const { token: authToken, user } = authState;
+
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [resumeCheckoutAfterAuth, setResumeCheckoutAfterAuth] = useState(false);
+  const authModalRef = useRef<HTMLDivElement>(null);
+  const authTriggerRef = useRef<HTMLElement | null>(null);
+
+  const openAuthModal = useCallback((mode: "login" | "register" = "login", resumeCheckout = false) => {
+    authTriggerRef.current = document.activeElement as HTMLElement;
+    setAuthMode(mode);
+    setAuthError("");
+    setResumeCheckoutAfterAuth(resumeCheckout);
+    setIsAuthOpen(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setIsAuthOpen(false);
+    setAuthError("");
+    setResumeCheckoutAfterAuth(false);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    authController.clearSession();
+  }, [authController]);
 
   // Đơn hàng PENDING đã tạo (Chống tạo đơn lặp ngoài ý muốn)
   const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string } | null>(null);
@@ -260,6 +307,116 @@ export default function MenuPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, modalController]);
+
+  // Quản lý sự kiện bàn phím & Trap Focus cho Auth Modal
+  useEffect(() => {
+    if (!isAuthOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    authModalRef.current?.focus();
+
+    function handleAuthKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAuthModal();
+        return;
+      }
+
+      if (event.key === "Tab" && authModalRef.current) {
+        const focusables = authModalRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [tabindex="0"], a[href], input:not(:disabled), textarea:not(:disabled)'
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleAuthKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleAuthKeyDown);
+      authTriggerRef.current?.focus();
+      authTriggerRef.current = null;
+    };
+  }, [isAuthOpen, closeAuthModal]);
+
+  // Xử lý đăng nhập / đăng ký tài khoản (Task 5.1.2)
+  async function handleAuthSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (authLoading) return;
+    setAuthError("");
+
+    const email = authEmail.trim();
+    const password = authPassword;
+
+    if (!email) {
+      setAuthError("Vui lòng nhập email.");
+      return;
+    }
+    if (!password || password.length < 6) {
+      setAuthError("Mật khẩu phải có tối thiểu 6 ký tự.");
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      if (authMode === "register") {
+        const regRes = await fetch(`${API_URL}/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const regData = await regRes.json().catch(() => ({}));
+        if (!regRes.ok) {
+          const detail = regData?.message || "Đăng ký không thành công.";
+          throw new Error(Array.isArray(detail) ? detail.join(", ") : detail);
+        }
+      }
+
+      const loginRes = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const loginData = await loginRes.json().catch(() => ({}));
+      if (!loginRes.ok) {
+        const detail = loginData?.message || "Đăng nhập không thành công.";
+        throw new Error(Array.isArray(detail) ? detail.join(", ") : detail);
+      }
+
+      const { accessToken, user: loggedUser } = loginData;
+      if (!accessToken || !loggedUser) {
+        throw new Error("Không nhận được token xác thực.");
+      }
+
+      authController.setSession(accessToken, loggedUser);
+
+      setIsAuthOpen(false);
+      setAuthEmail("");
+      setAuthPassword("");
+
+      // Nếu đang dở dang luồng đặt hàng, mở tiếp form checkout
+      if (resumeCheckoutAfterAuth) {
+        setShowCheckout(true);
+        setResumeCheckoutAfterAuth(false);
+        setIsCartOpen(true);
+      }
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : "Đã có lỗi xảy ra.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
   const loadProducts = useCallback((signal?: AbortSignal) => {
@@ -444,6 +601,14 @@ export default function MenuPage() {
       return;
     }
 
+    // Yêu cầu xác thực tài khoản để đặt hàng (Task 5.1.2)
+    if (!authToken) {
+      setResumeCheckoutAfterAuth(true);
+      setIsAuthOpen(true);
+      setOrderError("Vui lòng đăng nhập để hoàn tất đặt hàng.");
+      return;
+    }
+
     // Dữ liệu chi tiết gửi đến NestJS OrdersService (bao gồm ghi chú món - FIX-02)
     const items = cartItems.map((item) => ({
       productId: item.productId,
@@ -463,11 +628,16 @@ export default function MenuPage() {
     try {
       setSubmittingOrder(true);
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${API_URL}/orders`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -538,18 +708,45 @@ export default function MenuPage() {
             </a>
           </nav>
 
-          <button
-            ref={cartSummaryBtnRef}
-            type="button"
-            className={ui.cartSummary}
-            onClick={() => setIsCartOpen(true)}
-            aria-label={`Giỏ hàng: ${totalItems} món, ${formatPrice(totalPrice)}`}
-          >
-            <span aria-hidden="true">🛒</span>
-            <span className={ui.cartCount}>{totalItems}</span>
-            <span className={ui.cartDivider} />
-            <span>{formatPrice(totalPrice)}</span>
-          </button>
+          <div className={ui.navActions}>
+            {user ? (
+              <div className={ui.userSession}>
+                <span className={ui.userEmail} title={user.email}>
+                  👤 {user.email}
+                </span>
+                <button
+                  type="button"
+                  className={ui.logoutBtn}
+                  onClick={handleLogout}
+                  aria-label="Đăng xuất"
+                >
+                  Đăng xuất
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={ui.loginBtn}
+                onClick={() => openAuthModal("login", false)}
+                aria-label="Đăng nhập tài khoản"
+              >
+                👤 Đăng nhập
+              </button>
+            )}
+
+            <button
+              ref={cartSummaryBtnRef}
+              type="button"
+              className={ui.cartSummary}
+              onClick={() => setIsCartOpen(true)}
+              aria-label={`Giỏ hàng: ${totalItems} món, ${formatPrice(totalPrice)}`}
+            >
+              <span aria-hidden="true">🛒</span>
+              <span className={ui.cartCount}>{totalItems}</span>
+              <span className={ui.cartDivider} />
+              <span>{formatPrice(totalPrice)}</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -969,6 +1166,13 @@ export default function MenuPage() {
                   }
                   setOrderError("");
                   setOrderMessage("");
+
+                  // Nếu chưa đăng nhập, kích hoạt Auth Modal và tiếp tục checkout sau khi đăng nhập
+                  if (!user || !authToken) {
+                    openAuthModal("login", true);
+                    return;
+                  }
+
                   setShowCheckout(true);
                 }}
                 style={styles.orderButton}
@@ -1390,6 +1594,158 @@ export default function MenuPage() {
                       : "Hết hàng"}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL XÁC THỰC NGƯỜI DÙNG (TASK 5.1.2 & FIGMA SCREEN 04) ================= */}
+      {isAuthOpen && (
+        <div
+          className={ui.authModalOverlay}
+          role="presentation"
+          onClick={closeAuthModal}
+        >
+          <div
+            ref={authModalRef}
+            tabIndex={-1}
+            className={ui.authModalCard}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auth-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={ui.authModalHeader}>
+              <button
+                type="button"
+                className={ui.authModalClose}
+                onClick={closeAuthModal}
+                aria-label="Đóng cửa sổ xác thực"
+              >
+                ✕
+              </button>
+              <h2 id="auth-modal-title" className={ui.authModalTitle}>
+                Chào mừng đến BrewLite
+              </h2>
+              <p className={ui.authModalSubtitle}>
+                {authMode === "login"
+                  ? "Đăng nhập tài khoản để tiếp tục đặt hàng và tích lũy điểm thưởng"
+                  : "Tạo tài khoản mới để trải nghiệm dịch vụ trọn vẹn tại BrewLite"}
+              </p>
+            </div>
+
+            <div className={ui.authTabs} role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === "login"}
+                className={`${ui.authTab} ${authMode === "login" ? ui.authTabActive : ""}`}
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                }}
+              >
+                Đăng nhập
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === "register"}
+                className={`${ui.authTab} ${authMode === "register" ? ui.authTabActive : ""}`}
+                onClick={() => {
+                  setAuthMode("register");
+                  setAuthError("");
+                }}
+              >
+                Đăng ký
+              </button>
+            </div>
+
+            <div className={ui.authBody}>
+              <form onSubmit={handleAuthSubmit} className={ui.authForm}>
+                {authError && (
+                  <div role="alert" className={ui.authError}>
+                    {authError}
+                  </div>
+                )}
+
+                <div className={ui.authField}>
+                  <label htmlFor="auth-email" className={ui.authLabel}>
+                    Email *
+                  </label>
+                  <input
+                    id="auth-email"
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="name@brewlite.vn"
+                    required
+                    autoComplete="email"
+                    className={ui.authInput}
+                  />
+                </div>
+
+                <div className={ui.authField}>
+                  <label htmlFor="auth-password" className={ui.authLabel}>
+                    Mật khẩu *
+                  </label>
+                  <input
+                    id="auth-password"
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="Tối thiểu 6 ký tự"
+                    required
+                    minLength={6}
+                    autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                    className={ui.authInput}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className={ui.authSubmitBtn}
+                >
+                  {authLoading
+                    ? "Đang xử lý..."
+                    : authMode === "login"
+                    ? "Đăng nhập"
+                    : "Đăng ký tài khoản"}
+                </button>
+              </form>
+
+              <div className={ui.authFooter}>
+                {authMode === "login" ? (
+                  <p>
+                    Chưa có tài khoản?{" "}
+                    <button
+                      type="button"
+                      className={ui.authSwitchBtn}
+                      onClick={() => {
+                        setAuthMode("register");
+                        setAuthError("");
+                      }}
+                    >
+                      Đăng ký ngay
+                    </button>
+                  </p>
+                ) : (
+                  <p>
+                    Đã có tài khoản?{" "}
+                    <button
+                      type="button"
+                      className={ui.authSwitchBtn}
+                      onClick={() => {
+                        setAuthMode("login");
+                        setAuthError("");
+                      }}
+                    >
+                      Đăng nhập ngay
+                    </button>
+                  </p>
+                )}
               </div>
             </div>
           </div>

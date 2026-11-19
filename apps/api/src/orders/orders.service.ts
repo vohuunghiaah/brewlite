@@ -2,10 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, IsNull, Not } from 'typeorm';
 
 import { Order } from './entities/order.entity';
 import { OrderItem, ProductSize } from './entities/order-item.entity';
@@ -40,8 +41,9 @@ export class OrdersService {
   ) {}
 
   // Lấy danh sách đơn hàng
-  async findAll() {
+  async findAll(userId: number) {
     return this.orderRepository.find({
+      where: { userId },
       relations: {
         items: true,
       },
@@ -52,9 +54,9 @@ export class OrdersService {
   }
 
   // Lấy chi tiết đơn hàng
-  async findOne(id: number) {
+  async findOne(id: number, userId: number) {
     const order = await this.orderRepository.findOne({
-      where: { id },
+      where: { id, userId },
       relations: {
         items: {
           product: true,
@@ -63,6 +65,13 @@ export class OrdersService {
     });
 
     if (!order) {
+      const hasOwner = await this.orderRepository.existsBy({
+        id,
+        userId: Not(IsNull()),
+      });
+      if (hasOwner) {
+        throw new ForbiddenException();
+      }
       throw new NotFoundException(
         `Không tìm thấy đơn hàng ID ${id}`,
       );
@@ -71,8 +80,8 @@ export class OrdersService {
     return order;
   }
 
-  // Tạo đơn hàng (UC-04 PENDING Order Creation)
-  async create(createOrderDto: CreateOrderDto) {
+  // Tạo đơn hàng (UC-04 PENDING Order Creation with User Ownership)
+  async create(createOrderDto: CreateOrderDto, userId: number) {
     return this.dataSource.transaction(
       async (manager) => {
         const orderItems: OrderItem[] = [];
@@ -159,6 +168,7 @@ export class OrdersService {
         const order = manager
           .getRepository(Order)
           .create({
+            userId,
             customerName: createOrderDto.customerName,
             customerPhone: createOrderDto.customerPhone,
             note: createOrderDto.note,

@@ -339,3 +339,81 @@ export function createMenuLifecycleController({
     getFilteredProducts,
   };
 }
+
+/**
+ * Controller quản lý phiên xác thực JWT (Auth Session)
+ * Tương thích hoàn toàn với Next.js SSR và React useSyncExternalStore
+ */
+export function createAuthController() {
+  const initial = { token: null, user: null };
+  let state = initial;
+  let initialized = false;
+  let listeners = [];
+
+  function getState() {
+    if (!initialized && typeof window !== 'undefined') {
+      initialized = true;
+      try {
+        const savedToken = localStorage.getItem('brewlite_access_token');
+        const savedUser = localStorage.getItem('brewlite_user');
+        if (savedToken && savedUser) {
+          state = { token: savedToken, user: JSON.parse(savedUser) };
+        }
+      } catch {
+        // Bỏ qua lỗi storage
+      }
+    }
+    return state;
+  }
+
+  function getServerSnapshot() {
+    return initial;
+  }
+
+  function subscribe(fn) {
+    listeners.push(fn);
+    return () => {
+      listeners = listeners.filter((l) => l !== fn);
+    };
+  }
+
+  function emit() {
+    for (const listener of listeners) {
+      listener(state);
+    }
+  }
+
+  function setSession(token, user) {
+    state = { token, user };
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('brewlite_access_token', token);
+        localStorage.setItem('brewlite_user', JSON.stringify(user));
+      }
+    } catch {
+      // Bỏ qua lỗi storage
+    }
+    emit();
+  }
+
+  function clearSession() {
+    state = { token: null, user: null };
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.removeItem('brewlite_access_token');
+        localStorage.removeItem('brewlite_user');
+      }
+    } catch {
+      // Bỏ qua lỗi storage
+    }
+    emit();
+  }
+
+  return {
+    getState,
+    getServerSnapshot,
+    subscribe,
+    setSession,
+    clearSession,
+  };
+}

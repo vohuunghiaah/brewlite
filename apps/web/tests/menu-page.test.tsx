@@ -13,8 +13,42 @@ describe('MenuPage React Component Tests', () => {
   };
 
   beforeEach(() => {
+    localStorage.setItem('brewlite_access_token', 'mock_jwt_token_123');
+    localStorage.setItem('brewlite_user', JSON.stringify({ id: 1, email: 'user@brewlite.vn' }));
+
     global.fetch = jest.fn((url: RequestInfo | URL, options?: RequestInit) => {
       const urlStr = String(url);
+      if (urlStr.endsWith('/auth/login') && options?.method === 'POST') {
+        const body = options?.body ? JSON.parse(String(options.body)) : {};
+        if (body.password === 'wrong-pass') {
+          return Promise.resolve({
+            ok: false,
+            status: 401,
+            json: async () => ({ message: 'Email hoặc mật khẩu không chính xác.' }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            accessToken: 'mock_jwt_token_123',
+            tokenType: 'Bearer',
+            user: { id: 1, email: body.email || 'user@brewlite.vn' },
+          }),
+        } as Response);
+      }
+      if (urlStr.endsWith('/auth/register') && options?.method === 'POST') {
+        const body = options?.body ? JSON.parse(String(options.body)) : {};
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: async () => ({
+            id: 2,
+            email: body.email || 'newuser@brewlite.vn',
+            createdAt: new Date().toISOString(),
+          }),
+        } as Response);
+      }
       if (urlStr.endsWith('/products/1')) {
         return Promise.resolve({
           ok: true,
@@ -46,6 +80,7 @@ describe('MenuPage React Component Tests', () => {
   });
 
   afterEach(() => {
+    localStorage.clear();
     jest.restoreAllMocks();
   });
 
@@ -378,5 +413,165 @@ describe('MenuPage React Component Tests', () => {
       expect(cartSection).toHaveAttribute('aria-hidden', 'true');
       expect(cartSection).toHaveAttribute('inert');
     });
+  });
+
+  it('unauthenticated checkout triggers Auth Modal (Figma Screen 04)', async () => {
+    localStorage.clear();
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // 1. Thêm sản phẩm vào giỏ
+    const addQuickBtn = screen.getByRole('button', { name: /thêm nhanh cà phê latte vào giỏ/i });
+    fireEvent.click(addQuickBtn);
+
+    // 2. Mở Drawer giỏ hàng
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
+
+    // 3. Khách chưa đăng nhập bấm "Tiếp tục đặt hàng"
+    const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+    fireEvent.click(checkoutBtn);
+
+    // 4. Auth Modal xuất hiện với role="dialog" và tiêu đề chào mừng
+    const authDialog = await screen.findByRole('dialog', { name: /chào mừng đến brewlite/i });
+    expect(authDialog).toBeInTheDocument();
+    expect(authDialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('tab', { name: /đăng nhập/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /đăng ký/i })).toBeInTheDocument();
+
+    // 5. Giỏ hàng và món chọn vẫn được bảo toàn nguyên vẹn
+    const cartSection = document.getElementById('cart')!;
+    expect(cartSection).toHaveTextContent('Cà phê Latte');
+  });
+
+  it('successful login resumes order placement with Authorization header', async () => {
+    localStorage.clear();
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // 1. Thêm món và bắt đầu checkout
+    const addQuickBtn = screen.getByRole('button', { name: /thêm nhanh cà phê latte vào giỏ/i });
+    fireEvent.click(addQuickBtn);
+
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
+
+    const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+    fireEvent.click(checkoutBtn);
+
+    // 2. Điền thông tin đăng nhập trong Auth Modal
+    await screen.findByRole('dialog', { name: /chào mừng đến brewlite/i });
+    const emailInput = screen.getByLabelText(/email \*/i);
+    const passInput = screen.getByLabelText(/mật khẩu \*/i);
+    fireEvent.change(emailInput, { target: { value: 'customer@brewlite.vn' } });
+    fireEvent.change(passInput, { target: { value: 'securepassword123' } });
+
+    const submitLoginBtn = screen.getByRole('button', { name: /^đăng nhập$/i });
+    fireEvent.click(submitLoginBtn);
+
+    // 3. Modal xác thực đóng và luồng checkout tự động mở tiếp
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /chào mừng đến brewlite/i })).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/tên khách hàng/i)).toBeInTheDocument();
+    });
+
+    // 4. Nhập thông tin và hoàn tất đặt hàng
+    const nameInput = screen.getByLabelText(/tên khách hàng/i);
+    const phoneInput = screen.getByLabelText(/số điện thoại/i);
+    fireEvent.change(nameInput, { target: { value: 'Khách Hàng Thân Thiết' } });
+    fireEvent.change(phoneInput, { target: { value: '0912345678' } });
+
+    const confirmBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      const statuses = screen.getAllByRole('status');
+      expect(statuses.some((s) => s.textContent?.includes('Đặt hàng thành công!'))).toBe(true);
+    });
+
+    // 5. Xác minh request POST /orders mang theo Authorization Bearer token
+    const postCalls = (global.fetch as jest.Mock).mock.calls.filter(
+      (call: [string, RequestInit?]) => call[0].endsWith('/orders') && call[1]?.method === 'POST'
+    );
+    expect(postCalls.length).toBeGreaterThan(0);
+    const lastPostCall = postCalls[postCalls.length - 1];
+    expect(lastPostCall[1].headers).toHaveProperty('Authorization', 'Bearer mock_jwt_token_123');
+  });
+
+  it('invalid login displays error message without losing cart items', async () => {
+    localStorage.clear();
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // Thêm món vào giỏ
+    const addQuickBtn = screen.getByRole('button', { name: /thêm nhanh cà phê latte vào giỏ/i });
+    fireEvent.click(addQuickBtn);
+
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng:/i });
+    fireEvent.click(openCartBtn);
+
+    const checkoutBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+    fireEvent.click(checkoutBtn);
+
+    await screen.findByRole('dialog', { name: /chào mừng đến brewlite/i });
+
+    // Nhập sai mật khẩu
+    const emailInput = screen.getByLabelText(/email \*/i);
+    const passInput = screen.getByLabelText(/mật khẩu \*/i);
+    fireEvent.change(emailInput, { target: { value: 'customer@brewlite.vn' } });
+    fireEvent.change(passInput, { target: { value: 'wrong-pass' } });
+
+    const submitLoginBtn = screen.getByRole('button', { name: /^đăng nhập$/i });
+    fireEvent.click(submitLoginBtn);
+
+    // Hiển thị thông báo lỗi rõ ràng
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Email hoặc mật khẩu không chính xác.');
+    });
+
+    // Modal vẫn mở và giỏ hàng không bị xóa
+    expect(screen.getByRole('dialog', { name: /chào mừng đến brewlite/i })).toBeInTheDocument();
+    const cartSection = document.getElementById('cart')!;
+    expect(cartSection).toHaveTextContent('Cà phê Latte');
+  });
+
+  it('logout resets user state without breaking cart', async () => {
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // Thêm món vào giỏ
+    const addQuickBtn = screen.getByRole('button', { name: /thêm nhanh cà phê latte vào giỏ/i });
+    fireEvent.click(addQuickBtn);
+
+    // Người dùng ban đầu đã đăng nhập từ localStorage
+    expect(screen.getByText(/user@brewlite\.vn/i)).toBeInTheDocument();
+    const logoutBtn = screen.getByRole('button', { name: /đăng xuất/i });
+    expect(logoutBtn).toBeInTheDocument();
+
+    // Thực hiện đăng xuất
+    fireEvent.click(logoutBtn);
+
+    // Header chuyển về trạng thái Chưa đăng nhập
+    expect(screen.queryByText(/user@brewlite\.vn/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /đăng nhập tài khoản/i })).toBeInTheDocument();
+    expect(localStorage.getItem('brewlite_access_token')).toBeNull();
+
+    // Giỏ hàng vẫn được bảo toàn nguyên vẹn
+    const openCartBtn = screen.getByRole('button', { name: /giỏ hàng: 1 món/i });
+    fireEvent.click(openCartBtn);
+    const cartSection = document.getElementById('cart')!;
+    expect(cartSection).toHaveTextContent('Cà phê Latte');
   });
 });
