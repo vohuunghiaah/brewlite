@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { get } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,9 +44,16 @@ function script(name) {
   run(process.execPath, ['scripts/' + name]);
 }
 async function health(status, body) {
-  const response = await fetch(env.API_URL + '/health', { signal: AbortSignal.timeout(5000) });
-  assert.equal(response.status, status);
-  assert.deepEqual(await response.json(), body);
+  // Child processes block the parent event loop between probes. Each external probe
+  // needs a fresh socket, including the first one after stopping PostgreSQL.
+  const response = await new Promise((resolve, reject) => {
+    get(env.API_URL + '/health', { agent: false, signal: AbortSignal.timeout(5000) }, resolve)
+      .on('error', reject);
+  });
+  const chunks = [];
+  for await (const chunk of response) chunks.push(chunk);
+  assert.equal(response.statusCode, status);
+  assert.deepEqual(JSON.parse(Buffer.concat(chunks).toString('utf8')), body);
   console.log('GET /health', status, body);
 }
 const sql = statement => queryDb(statement, env);
@@ -100,6 +108,9 @@ try {
   await health(503, { status: 'error', database: 'down' });
   compose('up', '-d', '--wait', '--wait-timeout', '90', 'db');
   await health(200, { status: 'ok', database: 'up' });
+} catch (error) {
+  compose('ps', '--all');
+  throw error;
 } finally {
   try {
     // Only this run owns this freshly generated Compose project and its volumes.

@@ -51,4 +51,8 @@ CI ở base có lint, test, build cho API và Web. Chưa có job chạy Chromium
 
 Hai cảnh báo lint API `no-misused-spread` nằm trong ProductsService từ baseline. Chúng không làm lint thất bại. Bài nghiệm thu dùng Mock Gateway đã định nghĩa cho UC-10. Phép thử readiness bao phủ một chu kỳ ngắt/kết nối lại cục bộ; chỉ tiêu uptime 7 ngày của NFR-07 cần một cửa sổ đo riêng.
 
-Kết quả từng job và trạng thái duyệt tại HEAD nằm trong phần Checks và biên bản nghiệm thu của PR Task 5.2. Các ảnh và log trích dẫn ở trên được tạo từ stack kiểm thử local.
+## GitHub Actions và kết luận nghiệm thu
+
+Lượt CI đầu của PR #34 đạt cả hai job lint/test/build, 13 bước Chromium và 11 ca HTTP/SQL. Probe sau khi dừng DB gặp lỗi socket trước khi nhận được HTTP status. Runner đã chuyển sang kết nối HTTP độc lập cho mỗi probe và tiếp tục đòi hỏi đúng status cùng JSON trong 5 giây. [Log CI đầu tiên](https://github.com/vohuunghiaah/brewlite/actions/runs/44683961548).
+
+Cả sáu yêu cầu đạt nghiệm thu local. Kết quả CI tại commit hiện hành, artifact Ubuntu và kết luận sẵn sàng merge được ghi trong [biên bản PR #34](https://github.com/vohuunghiaah/brewlite/pull/34) và [Checks tại HEAD](https://github.com/vohuunghiaah/brewlite/pull/34/checks).
