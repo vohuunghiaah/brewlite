@@ -819,7 +819,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
       render(<MenuPage />);
       fireEvent.click(screen.getByText('Lịch sử'));
       const open = (await screen.findAllByRole('button', { name: /Xem vé xác nhận/ }))[0];
-      fireEvent.click(open);
+      await act(async () => { fireEvent.click(open); });
       const confirmation = await screen.findByText(/Đã thanh toán thành công/);
       expect(screen.queryByLabelText('Tiến trình đơn hàng')).toBeNull();
       act(() => { jest.advanceTimersByTime(30000); });
@@ -828,7 +828,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
       expect(reads()).toHaveLength(1);
       expect(reads()[0][1].headers.Authorization).toBe('Bearer mock_jwt_token_123');
       fireEvent.click(screen.getAllByRole('button', { name: /Đóng vé/ })[0]);
-      fireEvent.click(open);
+      await act(async () => { fireEvent.click(open); });
       expect(reads()).toHaveLength(2);
     } finally { jest.useRealTimers(); }
   });
