@@ -36,7 +36,7 @@ services:
         max-file: "3"
 
   web:
-    image: ${WEB_IMAGE:-ghcr.io/vohuunghiaah/brewlite-web}:${IMAGE_TAG:-latest}
+    image: ${WEB_IMAGE_REF:-${WEB_IMAGE:-ghcr.io/vohuunghiaah/brewlite-web}:${WEB_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     container_name: ${WEB_CONTAINER:-brewlite-prod-web}
     restart: unless-stopped
     environment:
@@ -65,7 +65,7 @@ services:
         max-file: "3"
 
   api:
-    image: ${API_IMAGE:-ghcr.io/vohuunghiaah/brewlite-api}:${IMAGE_TAG:-latest}
+    image: ${API_IMAGE_REF:-${API_IMAGE:-ghcr.io/vohuunghiaah/brewlite-api}:${API_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     container_name: ${API_CONTAINER:-brewlite-prod-api}
     restart: unless-stopped
     environment:

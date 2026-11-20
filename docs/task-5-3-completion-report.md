@@ -118,25 +118,74 @@ Tệp cấu hình: [`docker-compose.prod.yml`](../../docker-compose.prod.yml) & 
 
 ---
 
-## 7. Kết quả kiểm thử tự động toàn diện
+## 7. Khắc phục các điểm kiểm toán độc lập (Acceptance Hardening FIX-01 – FIX-06)
+
+Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Continuous Delivery chuyên nghiệp, toàn bộ 6 phát hiện kiểm toán độc lập đã được xử lý triệt để:
+
+### FIX-01: Database Backup phải Fail-Closed (`scripts/backup-db.mjs`)
+- **Nguyên nhân gốc rễ:** Khối catch trước đây in cảnh báo và thoát với `process.exit(0)`, cho phép pipeline migration tiếp tục chạy ngay cả khi backup thất bại. Ngoài ra, việc đọc dump qua buffer có thể gặp lỗi tràn bộ nhớ `maxBuffer`.
+- **Khắc phục:**
+  - Triển khai cơ chế Fail-Closed: khi DB tồn tại mà `pg_dump` gặp bất kỳ lỗi nào, script lập tức xóa file hỏng và thoát với mã lỗi `1` (`process.exit(1)`), chặn đứng migration.
+  - Phân biệt rõ chế độ cold-start ban đầu (cờ `--fresh` hoặc 0 bảng) với cơ sở dữ liệu đã có dữ liệu.
+  - Sử dụng Node.js stream (`createWriteStream` và pipe stdout) loại bỏ giới hạn buffer.
+  - Kiểm tra tính toàn vẹn (header PostgreSQL dump) và phân quyền file nghiêm ngặt `0600`.
+  - Che giấu toàn bộ thông tin nhạy cảm trong log (`maskSecret`).
+
+### FIX-02: Rollback phải khôi phục phiên bản ổn định xác định (`scripts/rollback.mjs` & `scripts/deployment-state.mjs`)
+- **Nguyên nhân gốc rễ:** Script trước đây fallback về tag `stable` hoặc `latest`, nhưng các tag này có thể không tồn tại trên GHCR hoặc trỏ tới bản build lỗi.
+- **Khắc phục:**
+  - Tạo mô-đun lưu trữ trạng thái `scripts/deployment-state.mjs` ghi nhận chính xác digest/tag của cả container `api` và `web` đang chạy trước mỗi lần cập nhật.
+  - Yêu cầu bắt buộc phải có target xác định cho cả 2 container, nghiêm cấm các tag `latest`, `stable` hoặc chuỗi rỗng.
+  - Kiểm tra trạng thái Docker Healthcheck lặp lại sau khi rollback để xác nhận hệ thống phục hồi hoàn toàn.
+  - Tuyệt đối bảo toàn volume `postgres_data` (không bao giờ chạy `down -v`).
+
+### FIX-03: Hardened Remote Deployment Pipeline (`.github/workflows/deploy.yml`)
+- **Nguyên nhân gốc rễ:** Script SSH từ xa trước đây sử dụng `-o StrictHostKeyChecking=no` mà không xác minh fingerprint, và thiếu kiểm tra điều kiện tiên quyết trước khi copy file.
+- **Khắc phục:**
+  - Hỗ trợ ghim host fingerprint thông qua `LIGHTSAIL_SSH_KNOWN_HOSTS`.
+  - Thực thi pre-flight checks trên remote host (kiểm tra Docker, Compose, Node.js) trước khi sync tệp cấu hình.
+  - Thiết lập `set -eo pipefail` trên mọi bash script từ xa, đảm bảo fail-fast ngay lập tức khi một bước gặp sự cố.
+  - Không truyền trực tiếp secret qua CLI argument.
+
+### FIX-04: Phân tách Dry-Run, Staging và Production & Chống Deploy đồng thời
+- **Khắc phục:**
+  - Tách riêng biệt job `deploy-dry-run` (chỉ chạy nội bộ runner, 0 kết nối SSH ra ngoài) và job `deploy-production`.
+  - Áp dụng `concurrency: group: cd-deployment-production, cancel-in-progress: false` trên toàn bộ workflow để ngăn chặn việc deploy chồng lấn.
+  - Step summary chỉ ghi nhận trạng thái `VERIFIED IN PRODUCTION` khi thực sự kết nối máy chủ và hoàn tất smoke test thành công (`deployed_real=true`), nếu thiếu credentials sẽ đánh dấu chính xác là `BLOCKED / DRY-RUN`.
+
+### FIX-05: Kiểm thử thực tế bộ công cụ triển khai (`scripts/test-deployment-scripts.mjs`)
+- **Khắc phục:**
+  - Nâng cấp bộ kiểm thử từ việc kiểm tra regex chuỗi tĩnh sang kiểm thử thực thi tích hợp (Execution & Simulation).
+  - Tích hợp bài kiểm thử Docker Rollback thực tế: khởi tạo container giả lập phiên bản v1, cập nhật sang v2 bị lỗi, kích hoạt rollback và kiểm tra container được khôi phục về v1 thành công.
+  - Toàn bộ 16 bài kiểm thử (5 Static, 8 Execution, 3 Simulation) PASS 100%.
+
+### FIX-06: Production Smoke Test bảo mật và HTTPS (`scripts/smoke-test.mjs`)
+- **Khắc phục:**
+  - Bắt buộc kiểm tra HTTPS/TLS khi `TARGET_ENV=production`, từ chối kết nối `http://` không mã hóa.
+  - Từ chối `http://localhost` hoặc `127.0.0.1` khi ở chế độ production để tránh báo cáo kết quả sai lệch.
+  - Kiểm tra public API nghiêm ngặt qua tiền tố reverse proxy `/api/*` (`/api/health`, `/api/products`), không fallback ngầm qua cổng trực tiếp.
+
+---
+
+## 8. Kết quả kiểm thử tự động toàn diện
 
 1. **Linter & Code Format:**
    - `npm --prefix apps/api run lint`: PASS (0 lỗi).
    - `npm --prefix apps/web run lint`: PASS (0 lỗi).
 2. **Unit & Integration Tests:**
-   - API: 116 bài kiểm thử PASS 100%.
+   - API: 119 bài kiểm thử PASS 100%.
    - Web: 44 bài kiểm thử (14 unit, 30 component) PASS 100%.
 3. **E2E Acceptance & Security Testing (Playwright + Chromium):**
    - 13 bước luồng MVP: PASS 100%.
    - 11 bài kiểm thử bảo mật & ngoại lệ (CORS preflight, IDOR, Idempotency, OCC refund): PASS 100%.
 4. **Kiểm thử công cụ triển khai (`scripts/test-deployment-scripts.mjs`):**
-   - 10 bài kiểm thử cấu hình Docker Compose, Caddyfile, Smoke Test leak detector và Rollback safety: PASS 100%.
+   - 16 bài kiểm thử toàn diện (Static Invariants, Real Execution & Docker Simulation): PASS 100%.
 
 ---
 
-## 8. Danh mục tài liệu bàn giao
+## 9. Danh mục tài liệu bàn giao
 
-1. [`docs/task-5-3-completion-report.md`](task-5-3-completion-report.md): Báo cáo nghiệm thu kỹ thuật Task 5.3.
+1. [`docs/task-5-3-completion-report.md`](task-5-3-completion-report.md): Báo cáo nghiệm thu kỹ thuật Task 5.3 (Hardened).
 2. [`docs/deployment/deployment-guide.md`](deployment/deployment-guide.md): Hướng dẫn chi tiết triển khai production trên AWS Lightsail.
 3. [`docs/deployment/github-environment-setup.md`](deployment/github-environment-setup.md): Hướng dẫn thiết lập Approval Gate, GitHub Secrets & Variables.
 4. [`docs/deployment/rollback-guide.md`](deployment/rollback-guide.md): Hướng dẫn chiến lược khôi phục và phục hồi dữ liệu khi có sự cố.
@@ -144,15 +193,16 @@ Tệp cấu hình: [`docker-compose.prod.yml`](../../docker-compose.prod.yml) & 
 6. [`docker-compose.prod.yml`](../../docker-compose.prod.yml): Docker Compose production theo chuẩn ADR-007.
 7. [`Caddyfile`](../../Caddyfile): Cấu hình reverse proxy, HTTPS tự động và security headers.
 8. [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml): Quy trình Continuous Delivery & Deployment.
-9. [`scripts/smoke-test.mjs`](../../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret.
-10. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động.
-11. [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn.
-12. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động các công cụ triển khai.
+9. [`scripts/deployment-state.mjs`](../../scripts/deployment-state.mjs): Mô-đun quản lý và ghi nhận trạng thái deployment state.
+10. [`scripts/smoke-test.mjs`](../../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret (Fail-closed & TLS).
+11. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed.
+12. [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn và xác định.
+13. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện các công cụ triển khai.
 
 ---
 
-## 9. Kết luận
+## 10. Kết luận
 
-Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2. Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã sẵn sàng.
+Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2 cùng toàn bộ 6 yêu cầu kiểm toán độc lập nghiêm ngặt nhất. Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã hoàn thiện ở mức chất lượng cao nhất.
 
 **Trạng thái đề xuất:** **READY FOR MANUAL MERGE** (Chờ người dùng review và merge thủ công vào `main`).

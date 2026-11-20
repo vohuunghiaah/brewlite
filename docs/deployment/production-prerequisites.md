@@ -32,6 +32,7 @@ Tài liệu này tổng hợp toàn bộ các điều kiện kỹ thuật và v�
   - `LIGHTSAIL_HOST`: Địa chỉ IP thật của máy chủ.
   - `LIGHTSAIL_USER`: User SSH (`ubuntu`).
   - `LIGHTSAIL_SSH_KEY`: Private Key để kết nối SSH.
+  - `LIGHTSAIL_SSH_KNOWN_HOSTS`: Fingerprint SSH host ghim trước để chống giả mạo MITM.
   - `POSTGRES_USER`: Tên user DB production (không dùng mật khẩu mặc định).
   - `POSTGRES_PASSWORD`: Mật khẩu DB ngẫu nhiên >= 32 ký tự.
   - `POSTGRES_DB`: Tên database production (`brewlite`).

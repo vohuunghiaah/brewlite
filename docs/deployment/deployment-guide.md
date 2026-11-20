@@ -99,13 +99,13 @@ docker build -t ghcr.io/vohuunghiaah/brewlite-web:local apps/web
 
 ### Bước 2: Kiểm tra cú pháp Compose production
 ```bash
-API_IMAGE=ghcr.io/vohuunghiaah/brewlite-api IMAGE_TAG=local WEB_IMAGE=ghcr.io/vohuunghiaah/brewlite-web docker compose -f docker-compose.prod.yml config
+API_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-api:local WEB_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-web:local docker compose -f docker-compose.prod.yml config
 ```
 
 ### Bước 3: Khởi chạy môi trường production
 ```bash
 # Tạo file .env production với các secrets cần thiết
-API_IMAGE=ghcr.io/vohuunghiaah/brewlite-api IMAGE_TAG=local WEB_IMAGE=ghcr.io/vohuunghiaah/brewlite-web docker compose -f docker-compose.prod.yml up -d
+API_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-api:local WEB_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-web:local docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### Bước 4: Chạy migration an toàn
@@ -115,7 +115,11 @@ docker compose -f docker-compose.prod.yml run --rm --no-deps api node dist/prepa
 
 ### Bước 5: Kiểm tra Smoke Test
 ```bash
-TARGET_URL=http://localhost node scripts/smoke-test.mjs
+# Đối với môi trường dev / local:
+TARGET_ENV=development TARGET_URL=http://localhost node scripts/smoke-test.mjs
+
+# Đối với môi trường production thật (bắt buộc HTTPS & không dùng localhost):
+TARGET_ENV=production TARGET_URL="https://brewlite.vn" node scripts/smoke-test.mjs
 ```
 
 ---

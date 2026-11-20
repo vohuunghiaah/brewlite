@@ -7,22 +7,23 @@ on:
   workflow_dispatch:
     inputs:
       target_env:
-        description: 'Deployment target environment'
+        description: 'Deployment target environment (dry-run, staging, production)'
         required: true
-        default: 'production'
+        default: 'dry-run'
         type: choice
         options:
-          - production
-          - staging
           - dry-run
+          - staging
+          - production
 
 permissions:
   contents: read
   packages: write
   id-token: write
 
+# Prevent simultaneous deployments to target environments across any ref
 concurrency:
-  group: cd-${{ github.ref }}
+  group: cd-deployment-production
   cancel-in-progress: false
 
 jobs:
@@ -89,6 +90,9 @@ jobs:
 
       - name: Install Playwright Browsers
         run: node scripts/node_modules/playwright/cli.js install --with-deps chromium --only-shell
+
+      - name: Deployment Tooling Verification Suite
+        run: node scripts/test-deployment-scripts.mjs
 
       - name: Compose & E2E Acceptance Test
         shell: bash
@@ -181,9 +185,40 @@ jobs:
           echo "| **API** | \`${{ steps.meta.outputs.api_image }}:${{ steps.meta.outputs.image_tag }}\` | \`${{ steps.build-api.outputs.digest }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Web** | \`${{ steps.meta.outputs.web_image }}:${{ steps.meta.outputs.image_tag }}\` | \`${{ steps.build-web.outputs.digest }}\` |" >> $GITHUB_STEP_SUMMARY
 
+  # Isolated Dry-Run Job (Zero SSH connection, purely simulates and validates)
+  deploy-dry-run:
+    name: Dry-Run Deployment Simulation
+    needs: [quality-gate, build-and-push]
+    if: github.event_name == 'workflow_dispatch' && inputs.target_env == 'dry-run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Validate Production Compose Syntax
+        run: |
+          echo "Validating docker-compose.prod.yml..."
+          API_IMAGE_REF="${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}" \
+          WEB_IMAGE_REF="${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}" \
+          docker compose -f docker-compose.prod.yml config -q
+          echo "✔ Compose configuration syntax is valid (zero secrets dumped)."
+
+      - name: Run Deployment & Rollback Simulation Test
+        run: node scripts/test-deployment-scripts.mjs
+
+      - name: Record Dry-run Summary
+        run: |
+          echo "### 🧪 Dry-Run Deployment Audit" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** DRY-RUN (Isolated Simulation)" >> $GITHUB_STEP_SUMMARY
+          echo "**Result:** All compose descriptors, fail-closed backups, and rollback invariants verified successfully." >> $GITHUB_STEP_SUMMARY
+          echo "**Zero Remote Calls:** No remote SSH connection was initiated." >> $GITHUB_STEP_SUMMARY
+
+  # Production Deployment Job (Requires Manual Approval Gate via GitHub Environment 'production')
   deploy-production:
     name: Deploy to Production (AWS Lightsail)
     needs: [quality-gate, build-and-push]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && inputs.target_env == 'production')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment:
@@ -193,83 +228,116 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Check Production Deployment Prerequisites
+      - name: Verify Production Host Prerequisites & Secrets
         id: check-prereqs
         shell: bash
         run: |
-          echo "=== Checking AWS Lightsail Production Host Configuration ==="
-          if [ -n "${{ secrets.LIGHTSAIL_SSH_KEY }}" ] && [ -n "${{ secrets.LIGHTSAIL_HOST }}" ]; then
+          echo "=== Verifying AWS Lightsail Production Host Configuration ==="
+          HAS_HOST=true
+          if [ -z "${{ secrets.LIGHTSAIL_SSH_KEY }}" ]; then HAS_HOST=false; echo "Missing secret: LIGHTSAIL_SSH_KEY"; fi
+          if [ -z "${{ secrets.LIGHTSAIL_HOST }}" ]; then HAS_HOST=false; echo "Missing secret: LIGHTSAIL_HOST"; fi
+          if [ -z "${{ secrets.LIGHTSAIL_SSH_KNOWN_HOSTS }}" ]; then
+            echo "⚠️ Warning: LIGHTSAIL_SSH_KNOWN_HOSTS not provided. Fallback fingerprint verification required."
+          fi
+
+          if [ "$HAS_HOST" = "true" ]; then
             echo "has_host=true" >> $GITHUB_OUTPUT
             echo "✔ Production Lightsail host credentials detected."
           else
             echo "has_host=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Production host credentials (LIGHTSAIL_SSH_KEY / LIGHTSAIL_HOST) are not provisioned in GitHub Secrets."
-            echo "Deployment step running in DRY-RUN / SIMULATION mode."
+            echo "⚠️ Production host credentials are not provisioned in GitHub Secrets."
+            echo "Deployment step running in BLOCKED / SIMULATION mode."
           fi
 
-      - name: Validate Production Compose & Configs (Dry-run / Staging)
+      - name: Validate Production Compose Descriptors
         run: |
-          echo "Validating docker-compose.prod.yml..."
-          docker compose -f docker-compose.prod.yml config
-          echo "✔ Compose configuration syntax valid."
+          API_IMAGE_REF="${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}" \
+          WEB_IMAGE_REF="${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}" \
+          docker compose -f docker-compose.prod.yml config -q
+          echo "✔ Compose configuration syntax is valid (zero secrets dumped)."
 
-      - name: Remote Deployment Execution (When Host Provisioned)
+      - name: Hardened Remote Deployment Execution
         if: steps.check-prereqs.outputs.has_host == 'true'
+        id: remote-deploy
         shell: bash
         env:
           SSH_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
           HOST: ${{ secrets.LIGHTSAIL_HOST }}
           SSH_USER: ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-          API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
-          WEB_IMAGE: ${{ needs.build-and-push.outputs.web_image }}
+          KNOWN_HOSTS: ${{ secrets.LIGHTSAIL_SSH_KNOWN_HOSTS }}
+          API_IMAGE_REF: ${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}
+          WEB_IMAGE_REF: ${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}
+          DOMAIN: ${{ vars.DOMAIN || 'brewlite.vn' }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          set -eo pipefail
 
-          echo "Syncing deployment descriptors to Lightsail..."
+          # Setup SSH with explicit known_hosts pinning
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+
+          if [ -n "$KNOWN_HOSTS" ]; then
+            echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+            echo "✔ Host fingerprint verified from trusted LIGHTSAIL_SSH_KNOWN_HOSTS secret."
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+            echo "⚠️ Host key captured via keyscan (pinning recommended)."
+          fi
+
+          echo "1. Checking remote prerequisites (Docker, Compose, Node.js)..."
+          ssh "$SSH_USER@$HOST" "bash -s" << 'EOF'
+            set -eo pipefail
+            docker --version > /dev/null 2>&1 || { echo "❌ Docker Engine not found on host!"; exit 1; }
+            docker compose version > /dev/null 2>&1 || { echo "❌ Docker Compose not found on host!"; exit 1; }
+            node --version > /dev/null 2>&1 || { echo "❌ Node.js not found on host!"; exit 1; }
+            mkdir -p /home/$USER/app && chmod 700 /home/$USER/app
+          EOF
+
+          echo "2. Syncing deployment files to host..."
           scp -r docker-compose.prod.yml Caddyfile scripts "$SSH_USER@$HOST:/home/$SSH_USER/app/"
 
-          echo "Executing remote deployment pipeline..."
-          ssh "$SSH_USER@$HOST" << EOF
-            set -e
+          echo "3. Executing deployment pipeline on remote host..."
+          ssh "$SSH_USER@$HOST" "bash -s" << EOF
+            set -eo pipefail
             cd /home/$SSH_USER/app
 
-            # 1. Pre-deployment Database Backup
+            # A. Record current running state before updating
+            node scripts/deployment-state.mjs || true
+
+            # B. Fail-closed pre-deployment backup
             node scripts/backup-db.mjs
 
-            # 2. Pull new images from GHCR
-            IMAGE_TAG=$IMAGE_TAG docker compose -f docker-compose.prod.yml pull
+            # C. Pull target images from GHCR
+            API_IMAGE_REF="$API_IMAGE_REF" WEB_IMAGE_REF="$WEB_IMAGE_REF" docker compose -f docker-compose.prod.yml pull
 
-            # 3. Safe Schema Migration
-            IMAGE_TAG=$IMAGE_TAG docker compose -f docker-compose.prod.yml run --rm --no-deps api node dist/prepare-database.js migrate
+            # D. Safe schema migration
+            API_IMAGE_REF="$API_IMAGE_REF" docker compose -f docker-compose.prod.yml run --rm --no-deps api node dist/prepare-database.js migrate
 
-            # 4. Rolling Container Update
-            IMAGE_TAG=$IMAGE_TAG docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # E. Rolling container update
+            API_IMAGE_REF="$API_IMAGE_REF" WEB_IMAGE_REF="$WEB_IMAGE_REF" docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            # 5. Smoke Test
-            TARGET_URL=http://localhost node scripts/smoke-test.mjs || {
-              echo "Smoke test failed! Triggering rollback..."
+            # F. Production Smoke Test
+            TARGET_ENV=production TARGET_URL="https://$DOMAIN" node scripts/smoke-test.mjs || {
+              echo "❌ Smoke test failed! Triggering automatic safe rollback..."
               node scripts/rollback.mjs
               exit 1
             }
           EOF
+          echo "deployed_real=true" >> $GITHUB_OUTPUT
 
       - name: Record Deployment State & Audit Summary
         shell: bash
         run: |
           echo "### 🚀 Production Deployment Audit" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.check-prereqs.outputs.has_host }}" = "true" ]; then
+          if [ "${{ steps.remote-deploy.outputs.deployed_real }}" = "true" ]; then
             echo "**Status:** VERIFIED IN PRODUCTION" >> $GITHUB_STEP_SUMMARY
             echo "**Target Host:** \`${{ secrets.LIGHTSAIL_HOST }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Verification:** Smoke test passed 100% via HTTPS." >> $GITHUB_STEP_SUMMARY
           else
-            echo "**Status:** BLOCKED / DRY-RUN (Pending AWS Lightsail VM SSH credentials)" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** BLOCKED / DRY-RUN (Pending AWS Lightsail VM SSH credentials & live environment)" >> $GITHUB_STEP_SUMMARY
             echo "**Image Artifacts Verified:** GHCR Docker images built and published successfully." >> $GITHUB_STEP_SUMMARY
             echo "**Safety:** No real production secrets leaked, schema migrations validated without destructive changes." >> $GITHUB_STEP_SUMMARY
           fi
-          echo "| Component | Image Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Target Image Ref |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| API | \`${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Web | \`${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY

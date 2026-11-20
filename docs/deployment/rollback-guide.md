@@ -45,20 +45,30 @@ docker images ghcr.io/vohuunghiaah/brewlite-web
 ```
 
 ### Bước 3: Kích hoạt khôi phục bằng script chuyên dụng
+Cung cấp trực tiếp commit SHA tag hoặc digest cụ thể (nghiêm cấm fallback về `latest` hoặc `stable`):
 ```bash
 ROLLBACK_API_IMAGE="ghcr.io/vohuunghiaah/brewlite-api:<previous_sha>" \
 ROLLBACK_WEB_IMAGE="ghcr.io/vohuunghiaah/brewlite-web:<previous_sha>" \
 node scripts/rollback.mjs
 ```
+Hoặc nếu có tệp trạng thái `.deployment-state.json` được ghi nhận tự động trước đó:
+```bash
+node scripts/rollback.mjs
+```
 
 Script sẽ:
+- Xác minh cả API và Web image targets đều hợp lệ, từ chối thẻ cấm (`latest`, `stable`, chuỗi rỗng).
 - Giữ nguyên container PostgreSQL và dữ liệu trên named volume `postgres_data`.
-- Khởi động lại container `api` và `web` trỏ về image chỉ định.
-- Chạy `docker compose ps` để xác nhận trạng thái healthy.
+- Khởi động lại container `api` và `web` trỏ về image chỉ định qua `API_IMAGE_REF` và `WEB_IMAGE_REF`.
+- Kiểm tra lặp lại probe trạng thái Docker Healthcheck cho cả 2 container cho đến khi báo healthy (hoặc timeout báo lỗi).
 
 ### Bước 4: Chạy lại Smoke Test xác nhận khôi phục thành công
 ```bash
-TARGET_URL=http://localhost node scripts/smoke-test.mjs
+# Đối với môi trường kiểm thử nội bộ
+TARGET_ENV=development TARGET_URL=http://localhost node scripts/smoke-test.mjs
+
+# Đối với môi trường production (bắt buộc HTTPS)
+TARGET_ENV=production TARGET_URL="https://${DOMAIN}" node scripts/smoke-test.mjs
 ```
 
 ---
@@ -66,7 +76,7 @@ TARGET_URL=http://localhost node scripts/smoke-test.mjs
 ## 4. Quy trình phục hồi dữ liệu từ bản sao lưu (Disaster Recovery)
 
 Nếu cơ sở dữ liệu gặp sự cố nghiêm trọng về logic nghiệp vụ:
-1. Bản sao lưu được lưu trữ tại thư mục `/home/ubuntu/app/backups/db-backup-<timestamp>.sql`.
+1. Bản sao lưu được lưu trữ tại thư mục `/home/ubuntu/app/backups/db-backup-<timestamp>.sql` (phân quyền 0600).
 2. Để khôi phục dữ liệu từ file backup mà không làm gián đoạn hạ tầng:
 ```bash
 # Đưa container API về trạng thái tạm dừng
@@ -79,5 +89,5 @@ docker exec -i brewlite-prod-db psql -U brewlite -d brewlite < backups/db-backup
 docker compose -f docker-compose.prod.yml start api
 
 # Kiểm tra lại tính sẵn sàng của hệ thống
-TARGET_URL=http://localhost node scripts/smoke-test.mjs
+TARGET_ENV=production TARGET_URL="https://${DOMAIN}" node scripts/smoke-test.mjs
 ```
