@@ -28,6 +28,7 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+      target: development
 
     container_name: ${API_CONTAINER:-brewlite-api}
     restart: unless-stopped
@@ -70,6 +71,7 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+      target: development
 
     container_name: ${WEB_CONTAINER:-brewlite-web}
     restart: unless-stopped

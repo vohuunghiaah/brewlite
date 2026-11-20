@@ -73,6 +73,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p test-results
+          node scripts/test-deployment-scripts.mjs
           node scripts/test-compose.mjs 2>&1 | tee test-results/acceptance.log
       - uses: actions/upload-artifact@v4
         if: always()

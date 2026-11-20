@@ -1,0 +1,141 @@
+# Production Docker Compose for BrewLite ASM2
+# Target Topology: AWS Lightsail 1 VM (2 vCPU, 2 GB RAM, 60 GB SSD) - ADR-007
+# Caddy Reverse Proxy (80/443) -> Web (3000) & API (3001) -> DB (5432 internal)
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: ${CADDY_CONTAINER:-brewlite-prod-caddy}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@brewlite.vn}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - brewlite-internal
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    image: ${WEB_IMAGE_REF:-${WEB_IMAGE:-ghcr.io/vohuunghiaah/brewlite-web}:${WEB_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    container_name: ${WEB_CONTAINER:-brewlite-prod-web}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: 1
+    networks:
+      - brewlite-internal
+    # No public port exposed; traffic routed strictly through Caddy reverse proxy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/menu').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    image: ${API_IMAGE_REF:-${API_IMAGE:-ghcr.io/vohuunghiaah/brewlite-api}:${API_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    container_name: ${API_CONTAINER:-brewlite-prod-api}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${POSTGRES_DB}
+      DATABASE_USER: ${POSTGRES_USER}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      FRONTEND_URL: ${FRONTEND_URL:-https://${DOMAIN:-localhost}}
+    networks:
+      - brewlite-internal
+    # No public port exposed; internal access only
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgres:16-alpine
+    container_name: ${DB_CONTAINER:-brewlite-prod-db}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - brewlite-internal
+    # No public port exposed; database is strictly internal to brewlite-internal network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  brewlite-internal:
+    driver: bridge

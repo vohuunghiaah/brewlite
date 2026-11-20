@@ -17,7 +17,18 @@
 | FR-11 / UC-05,06 | orders.controller, menu/page | order-history.test.tsx, e2e-mvp-acceptance bước 11–13 | Ảnh vé và lịch sử, GET /orders/me |
 | FR-13 / UC-13, NFR-05 | health.controller, database.ts, products.seed, docker-compose.yml | test-compose.mjs | DB trống, hai lượt setup, HTTP 200 → 503 → 200 |
 
-[Báo cáo và bằng chứng Task 5.2](task-5-2-completion-report.md). Các bảng dưới đây ghi nhận baseline lịch sử Task 2–3.
+### Truy vết triển khai Continuous Delivery / Deployment — Task 5.3
+
+| SRS / Yêu cầu NFR | Mã nguồn & Cấu hình | Kiểm thử & Xác minh | Bằng chứng nghiệm thu | Trạng thái |
+|---|---|---|---|---|
+| NFR-05 (Container & Packaging) | apps/api/Dockerfile, apps/web/Dockerfile (multi-stage, non-root, Next standalone) | docker build, container startup probe | Image size: API 79.1 MB, Web 74.8 MB; /health & /menu HTTP 200 | **IMPLEMENTED / VERIFIED LOCALLY** |
+| NFR-06 (CI/CD Pipeline) | .github/workflows/deploy.yml, .github/workflows/quality.yml | GitHub Actions Quality Gates, GHCR publish, Approval Gate | Quality gates pass 100%, deploy.yml định nghĩa fail-fast & approval gate | **IMPLEMENTED / VERIFIED IN CI** |
+| NFR-07 (Khả dụng & Deployment ADR-007) | docker-compose.prod.yml, Caddyfile | scripts/test-deployment-scripts.mjs, scripts/smoke-test.mjs | Caddy 80/443 proxy, đóng 5432 & 3001, RAM limit 1.62GB / 2GB Lightsail | **IMPLEMENTED / VERIFIED LOCALLY** |
+| Database Migration Safety | apps/api/src/database.ts, apps/api/src/prepare-database.ts, scripts/backup-db.mjs | test-compose.mjs (2 setup runs), prepare-database.js migrate | Idempotent migrations (4 -> 0), pre-deploy backup, cấm destructive down | **IMPLEMENTED / VERIFIED LOCALLY** |
+| Rollback Strategy | scripts/rollback.mjs, scripts/smoke-test.mjs | test-deployment-scripts.mjs | Tự động rollback khi smoke test fail; bảo toàn postgres_data volume | **IMPLEMENTED / VERIFIED LOCALLY** |
+| Production Live Deployment | AWS Lightsail Single-VM | Chờ cấu hình SSH Secrets thật | Dry-run & staging syntax verified; production deploy gate BLOCKED chờ secrets | **BLOCKED (PENDING HOST SECRETS)** |
+
+[Báo cáo và bằng chứng Task 5.3](task-5-3-completion-report.md). [Báo cáo và bằng chứng Task 5.2](task-5-2-completion-report.md). Các bảng dưới đây ghi nhận baseline lịch sử Task 2–3.
 
 ### Ghi Nhận Hiện Trạng Kỹ Thuật (Engineering Baseline & Audit Scope)
 1. **Nghiệm thu Thiết kế UML (Task 2 Handover — DESIGN VERIFIED):**

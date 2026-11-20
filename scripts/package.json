@@ -7,7 +7,9 @@
   "scripts": {
     "test:safety": "node test-env-safety.mjs",
     "test:mvp": "node e2e-mvp-acceptance.mjs",
-    "test:security": "node e2e-security-exceptions.mjs"
+    "test:security": "node e2e-security-exceptions.mjs",
+    "test:deploy": "node test-deployment-scripts.mjs",
+    "smoke-test": "node smoke-test.mjs"
   },
   "dependencies": {
     "playwright": "^1.49.0"
