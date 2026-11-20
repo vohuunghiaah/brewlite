@@ -14,8 +14,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrdersController = void 0;
 const common_1 = require("@nestjs/common");
-const current_user_decorator_1 = require("../auth/current-user.decorator");
-const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const orders_service_1 = require("./orders.service");
 const create_order_dto_1 = require("./dto/create-order.dto");
 let OrdersController = class OrdersController {
@@ -23,56 +21,39 @@ let OrdersController = class OrdersController {
     constructor(ordersService) {
         this.ordersService = ordersService;
     }
-    findAll(user) {
-        return this.ordersService.findAll(user.id);
+    findAll() {
+        return this.ordersService.findAll();
     }
-    findMyOrders(user) {
-        return this.ordersService.findAll(user.id);
+    findOne(id) {
+        return this.ordersService.findOne(id);
     }
-    findOne(id, user) {
-        if (id < 1 || id > 2_147_483_647) {
-            throw new common_1.BadRequestException('ID đơn hàng không hợp lệ');
-        }
-        return this.ordersService.findOne(id, user.id);
-    }
-    create(createOrderDto, user) {
-        return this.ordersService.create(createOrderDto, user.id);
+    create(createOrderDto) {
+        return this.ordersService.create(createOrderDto);
     }
 };
 exports.OrdersController = OrdersController;
 __decorate([
     (0, common_1.Get)(),
-    __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], OrdersController.prototype, "findAll", null);
 __decorate([
-    (0, common_1.Get)('me'),
-    __param(0, (0, current_user_decorator_1.CurrentUser)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
-], OrdersController.prototype, "findMyOrders", null);
-__decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
-    __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", void 0)
 ], OrdersController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
-    __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [create_order_dto_1.CreateOrderDto, Object]),
+    __metadata("design:paramtypes", [create_order_dto_1.CreateOrderDto]),
     __metadata("design:returntype", void 0)
 ], OrdersController.prototype, "create", null);
 exports.OrdersController = OrdersController = __decorate([
     (0, common_1.Controller)('orders'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [orders_service_1.OrdersService])
 ], OrdersController);
 //# sourceMappingURL=orders.controller.js.map

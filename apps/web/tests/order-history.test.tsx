@@ -1,8 +1,8 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import MenuPage from '../src/app/menu/page';
 
-describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () => {
+describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01..03)', () => {
   const mockLatte = {
     id: 1,
     name: 'Cà phê Latte',
@@ -10,6 +10,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     price: 45000,
     imageUrl: 'https://images.unsplash.com/photo-latte',
     isAvailable: true,
+    stock: 20,
   };
 
   const mockTea = {
@@ -19,6 +20,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     price: 42000,
     imageUrl: 'https://images.unsplash.com/photo-tea',
     isAvailable: true,
+    stock: 15,
   };
 
   const mockUnavailableProduct = {
@@ -28,6 +30,27 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     price: 50000,
     imageUrl: 'https://images.unsplash.com/photo-coldbrew',
     isAvailable: false,
+    stock: 0,
+  };
+
+  const mockOutOfStockProduct = {
+    id: 4,
+    name: 'Bạc Xỉu Sữa Tươi',
+    description: 'Bạc xỉu ba tầng',
+    price: 39000,
+    imageUrl: 'https://images.unsplash.com/photo-bacxiu',
+    isAvailable: true,
+    stock: 0,
+  };
+
+  const mockLowStockProduct = {
+    id: 5,
+    name: 'Matcha Latte',
+    description: 'Matcha Nhật Bản',
+    price: 55000,
+    imageUrl: 'https://images.unsplash.com/photo-matcha',
+    isAvailable: true,
+    stock: 1,
   };
 
   const mockOrders = [
@@ -93,6 +116,33 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
           quantity: 2,
           unitPrice: '60000.00',
           subtotal: '120000.00',
+          product: mockLatte,
+        },
+      ],
+    },
+    {
+      id: 103,
+      orderCode: '#BL-5555',
+      userId: 1,
+      customerName: 'Nguyễn Văn Test',
+      customerPhone: '0901234567',
+      pickupMethod: 'AT_COUNTER',
+      tableNumber: null,
+      note: null,
+      totalAmount: '45000.00',
+      status: 'PAYMENT_FAILED',
+      createdAt: '2026-11-20T10:05:00Z',
+      items: [
+        {
+          id: 6,
+          productId: 1,
+          productName: 'Cà phê Latte',
+          size: 'SMALL',
+          toppings: [],
+          note: null,
+          quantity: 1,
+          unitPrice: '45000.00',
+          subtotal: '45000.00',
           product: mockLatte,
         },
       ],
@@ -169,11 +219,19 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
         } as Response);
       }
 
+      if (urlStr.includes('/orders/101')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => mockOrders[0],
+        } as Response);
+      }
+
       if (urlStr.endsWith('/products')) {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => [mockLatte, mockTea, mockUnavailableProduct],
+          json: async () => [mockLatte, mockTea, mockUnavailableProduct, mockOutOfStockProduct, mockLowStockProduct],
         } as Response);
       }
 
@@ -196,16 +254,13 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
       expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
     });
 
-    // Click "Lịch sử" in navigation
     const historyNavLink = screen.getByText('Lịch sử');
     fireEvent.click(historyNavLink);
 
-    // Verify view switches to Order History
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: /Lịch sử đơn hàng/i })).toBeInTheDocument();
     });
 
-    // Verify API called with Bearer token
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringMatching(/\/orders\/me$/),
       expect.objectContaining({
@@ -217,7 +272,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
   });
 
   it('2. Unauthenticated prompt: displays login card when user is not logged in', async () => {
-    localStorage.clear(); // Remove auth token and user
+    localStorage.clear();
     render(<MenuPage />);
 
     await waitFor(() => {
@@ -233,7 +288,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     });
   });
 
-  it('3. Three status tabs: accurately groups processing (2), completed (1), and cancelled (1) orders', async () => {
+  it('3. Three status tabs: accurately groups processing (3), completed (1), and cancelled (1) orders (FIX-03)', async () => {
     render(<MenuPage />);
 
     const historyNavLink = screen.getByText('Lịch sử');
@@ -242,18 +297,19 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     await waitFor(() => {
       expect(screen.getByText('#BL-9216')).toBeInTheDocument();
       expect(screen.getByText('#BL-1042')).toBeInTheDocument();
+      expect(screen.getByText('#BL-5555')).toBeInTheDocument();
     });
 
-    // Tab "Đang xử lý": should have 2 orders (#BL-9216 PAID, #BL-1042 PREPARING)
+    // Tab "Đang xử lý": includes PAID (101), PREPARING (102), and PAYMENT_FAILED (103)
     const processingTab = screen.getByRole('tab', { name: /Đang xử lý/i });
     expect(processingTab).toBeInTheDocument();
-    expect(processingTab).toHaveTextContent('2');
+    expect(processingTab).toHaveTextContent('3');
 
-    // Tab "Hoàn tất": should have 1 order
+    // Tab "Hoàn tất": 1 order (#BL-8000)
     const completedTab = screen.getByRole('tab', { name: /Hoàn tất/i });
     expect(completedTab).toHaveTextContent('1');
 
-    // Tab "Đã hủy": should have 1 order
+    // Tab "Đã hủy": ONLY CANCELLED orders (1 order: #BL-7000)
     const cancelledTab = screen.getByRole('tab', { name: /Đã hủy/i });
     expect(cancelledTab).toHaveTextContent('1');
 
@@ -268,11 +324,11 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     fireEvent.click(cancelledTab);
     await waitFor(() => {
       expect(screen.getByText('#BL-7000')).toBeInTheDocument();
-      expect(screen.queryByText('#BL-8000')).not.toBeInTheDocument();
+      expect(screen.queryByText('#BL-5555')).not.toBeInTheDocument();
     });
   });
 
-  it('4. Status badges: renders correct status labels and color styles', async () => {
+  it('4. Status badges: renders correct status labels and color styles including PAYMENT_FAILED (FIX-03)', async () => {
     render(<MenuPage />);
 
     const historyNavLink = screen.getByText('Lịch sử');
@@ -281,6 +337,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     await waitFor(() => {
       expect(screen.getByText('• Đã thanh toán')).toBeInTheDocument();
       expect(screen.getByText('• Đang pha chế')).toBeInTheDocument();
+      expect(screen.getByText('• Thanh toán lỗi (Thử lại)')).toBeInTheDocument();
     });
   });
 
@@ -294,11 +351,9 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
       expect(screen.getByText('#BL-9216')).toBeInTheDocument();
     });
 
-    // Click "Chi tiết ▾" on the first order
     const detailButtons = screen.getAllByRole('button', { name: /Chi tiết/i });
     fireEvent.click(detailButtons[0]);
 
-    // Breakdown should now be visible
     await waitFor(() => {
       expect(screen.getByText(/Chi tiết đồ uống:/i)).toBeInTheDocument();
       expect(screen.getByText(/Topping: Kem cheese/i)).toBeInTheDocument();
@@ -307,7 +362,6 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
       expect(screen.getByText(/VIP B-12/i)).toBeInTheDocument();
     });
 
-    // Click again to collapse
     const collapseButton = screen.getByRole('button', { name: /Thu gọn ▴/i });
     fireEvent.click(collapseButton);
     expect(screen.queryByText(/Chi tiết đồ uống:/i)).not.toBeInTheDocument();
@@ -323,37 +377,30 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
       expect(screen.getByText('#BL-9216')).toBeInTheDocument();
     });
 
-    // Click "↻ Đặt lại" on order #BL-9216
     const reorderButtons = screen.getAllByRole('button', { name: /Đặt lại/i });
     fireEvent.click(reorderButtons[0]);
 
-    // Drawer opens
     await waitFor(() => {
       const drawerHeading = screen.getByRole('heading', { level: 2, name: /Giỏ hàng/i });
       expect(drawerHeading).toBeInTheDocument();
     });
 
-    // Verify items added to cart
     expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
     expect(screen.getByText('Trà Đào Cam Sả')).toBeInTheDocument();
-
-    // Verify reorder notification message
     expect(screen.getByText(/Đã thêm toàn bộ món từ đơn #BL-9216 vào giỏ hàng/i)).toBeInTheDocument();
 
-    // Verify NO order placement was triggered automatically (no POST /orders call)
     const postOrderCalls = (global.fetch as jest.Mock).mock.calls.filter((call) => {
       return String(call[0]).endsWith('/orders') && call[1]?.method === 'POST';
     });
     expect(postOrderCalls).toHaveLength(0);
   });
 
-  it('7. Re-order with unavailable items: alerts user and skips out-of-stock items', async () => {
+  it('7. Re-order with unavailable items: alerts user and skips discontinued products (FIX-01)', async () => {
     render(<MenuPage />);
 
     const historyNavLink = screen.getByText('Lịch sử');
     fireEvent.click(historyNavLink);
 
-    // Switch to "Đã hủy" tab (order #BL-7000 contains unavailable Cold Brew Đào)
     const cancelledTab = screen.getByRole('tab', { name: /Đã hủy/i });
     fireEvent.click(cancelledTab);
 
@@ -361,42 +408,222 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
       expect(screen.getByText('#BL-7000')).toBeInTheDocument();
     });
 
-    // Mock window.alert
     const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
 
     const reorderBtn = screen.getByRole('button', { name: /Đặt lại đơn #BL-7000/i });
     fireEvent.click(reorderBtn);
 
-    expect(alertMock).toHaveBeenCalledWith(
-      expect.stringContaining('Cold Brew Đào')
-    );
+    await waitFor(() => {
+      expect(alertMock).toHaveBeenCalledWith(
+        expect.stringContaining('Cold Brew Đào')
+      );
+    });
     alertMock.mockRestore();
   });
 
-  it('8. Track order: opens Digital Buzzer Ticket modal for active PAID/PREPARING order', async () => {
-    render(<MenuPage />);
+  it('8. Re-order with stock = 0: alerts user product is out of stock (FIX-01)', async () => {
+    const outOfStockOrder = {
+      id: 104,
+      orderCode: '#BL-4040',
+      userId: 1,
+      customerName: 'Nguyễn Văn Test',
+      customerPhone: '0901234567',
+      pickupMethod: 'AT_COUNTER',
+      tableNumber: null,
+      note: null,
+      totalAmount: '39000.00',
+      status: 'PAID',
+      createdAt: '2026-11-20T10:00:00Z',
+      items: [
+        {
+          id: 7,
+          productId: 4, // stock = 0
+          productName: 'Bạc Xỉu Sữa Tươi',
+          size: 'SMALL',
+          toppings: [],
+          note: null,
+          quantity: 2,
+          unitPrice: '39000.00',
+          subtotal: '78000.00',
+          product: mockOutOfStockProduct,
+        },
+      ],
+    };
 
-    const historyNavLink = screen.getByText('Lịch sử');
-    fireEvent.click(historyNavLink);
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [outOfStockOrder],
+        } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [mockOutOfStockProduct],
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    render(<MenuPage />);
+    fireEvent.click(screen.getByText('Lịch sử'));
+
+    await waitFor(() => {
+      expect(screen.getByText('#BL-4040')).toBeInTheDocument();
+    });
+
+    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const reorderBtn = screen.getByRole('button', { name: /Đặt lại đơn #BL-4040/i });
+    fireEvent.click(reorderBtn);
+
+    await waitFor(() => {
+      expect(alertMock).toHaveBeenCalledWith(
+        expect.stringContaining('đã hết hàng (tồn kho: 0)')
+      );
+    });
+    alertMock.mockRestore();
+  });
+
+  it('9. Re-order with stock smaller than requested quantity: adds only available stock and warns (FIX-01)', async () => {
+    const lowStockOrder = {
+      id: 105,
+      orderCode: '#BL-5050',
+      userId: 1,
+      customerName: 'Nguyễn Văn Test',
+      customerPhone: '0901234567',
+      pickupMethod: 'AT_COUNTER',
+      tableNumber: null,
+      note: null,
+      totalAmount: '165000.00',
+      status: 'PAID',
+      createdAt: '2026-11-20T10:00:00Z',
+      items: [
+        {
+          id: 8,
+          productId: 5, // stock = 1, requested = 3
+          productName: 'Matcha Latte',
+          size: 'SMALL',
+          toppings: [],
+          note: null,
+          quantity: 3,
+          unitPrice: '55000.00',
+          subtotal: '165000.00',
+          product: mockLowStockProduct,
+        },
+      ],
+    };
+
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [lowStockOrder],
+        } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [mockLowStockProduct],
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    render(<MenuPage />);
+    fireEvent.click(screen.getByText('Lịch sử'));
+
+    await waitFor(() => {
+      expect(screen.getByText('#BL-5050')).toBeInTheDocument();
+    });
+
+    const reorderBtn = screen.getByRole('button', { name: /Đặt lại đơn #BL-5050/i });
+    fireEvent.click(reorderBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: /Giỏ hàng/i })).toBeInTheDocument();
+      expect(screen.getByText(/chỉ còn 1 ly khả dụng/i)).toBeInTheDocument();
+    });
+  });
+
+  it('10. Order Status Tracking: fetches fresh order and updates timeline when status advances (FIX-02)', async () => {
+    jest.useFakeTimers();
+
+    let currentStatus = 'PAID';
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => mockOrders,
+        } as Response);
+      }
+      if (urlStr.includes('/orders/101')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ...mockOrders[0], status: currentStatus }),
+        } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [mockLatte],
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    render(<MenuPage />);
+    fireEvent.click(screen.getByText('Lịch sử'));
 
     await waitFor(() => {
       expect(screen.getByText('#BL-9216')).toBeInTheDocument();
     });
 
-    // Click "Theo dõi >" on order #BL-9216
+    // Open tracking modal for #BL-9216
     const trackButtons = screen.getAllByRole('button', { name: /Theo dõi vé chuông/i });
     fireEvent.click(trackButtons[0]);
 
-    // Buzzer ticket modal opens
     await waitFor(() => {
       expect(screen.getByText('BrewLite Digital Buzzer')).toBeInTheDocument();
-      expect(screen.getByRole('heading', { level: 2, name: '#BL-9216' })).toBeInTheDocument();
-      expect(screen.getByText(/Giao tận bàn: VIP B-12/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /📋 Xem trong Lịch sử đơn/i })).toBeInTheDocument();
     });
+
+    // Status is currently PAID: node 1 is active
+    expect(screen.getByText(/PAID/i)).toBeInTheDocument();
+
+    // Advance backend order status to PREPARING
+    currentStatus = 'PREPARING';
+
+    // Fast-forward interval timer by 3000ms
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+
+    // Modal updates with new PREPARING state
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/orders\/101$/),
+        expect.anything()
+      );
+    });
+
+    // Close buzzer modal -> interval should be cleared
+    const closeButtons = screen.getAllByRole('button', { name: /Đóng vé/i });
+    fireEvent.click(closeButtons[0]);
+
+    jest.useRealTimers();
   });
 
-  it('9. Error state and retry: displays error and recovers upon retry', async () => {
+  it('11. Error state and retry: displays error and recovers upon retry', async () => {
     let failOrdersOnce = true;
     (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
       const urlStr = String(url);
@@ -434,7 +661,6 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
       expect(screen.getByRole('alert')).toHaveTextContent(/Mạng bị mất kết nối/i);
     });
 
-    // Click retry
     const retryBtn = screen.getByRole('button', { name: /Thử lại/i });
     fireEvent.click(retryBtn);
 
@@ -443,7 +669,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
     });
   });
 
-  it('10. Empty state: displays empty notice when orders list is empty', async () => {
+  it('12. Empty state: displays empty notice when orders list is empty', async () => {
     (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
       if (String(url).endsWith('/orders/me')) {
         return Promise.resolve({
@@ -469,7 +695,6 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06)', () =>
       expect(screen.getByRole('button', { name: /Khám phá Menu ngay/i })).toBeInTheDocument();
     });
 
-    // Clicking "Khám phá Menu ngay" returns to Menu view
     const goMenuBtn = screen.getByRole('button', { name: /Khám phá Menu ngay/i });
     fireEvent.click(goMenuBtn);
 

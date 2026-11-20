@@ -31,6 +31,8 @@ interface Product {
   price: number | string;
   imageUrl?: string | null;
   isAvailable: boolean;
+  stock?: number;
+  version?: number;
 }
 
 export interface CartItem {
@@ -218,12 +220,6 @@ export default function MenuPage() {
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
   const [reorderNotice, setReorderNotice] = useState("");
 
-  const handleLogout = useCallback(() => {
-    authController.clearSession();
-    setOrders([]);
-    setActiveNav("menu");
-  }, [authController, setOrders, setActiveNav]);
-
   // Đơn hàng PENDING đã tạo (Chống tạo đơn lặp ngoài ý muốn)
   const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string } | null>(null);
 
@@ -251,6 +247,14 @@ export default function MenuPage() {
   const [isBuzzerOpen, setIsBuzzerOpen] = useState(false);
   const paymentModalRef = useRef<HTMLDivElement>(null);
   const buzzerModalRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = useCallback(() => {
+    authController.clearSession();
+    setOrders([]);
+    setActiveNav("menu");
+    setIsBuzzerOpen(false);
+    setBuzzerTicket(null);
+  }, [authController, setOrders, setActiveNav, setIsBuzzerOpen, setBuzzerTicket]);
 
   // Thông tin đặt hàng
   const [showCheckout, setShowCheckout] = useState(false);
@@ -824,7 +828,7 @@ export default function MenuPage() {
       case "PENDING":
         return { label: "• Chờ thanh toán", className: ui.statusPending };
       case "PAYMENT_FAILED":
-        return { label: "• Thanh toán thất bại", className: ui.statusFailed };
+        return { label: "• Thanh toán lỗi (Thử lại)", className: ui.statusFailed };
       case "CANCELLED":
         return { label: "• Đã hủy", className: ui.statusCancelled };
       default:
@@ -832,8 +836,10 @@ export default function MenuPage() {
     }
   }
 
+  // Phân loại đơn hàng theo 3 Tabs chuẩn Figma Screen 07 (FIX-03)
+  // PAYMENT_FAILED vẫn cho phép thanh toán lại nên thuộc nhóm "Đang xử lý"
   const processingOrders = useMemo(
-    () => orders.filter((o) => ["PENDING", "PAID", "PREPARING", "READY"].includes(o.status)),
+    () => orders.filter((o) => ["PENDING", "PAYMENT_FAILED", "PAID", "PREPARING", "READY"].includes(o.status)),
     [orders]
   );
   const completedOrders = useMemo(
@@ -841,7 +847,7 @@ export default function MenuPage() {
     [orders]
   );
   const cancelledOrders = useMemo(
-    () => orders.filter((o) => ["CANCELLED", "PAYMENT_FAILED"].includes(o.status)),
+    () => orders.filter((o) => o.status === "CANCELLED"),
     [orders]
   );
 
@@ -851,46 +857,131 @@ export default function MenuPage() {
     return cancelledOrders;
   }, [historyTab, processingOrders, completedOrders, cancelledOrders]);
 
-  function handleReorder(order: OrderHistoryItem) {
+  // Safe Re-order với kiểm tra tồn kho từ API và số lượng hiện có trong giỏ (FIX-01)
+  async function handleReorder(order: OrderHistoryItem) {
     if (!order.items || order.items.length === 0) return;
 
+    // 1. Luôn fetch danh sách sản phẩm mới nhất từ API để lấy stock và price hiện tại
+    let freshCatalog = products;
+    try {
+      const fetched = await fetchProducts(API_URL);
+      if (Array.isArray(fetched) && fetched.length > 0) {
+        freshCatalog = fetched;
+        setProducts(fetched);
+      }
+    } catch (err) {
+      console.warn("Could not refresh products catalog before re-order, using current state", err);
+    }
+
     let addedCount = 0;
-    const unavailableNames: string[] = [];
+    const warnings: string[] = [];
+
+    // Tổng hợp số lượng từng productId hiện đang có trong giỏ hàng
+    const currentCartQuantities: Record<number, number> = {};
+    for (const ci of cartItems) {
+      currentCartQuantities[ci.productId] = (currentCartQuantities[ci.productId] || 0) + ci.quantity;
+    }
 
     for (const item of order.items) {
-      const liveProduct = products.find((p) => p.id === item.productId);
-      if (!liveProduct || !liveProduct.isAvailable) {
-        unavailableNames.push(item.productName || liveProduct?.name || `Món #${item.productId}`);
+      const liveProduct = freshCatalog.find((p) => p.id === item.productId);
+      const itemName = item.productName || liveProduct?.name || `Món #${item.productId}`;
+
+      // 1. Kiểm tra tồn tại
+      if (!liveProduct) {
+        warnings.push(`Món "${itemName}" đã ngừng kinh doanh`);
         continue;
       }
 
+      // 2. Kiểm tra đang kinh doanh (isAvailable)
+      if (!liveProduct.isAvailable) {
+        warnings.push(`Món "${liveProduct.name}" tạm ngừng kinh doanh`);
+        continue;
+      }
+
+      // 3. Kiểm tra tồn kho hiện tại (stock)
+      const currentStock = typeof liveProduct.stock === "number" ? liveProduct.stock : 50;
+      if (currentStock <= 0) {
+        warnings.push(`Món "${liveProduct.name}" đã hết hàng (tồn kho: 0)`);
+        continue;
+      }
+
+      // 4. Kiểm tra số lượng khách muốn đặt lại và số lượng đã có trong giỏ
+      const alreadyInCart = currentCartQuantities[liveProduct.id] || 0;
+      const remainingStock = Math.max(0, currentStock - alreadyInCart);
+
+      if (remainingStock <= 0) {
+        warnings.push(
+          `Món "${liveProduct.name}" không thể thêm (trong giỏ đã có ${alreadyInCart} ly, đạt giới hạn kho: ${currentStock})`
+        );
+        continue;
+      }
+
+      // Nếu không đủ hàng, cảnh báo rõ ràng, không âm thầm thêm vượt số lượng
+      const qtyToAdd = Math.min(item.quantity, remainingStock);
+      if (qtyToAdd < item.quantity) {
+        warnings.push(
+          `Món "${liveProduct.name}" chỉ còn ${remainingStock} ly khả dụng (yêu cầu ${item.quantity} ly, trong giỏ có ${alreadyInCart} ly). Đã thêm ${qtyToAdd} ly.`
+        );
+      }
+
+      // 5. Thêm món vào giỏ hàng với giá tính theo dữ liệu sản phẩm hiện tại từ API (không dùng giá cũ)
       addItemToCart(
         liveProduct,
         item.size,
         item.toppings || [],
         item.note || "",
-        item.quantity
+        qtyToAdd
       );
-      addedCount += item.quantity;
+
+      currentCartQuantities[liveProduct.id] = (currentCartQuantities[liveProduct.id] || 0) + qtyToAdd;
+      addedCount += qtyToAdd;
     }
 
     if (addedCount > 0) {
       setIsCartOpen(true);
-      if (unavailableNames.length > 0) {
+      if (warnings.length > 0) {
         setReorderNotice(
-          `Đã thêm ${addedCount} món vào giỏ hàng. Một số món không khả dụng nên đã bỏ qua: ${unavailableNames.join(", ")}.`
+          `Đã thêm ${addedCount} món vào giỏ hàng. Cảnh báo tồn kho: ${warnings.join("; ")}.`
         );
       } else {
-        setReorderNotice(`Đã thêm toàn bộ món từ đơn ${order.orderCode || `#${order.id}`} vào giỏ hàng để bạn kiểm tra lại.`);
+        setReorderNotice(
+          `Đã thêm toàn bộ món từ đơn ${order.orderCode || `#${order.id}`} vào giỏ hàng để bạn kiểm tra lại.`
+        );
       }
     } else {
-      alert(`Không thể đặt lại vì tất cả sản phẩm trong đơn hiện đã hết hàng hoặc không khả dụng: ${unavailableNames.join(", ")}.`);
+      const errorMsg = warnings.length > 0
+        ? `Không thể đặt lại đơn hàng: ${warnings.join("; ")}.`
+        : "Không thể đặt lại đơn hàng vì các sản phẩm hiện không khả dụng.";
+      setReorderNotice(errorMsg);
+      alert(errorMsg);
     }
   }
 
-  function handleTrackOrder(order: OrderHistoryItem) {
-    const items: CartItem[] = (order.items || []).map((i) => ({
-      key: `hist-${order.id}-${i.id}`,
+  // Theo dõi đơn hàng thời gian thực: fetch dữ liệu mới nhất từ API (FIX-02)
+  async function handleTrackOrder(order: OrderHistoryItem) {
+    let latestStatus = order.status;
+    let latestOrder = order;
+
+    if (authToken) {
+      try {
+        const res = await fetch(`${API_URL}/orders/${order.id}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.ok) {
+          const fresh = (await res.json()) as OrderHistoryItem;
+          if (fresh && fresh.status) {
+            latestStatus = fresh.status;
+            latestOrder = fresh;
+            setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: fresh.status } : o)));
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch latest order status on track, using local status", err);
+      }
+    }
+
+    const items: CartItem[] = (latestOrder.items || []).map((i) => ({
+      key: `hist-${latestOrder.id}-${i.id}`,
       productId: i.productId,
       productName: i.productName,
       basePrice: Number(i.unitPrice),
@@ -903,16 +994,64 @@ export default function MenuPage() {
     }));
 
     setBuzzerTicket({
-      orderId: order.id,
-      orderCode: order.orderCode || `#BL-${order.id}`,
-      status: order.status,
-      pickupMethod: order.pickupMethod,
-      tableNumber: order.tableNumber || undefined,
-      totalAmount: Number(order.totalAmount),
+      orderId: latestOrder.id,
+      orderCode: latestOrder.orderCode || `#BL-${latestOrder.id}`,
+      status: latestStatus,
+      pickupMethod: latestOrder.pickupMethod,
+      tableNumber: latestOrder.tableNumber || undefined,
+      totalAmount: Number(latestOrder.totalAmount),
       items,
     });
     setIsBuzzerOpen(true);
   }
+
+  // ================= POLLING TRẠNG THÁI ĐƠN HÀNG KHI THEO DÕI (FIX-02) =================
+  useEffect(() => {
+    if (!isBuzzerOpen || !buzzerTicket?.orderId || !authToken) return;
+
+    // Dừng polling khi đơn hàng đã đạt trạng thái kết thúc (COMPLETED hoặc CANCELLED)
+    if (["COMPLETED", "CANCELLED"].includes(buzzerTicket.status)) return;
+
+    let isMounted = true;
+    const orderId = buzzerTicket.orderId;
+
+    async function pollStatus() {
+      try {
+        const res = await fetch(`${API_URL}/orders/${orderId}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) return;
+        const freshOrder = (await res.json()) as OrderHistoryItem;
+        if (!isMounted || !freshOrder || !freshOrder.status) return;
+
+        // Cập nhật trạng thái modal nếu backend chuyển trạng thái
+        setBuzzerTicket((prev) => {
+          if (!prev || prev.orderId !== orderId) return prev;
+          if (prev.status !== freshOrder.status) {
+            return { ...prev, status: freshOrder.status };
+          }
+          return prev;
+        });
+
+        // Đồng bộ danh sách đơn hàng
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, status: freshOrder.status } : o))
+        );
+      } catch (err) {
+        console.warn("Lỗi cập nhật trạng thái đơn hàng khi theo dõi:", err);
+      }
+    }
+
+    // Polling định kỳ mỗi 3000ms
+    const intervalId = setInterval(() => {
+      void pollStatus();
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [isBuzzerOpen, buzzerTicket?.orderId, buzzerTicket?.status, authToken]);
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
   const loadProducts = useCallback((signal?: AbortSignal) => {
