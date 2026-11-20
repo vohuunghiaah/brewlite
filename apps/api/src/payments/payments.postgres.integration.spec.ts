@@ -136,6 +136,30 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
   // PHẦN 1: 12 INTEGRATION TESTS THỰC TẾ TRÊN POSTGRESQL (BẢO TOÀN TỪ BASELINE)
   // =========================================================================
 
+  it('replays a delayed gateway success after reconciliation without refunding the last drink', async () => {
+    const { product, order } = await createTestProductAndOrder(1, 1);
+    const key = crypto.randomUUID();
+    const charge = mockGateway.charge.bind(mockGateway);
+    const delayed = jest.spyOn(mockGateway, 'charge').mockImplementationOnce(async request => {
+      const result = await charge(request);
+      await service.reconcilePayment(key, testUser1.id);
+      return result;
+    });
+    try {
+      const result = await service.processPayment({
+        orderId: order.id, amount: 40000, method: PaymentMethod.MOMO,
+        idempotencyKey: key, pickupMethod: PickupMethod.AT_COUNTER,
+      }, testUser1.id);
+      expect(result.isDuplicate).toBe(true);
+      expect(result.payment.status).toBe(PaymentStatus.SUCCESS);
+      expect(result.order.status).toBe(OrderStatus.PAID);
+      expect((await productRepo.findOneByOrFail({ id: product.id })).stock).toBe(0);
+      expect((await orderRepo.findOneByOrFail({ id: order.id })).status).toBe(OrderStatus.PAID);
+    } finally {
+      delayed.mockRestore();
+    }
+  });
+
   it('1. PENDING -> PAID, trừ stock đúng một lần trên PostgreSQL thật', async () => {
     const { product, order } = await createTestProductAndOrder(10, 2);
     const key = crypto.randomUUID();

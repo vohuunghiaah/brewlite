@@ -214,6 +214,8 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
   ];
 
   beforeEach(() => {
+    sessionStorage.clear();
+    window.history.replaceState(null, "", "/menu");
     localStorage.clear();
     localStorage.setItem('brewlite_access_token', 'mock_jwt_token_123');
     localStorage.setItem('brewlite_user', JSON.stringify({ id: 1, email: 'test@brewlite.vn' }));
@@ -779,141 +781,56 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
     });
   });
 
-  it('14. Order Status Tracking: updates UI from PAID to PREPARING in real-time via controlled polling (FIX-02, FIX-07 #5)', async () => {
+  it('keeps one request in flight and ignores a late response after closing the ticket', async () => {
     jest.useFakeTimers();
-
-    let currentStatus = 'PAID';
-    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
-      const urlStr = String(url);
-      if (urlStr.endsWith('/orders/me')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => mockOrders,
-        } as Response);
-      }
-      if (urlStr.includes('/orders/101')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ ...mockOrders[0], status: currentStatus }),
-        } as Response);
-      }
-      if (urlStr.endsWith('/products')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => [mockLatte],
-        } as Response);
-      }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
-    });
-
-    render(<MenuPage />);
-    fireEvent.click(screen.getByText('Lịch sử'));
-
-    await waitFor(() => {
-      expect(screen.getByText('#BL-9216')).toBeInTheDocument();
-    });
-
-    // Open tracking modal for #BL-9216
-    const trackButtons = screen.getAllByRole('button', { name: /Theo dõi vé chuông/i });
-    fireEvent.click(trackButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('BrewLite Digital Buzzer')).toBeInTheDocument();
-    });
-
-    // Initial status: PAID (card has '• Đã thanh toán' and modal has '• Đã thanh toán')
-    expect(screen.getAllByText('• Đã thanh toán').length).toBeGreaterThanOrEqual(1);
-
-    // Advance backend order status to PREPARING
-    currentStatus = 'PREPARING';
-
-    // Fast-forward interval timer by 3000ms
-    act(() => {
-      jest.advanceTimersByTime(3000);
-    });
-
-    // Modal updates with new PREPARING state
-    await waitFor(() => {
-      expect(screen.getAllByText('• Đang pha chế').length).toBeGreaterThanOrEqual(1);
-    });
-
-    // Close buzzer modal -> interval should be cleared
-    const closeButtons = screen.getAllByRole('button', { name: /Đóng vé/i });
-    fireEvent.click(closeButtons[0]);
-
-    jest.useRealTimers();
+    try {
+      let release!: (r: Response) => void;
+      const pending = new Promise<Response>(resolve => { release = resolve; });
+      const mockFetch = global.fetch as jest.Mock;
+      const original = mockFetch.getMockImplementation()!;
+      mockFetch.mockImplementation((url, options) => String(url).endsWith('/orders/101')
+        ? pending : original(url, options));
+      render(<MenuPage />);
+      fireEvent.click(screen.getByText('Lịch sử'));
+      fireEvent.click((await screen.findAllByRole('button', { name: /Xem vé xác nhận/ }))[0]);
+      const calls = () => mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/orders/101'));
+      expect(calls()).toHaveLength(1);
+      act(() => { jest.advanceTimersByTime(10000); });
+      expect(calls()).toHaveLength(1);
+      fireEvent.click(screen.getAllByRole('button', { name: /Đóng vé/ })[0]);
+      expect(calls()[0][1].signal.aborted).toBe(true);
+      await act(async () => {
+        release({ ok: true, json: async () => ({ ...mockOrders[0], status: 'COMPLETED' }) } as Response);
+        await pending;
+      });
+      expect(screen.getByText('#BL-9216')).toBeVisible();
+      act(() => { jest.advanceTimersByTime(6000); });
+      expect(calls()).toHaveLength(1);
+    } finally { jest.useRealTimers(); }
   });
 
-  it('15. Order Status Tracking: stops polling on modal close, logout, or terminal status (FIX-02, FIX-07 #6)', async () => {
+  it('reads the owner ticket on open and keeps the confirmed payment stable over time', async () => {
     jest.useFakeTimers();
-
-    let fetchCallsForOrder101 = 0;
-    const currentStatus = 'PAID';
-    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
-      const urlStr = String(url);
-      if (urlStr.endsWith('/orders/me')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => mockOrders,
-        } as Response);
-      }
-      if (urlStr.includes('/orders/101')) {
-        fetchCallsForOrder101++;
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ ...mockOrders[0], status: currentStatus }),
-        } as Response);
-      }
-      if (urlStr.endsWith('/products')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => [mockLatte],
-        } as Response);
-      }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
-    });
-
-    render(<MenuPage />);
-    fireEvent.click(screen.getByText('Lịch sử'));
-
-    await waitFor(() => {
-      expect(screen.getByText('#BL-9216')).toBeInTheDocument();
-    });
-
-    // Open tracking modal
-    const trackButtons = screen.getAllByRole('button', { name: /Theo dõi vé chuông/i });
-    fireEvent.click(trackButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('BrewLite Digital Buzzer')).toBeInTheDocument();
-    });
-
-    // Initial track fetch
-    const initialCalls = fetchCallsForOrder101;
-
-    // Advance 3s -> 1 polling call
-    act(() => {
-      jest.advanceTimersByTime(3000);
-    });
-    expect(fetchCallsForOrder101).toBe(initialCalls + 1);
-
-    // Close modal
-    const closeButtons = screen.getAllByRole('button', { name: /Đóng vé/i });
-    fireEvent.click(closeButtons[0]);
-
-    // Advance another 6s -> NO more calls should be made!
-    act(() => {
-      jest.advanceTimersByTime(6000);
-    });
-    expect(fetchCallsForOrder101).toBe(initialCalls + 1);
-
-    jest.useRealTimers();
+    try {
+      const fetchMock = global.fetch as jest.Mock;
+      const original = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation((url, options) => String(url).endsWith('/orders/101')
+        ? Promise.resolve({ ok: true, json: async () => ({ ...mockOrders[0], status: 'PAID' }) }) : original(url, options));
+      render(<MenuPage />);
+      fireEvent.click(screen.getByText('Lịch sử'));
+      const open = (await screen.findAllByRole('button', { name: /Xem vé xác nhận/ }))[0];
+      await act(async () => { fireEvent.click(open); });
+      const confirmation = await screen.findByText(/Đã thanh toán thành công/);
+      expect(screen.queryByLabelText('Tiến trình đơn hàng')).toBeNull();
+      act(() => { jest.advanceTimersByTime(30000); });
+      expect(confirmation).toBeVisible();
+      const reads = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/orders/101'));
+      expect(reads()).toHaveLength(1);
+      expect(reads()[0][1].headers.Authorization).toBe('Bearer mock_jwt_token_123');
+      fireEvent.click(screen.getAllByRole('button', { name: /Đóng vé/ })[0]);
+      await act(async () => { fireEvent.click(open); });
+      expect(reads()).toHaveLength(2);
+    } finally { jest.useRealTimers(); }
   });
 
   it('16. Error state and retry: displays error and recovers upon retry', async () => {

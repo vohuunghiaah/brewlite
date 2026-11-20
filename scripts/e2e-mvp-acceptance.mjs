@@ -40,7 +40,31 @@ async function saveScreenshot(page, filename) {
   }
 }
 
-// ================= TIẾN TRÌNH KIỂM THỬ E2E CHÍNH (13 BƯỚC) =================
+// ================= TIẾN TRÌNH KIỂM THỬ E2E CHÍNH (14 BƯỚC) =================
+async function verifyNavigation(page) {
+  const nav = page.getByRole('navigation', { name: 'Điều hướng chính' });
+  await nav.getByRole('link', { name: 'Trang chủ' }).click();
+  await page.getByRole('heading', { name: /Mỗi ly cà phê/ }).waitFor();
+  assert.equal(await page.getByRole('searchbox').count(), 0);
+  assert.equal(await nav.getByRole('link', { name: 'Trang chủ' }).getAttribute('aria-current'), 'page');
+  await page.getByRole('button', { name: 'Khám phá thực đơn' }).click();
+  await page.getByRole('searchbox').waitFor();
+  assert.equal(await nav.getByRole('link', { name: 'Menu', exact: true }).getAttribute('aria-current'), 'page');
+  for (const width of [1440, 1024, 768, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    const metrics = await nav.evaluate(el => {
+      const links = el.querySelectorAll('a');
+      return {
+        center: (links[0].getBoundingClientRect().left + links[links.length - 1].getBoundingClientRect().right) / 2,
+        viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth,
+      };
+    });
+    assert.ok(Math.abs(metrics.center - metrics.viewport / 2) < 2, JSON.stringify(metrics));
+    assert.ok(metrics.content <= metrics.viewport, JSON.stringify(metrics));
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
 async function runAcceptanceTest() {
   // Xác minh môi trường an toàn và đối chiếu database thực tế qua SELECT current_database() trước mọi thao tác (DEF-02)
   const liveDb = verifyLiveDatabase();
@@ -141,6 +165,11 @@ async function runAcceptanceTest() {
 
     // Mở Cart Drawer qua nút cartSummary trên topbar
     const cartSummaryBtn = page.locator('button[class*="cartSummary"]').first();
+    const beforeNavigation = await cartSummaryBtn.getAttribute('aria-label');
+    await verifyNavigation(page);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: beforeNavigation, exact: true }).waitFor();
+    assert.equal(await cartSummaryBtn.getAttribute('aria-label'), beforeNavigation);
     await cartSummaryBtn.click();
 
     const drawer = page.locator('#cart');
@@ -410,6 +439,23 @@ async function runAcceptanceTest() {
     }
     await saveScreenshot(page, '07-order-history.png');
     testResults.push({ step: '13. Đối chiếu lịch sử UI/API', status: 'PASS' });
+    await card.getByRole('button', { name: 'Xem vé xác nhận ' + paid.orderCode }).click();
+    const confirmation = page.getByRole('dialog', { name: paid.orderCode });
+    await confirmation.getByText('Đã thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại bàn.').waitFor();
+    assert.equal(await confirmation.getByLabel('Tiến trình đơn hàng').count(), 0);
+    const ownerToken = await page.evaluate(() => localStorage.getItem('brewlite_access_token'));
+    const auth = { Authorization: 'Bearer ' + ownerToken };
+    const details = await page.request.get(API_URL + '/orders/' + paid.id, { headers: auth });
+    assert.equal(details.status(), 200);
+    assert.equal((await details.json()).status, 'PAID');
+    const update = await page.request.patch(API_URL + '/orders/' + paid.id + '/status', {
+      headers: auth, data: { status: 'PREPARING' },
+    });
+    assert.equal(update.status(), 404);
+    assert.equal(queryDb('SELECT status FROM orders WHERE id=' + paid.id), 'PAID');
+    await confirmation.getByRole('button', { name: 'Đóng vé chuông' }).first().click();
+    await verifyNavigation(page);
+    testResults.push({ step: '14. Owner confirmation, read-only status and responsive navigation', status: 'PASS' });
 
   } catch (err) {
     console.error('❌ LỖI TRONG QUÁ TRÌNH KIỂM THỬ:', err);
@@ -424,16 +470,16 @@ async function runAcceptanceTest() {
 
 runAcceptanceTest().then((res) => {
   console.log('\n======================================================================');
-  console.log(`📊 KẾT QUẢ NGHIỆM THU E2E CHROMIUM & POSTGRESQL (${res.testResults.length}/13 BƯỚC)`);
+  console.log(`📊 KẾT QUẢ NGHIỆM THU E2E CHROMIUM & POSTGRESQL (${res.testResults.length}/14 BƯỚC)`);
   console.log('======================================================================');
   console.table(res.testResults);
 
-  const allPass = res.testResults.length === 13 && res.testResults.every((r) => r.status === 'PASS');
+  const allPass = res.testResults.length === 14 && res.testResults.every((r) => r.status === 'PASS');
   if (allPass) {
-    console.log('\n🎉 TẤT CẢ 13 BƯỚC LUỒNG MVP ĐÃ PASS 100% TRÊN CHROMIUM & POSTGRESQL!');
+    console.log('\n🎉 TẤT CẢ 14 BƯỚC LUỒNG MVP ĐÃ PASS 100% TRÊN CHROMIUM & POSTGRESQL!');
     process.exit(0);
   } else {
-    console.error('\n⚠️ CÓ BƯỚC KIỂM THỬ THẤT BẠI HOẶC CHƯA ĐỦ 13 BƯỚC!');
+    console.error('\n⚠️ CÓ BƯỚC KIỂM THỬ THẤT BẠI HOẶC CHƯA ĐỦ 14 BƯỚC!');
     process.exit(1);
   }
 }).catch((err) => {

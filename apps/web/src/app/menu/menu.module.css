@@ -21,7 +21,8 @@
 }
 
 .navInner {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   width: min(100% - 48px, 1400px);
   min-height: 76px;
   align-items: center;
@@ -1552,12 +1553,16 @@
 
 /* ================= AUTH MODAL & USER NAVIGATION (TASK 5.1.2 & FIGMA SCREEN 04) ================= */
 .navActions {
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
 .userSession {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2153,68 +2158,6 @@
   font-size: 12px;
   color: #7c695e;
   font-weight: 600;
-}
-
-/* Timeline 4 trạng thái */
-.timeline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 20px 0;
-  position: relative;
-}
-
-.timeline::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  left: 20px;
-  right: 20px;
-  height: 2px;
-  background: #ebd9c8;
-  z-index: 0;
-}
-
-.timelineStep {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  z-index: 1;
-}
-
-.timelineNode {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 2px solid #ebd9c8;
-  color: #8c7566;
-  font-size: 11px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  transition: all 160ms ease;
-}
-
-.timelineActive .timelineNode {
-  background: #c28d58;
-  border-color: #c28d58;
-  color: #ffffff;
-  box-shadow: 0 0 0 4px rgba(194, 141, 88, 0.2);
-}
-
-.timelineLabel {
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #7c695e;
-  text-align: center;
-}
-
-.timelineActive .timelineLabel {
-  color: #3d261d;
-  font-weight: 800;
 }
 
 .buzzerActions {
@@ -2870,3 +2813,36 @@
 }
 
 
+
+.welcome {
+  min-height: clamp(320px, 58vh, 640px);
+  align-items: center;
+  padding: clamp(28px, 7vw, 96px);
+}
+.welcome h1 { font-size: clamp(36px, 6vw, 76px); }
+.explore {
+  margin-top: 24px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 24px;
+  background: #fff7eb;
+  color: #43291f;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .welcome { animation: welcomeIn 260ms ease-out; }
+  @keyframes welcomeIn { from { opacity: 0; transform: translateY(6px); } }
+}
+@media (max-width: 1040px) {
+  .navInner { grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding-top: 8px; }
+  .navigation { grid-column: 1 / -1; grid-row: 2; justify-content: center; padding-bottom: 8px; }
+  .navActions { grid-column: 2; grid-row: 1; }
+}
+@media (max-width: 600px) {
+  .userEmail { display: none; }
+  .navActions, .userSession { gap: 4px; }
+  .userSession { padding: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .navigation { gap: 2px; }
+  .navigation a { padding-inline: 8px; }
+  .cartSummary > span:nth-last-child(-n+2) { display: none; }
+}
