@@ -204,4 +204,97 @@ describe('Orders Endpoints (e2e / integration)', () => {
       .send(payload)
       .expect(404);
   });
+
+  it('GET /orders/me - retrieves user orders list without ParseIntPipe collision (FR-11, UC-06)', async () => {
+    const mockOrders = [
+      {
+        id: 102,
+        orderCode: '#BL-9216',
+        userId: 1,
+        status: 'PAID',
+        pickupMethod: 'AT_COUNTER',
+        totalAmount: '45000.00',
+        createdAt: new Date('2026-11-20T10:15:00Z'),
+        items: [
+          {
+            id: 2,
+            productId: 1,
+            productName: 'Cà phê Latte',
+            size: ProductSize.SMALL,
+            toppings: [],
+            quantity: 1,
+            unitPrice: '45000.00',
+            subtotal: '45000.00',
+            product: mockProductLatte,
+          },
+        ],
+      },
+      {
+        id: 101,
+        orderCode: null,
+        userId: 1,
+        status: 'PENDING',
+        pickupMethod: 'AT_TABLE',
+        totalAmount: '120000.00',
+        createdAt: new Date('2026-11-20T09:00:00Z'),
+        items: [],
+      },
+    ];
+
+    mockOrderRepository.find.mockResolvedValueOnce(mockOrders);
+
+    const res = await request(app.getHttpServer())
+      .get('/orders/me')
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0].id).toBe(102);
+    expect(res.body[0].orderCode).toBe('#BL-9216');
+    expect(res.body[0].status).toBe('PAID');
+    expect(res.body[0].items[0].productName).toBe('Cà phê Latte');
+    expect(mockOrderRepository.find).toHaveBeenCalledWith({
+      where: { userId: 1 },
+      relations: {
+        items: {
+          product: true,
+        },
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  });
+
+  it('GET /orders/me - returns empty array when user has no orders', async () => {
+    mockOrderRepository.find.mockResolvedValueOnce([]);
+
+    const res = await request(app.getHttpServer())
+      .get('/orders/me')
+      .expect(200);
+
+    expect(res.body).toEqual([]);
+  });
+
+  it('GET /orders - backwards compatibility route returns user orders', async () => {
+    mockOrderRepository.find.mockResolvedValueOnce([]);
+
+    const res = await request(app.getHttpServer())
+      .get('/orders')
+      .expect(200);
+
+    expect(res.body).toEqual([]);
+  });
+
+  it('GET /orders/:id - rejects non-numeric ID with 400 Bad Request', async () => {
+    await request(app.getHttpServer())
+      .get('/orders/not-a-number')
+      .expect(400);
+  });
+
+  it('GET /orders/:id - rejects out-of-range ID with 400 Bad Request', async () => {
+    await request(app.getHttpServer())
+      .get('/orders/0')
+      .expect(400);
+  });
 });

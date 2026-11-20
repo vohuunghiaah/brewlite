@@ -229,14 +229,42 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
     await expect(service.create(dto, 1)).rejects.toThrow(NotFoundException);
   });
 
-  it('8. should retrieve all orders via findAll', async () => {
+  it('8. should retrieve all orders via findAll with user isolation, items.product relations and DESC order', async () => {
     (orderRepository.find as jest.Mock).mockResolvedValue([
-      { id: 1, status: 'PENDING', totalAmount: '60000.00' },
+      { id: 2, status: 'PAID', totalAmount: '90000.00', createdAt: new Date('2026-11-20T10:00:00Z') },
+      { id: 1, status: 'PENDING', totalAmount: '60000.00', createdAt: new Date('2026-11-20T09:00:00Z') },
     ]);
 
     const orders = await service.findAll(1);
-    expect(orders).toHaveLength(1);
-    expect(orderRepository.find).toHaveBeenCalled();
+    expect(orders).toHaveLength(2);
+    expect(orderRepository.find).toHaveBeenCalledWith({
+      where: { userId: 1 },
+      relations: {
+        items: {
+          product: true,
+        },
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    // Verify isolation for another user
+    (orderRepository.find as jest.Mock).mockClear();
+    (orderRepository.find as jest.Mock).mockResolvedValue([]);
+    const user2Orders = await service.findAll(2);
+    expect(user2Orders).toEqual([]);
+    expect(orderRepository.find).toHaveBeenCalledWith({
+      where: { userId: 2 },
+      relations: {
+        items: {
+          product: true,
+        },
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
   });
 
   it('9. should retrieve single order via findOne or throw NotFound', async () => {

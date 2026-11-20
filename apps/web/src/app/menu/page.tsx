@@ -31,6 +31,8 @@ interface Product {
   price: number | string;
   imageUrl?: string | null;
   isAvailable: boolean;
+  stock?: number;
+  version?: number;
 }
 
 export interface CartItem {
@@ -167,9 +169,56 @@ export default function MenuPage() {
     setResumeCheckoutAfterAuth(false);
   }, []);
 
-  const handleLogout = useCallback(() => {
-    authController.clearSession();
-  }, [authController]);
+  // ================= LỊCH SỬ ĐƠN HÀNG (TASK 5.1 & FIGMA SCREEN 07) =================
+  interface OrderHistoryProduct {
+    id: number;
+    name: string;
+    imageUrl?: string | null;
+    price: string | number;
+    isAvailable: boolean;
+    stock?: number;
+  }
+
+  interface OrderHistoryDetailItem {
+    id: number;
+    productId: number;
+    productName: string;
+    size: "SMALL" | "MEDIUM" | "LARGE";
+    toppings: string[];
+    note: string | null;
+    quantity: number;
+    unitPrice: string | number;
+    subtotal: string | number;
+    product?: OrderHistoryProduct;
+  }
+
+  interface OrderHistoryItem {
+    id: number;
+    orderCode: string | null;
+    pickupMethod: string;
+    tableNumber: string | null;
+    userId: number;
+    customerName: string;
+    customerPhone: string;
+    note: string | null;
+    totalAmount: string | number;
+    status: string;
+    createdAt: string;
+    items: OrderHistoryDetailItem[];
+  }
+
+  const [activeNav, setActiveNav] = useState<"menu" | "orders">(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#orders") {
+      return "orders";
+    }
+    return "menu";
+  });
+  const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [historyTab, setHistoryTab] = useState<"processing" | "completed" | "cancelled">("processing");
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  const [reorderNotice, setReorderNotice] = useState("");
 
   // Đơn hàng PENDING đã tạo (Chống tạo đơn lặp ngoài ý muốn)
   const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string } | null>(null);
@@ -198,6 +247,14 @@ export default function MenuPage() {
   const [isBuzzerOpen, setIsBuzzerOpen] = useState(false);
   const paymentModalRef = useRef<HTMLDivElement>(null);
   const buzzerModalRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = useCallback(() => {
+    authController.clearSession();
+    setOrders([]);
+    setActiveNav("menu");
+    setIsBuzzerOpen(false);
+    setBuzzerTicket(null);
+  }, [authController, setOrders, setActiveNav, setIsBuzzerOpen, setBuzzerTicket]);
 
   // Thông tin đặt hàng
   const [showCheckout, setShowCheckout] = useState(false);
@@ -600,6 +657,9 @@ export default function MenuPage() {
       setOrderMessage(
         `Thanh toán thành công đơn hàng #${pendingOrder.id}! Mã lấy nước: ${buzzerCode}. Trạng thái: PAID.`
       );
+      if (authToken) {
+        void fetchOrders();
+      }
     } catch (err: unknown) {
       setPaymentError(
         err instanceof Error ? err.message : "Đã xảy ra sự cố trong quá trình thanh toán."
@@ -673,6 +733,9 @@ export default function MenuPage() {
         setOrderMessage(
           `Đối soát thành công đơn hàng #${pendingOrder!.id}! Mã chuông: ${buzzerCode}. Trạng thái: PAID.`
         );
+        if (authToken) {
+          void fetchOrders();
+        }
       }
     } catch (err: unknown) {
       setPaymentError(err instanceof Error ? err.message : "Lỗi khi đối soát giao dịch.");
@@ -680,6 +743,329 @@ export default function MenuPage() {
       setPaying(false);
     }
   }
+
+  // ================= XỬ LÝ LỊCH SỬ ĐƠN HÀNG (TASK 5.1 & FIGMA SCREEN 07) =================
+  const fetchOrders = useCallback(async () => {
+    if (!authToken) {
+      setOrders([]);
+      return;
+    }
+    setOrdersLoading(true);
+    setOrdersError("");
+
+    try {
+      const res = await fetch(`${API_URL}/orders/me`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (res.status === 401) {
+        authController.clearSession();
+        setOrders([]);
+        setOrdersError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Lỗi kết nối máy chủ (${res.status})`);
+      }
+
+      const data = await res.json();
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (err: unknown) {
+      setOrdersError(
+        err instanceof Error ? err.message : "Không thể tải lịch sử đơn hàng. Vui lòng thử lại."
+      );
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, [authToken, authController, setOrders, setOrdersLoading, setOrdersError]);
+
+  useEffect(() => {
+    if (authToken && activeNav === "orders") {
+      void fetchOrders();
+    }
+  }, [authToken, activeNav, fetchOrders]);
+
+  useEffect(() => {
+    function handleHashChange() {
+      if (window.location.hash === "#orders") {
+        setActiveNav("orders");
+      } else if (window.location.hash === "#menu" || window.location.hash === "#top") {
+        setActiveNav("menu");
+      }
+    }
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  function formatOrderTime(dateStr: string): string {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${hours}:${minutes} • ${day}/${month}/${year}`;
+    } catch {
+      return dateStr;
+    }
+  }
+
+  function getOrderStatusBadge(status: string) {
+    switch (status) {
+      case "PAID":
+        return { label: "• Đã thanh toán", className: ui.statusPaid };
+      case "PREPARING":
+        return { label: "• Đang pha chế", className: ui.statusPreparing };
+      case "READY":
+        return { label: "• Sẵn sàng nhận món", className: ui.statusReady };
+      case "COMPLETED":
+        return { label: "• Hoàn tất", className: ui.statusCompleted };
+      case "PENDING":
+        return { label: "• Chờ thanh toán", className: ui.statusPending };
+      case "PAYMENT_FAILED":
+        return { label: "• Thanh toán lỗi (Thử lại)", className: ui.statusFailed };
+      case "CANCELLED":
+        return { label: "• Đã hủy", className: ui.statusCancelled };
+      default:
+        return { label: `• ${status}`, className: ui.statusPending };
+    }
+  }
+
+  // Phân loại đơn hàng theo 3 Tabs chuẩn Figma Screen 07 (FIX-03)
+  // PAYMENT_FAILED vẫn cho phép thanh toán lại nên thuộc nhóm "Đang xử lý"
+  const processingOrders = useMemo(
+    () => orders.filter((o) => ["PENDING", "PAYMENT_FAILED", "PAID", "PREPARING", "READY"].includes(o.status)),
+    [orders]
+  );
+  const completedOrders = useMemo(
+    () => orders.filter((o) => o.status === "COMPLETED"),
+    [orders]
+  );
+  const cancelledOrders = useMemo(
+    () => orders.filter((o) => o.status === "CANCELLED"),
+    [orders]
+  );
+
+  const displayedOrders = useMemo(() => {
+    if (historyTab === "processing") return processingOrders;
+    if (historyTab === "completed") return completedOrders;
+    return cancelledOrders;
+  }, [historyTab, processingOrders, completedOrders, cancelledOrders]);
+
+  // Safe Re-order với kiểm tra tồn kho từ API và số lượng hiện có trong giỏ (FIX-01, FIX-05, FIX-06)
+  async function handleReorder(order: OrderHistoryItem) {
+    if (!order.items || order.items.length === 0) return;
+
+    // 1. Luôn fetch danh sách sản phẩm mới nhất từ API để lấy stock và price hiện tại (FIX-05)
+    // Không fallback sang cache cũ nếu API thất bại hoặc trả về danh sách rỗng
+    let freshCatalog: Product[];
+    try {
+      const fetched = await fetchProducts(API_URL);
+      if (!Array.isArray(fetched) || fetched.length === 0) {
+        const errorMsg = "Không thể đặt lại đơn hàng do danh mục sản phẩm từ hệ thống hiện đang trống hoặc chưa sẵn sàng.";
+        setReorderNotice(errorMsg);
+        alert(errorMsg);
+        return;
+      }
+      freshCatalog = fetched;
+      setProducts(fetched);
+    } catch (err) {
+      console.error("Lỗi làm mới danh mục sản phẩm khi đặt lại đơn hàng:", err);
+      const errorMsg = "Không thể đặt lại đơn hàng do không thể xác minh dữ liệu sản phẩm mới nhất từ hệ thống. Vui lòng thử lại sau.";
+      setReorderNotice(errorMsg);
+      alert(errorMsg);
+      return;
+    }
+
+    let addedCount = 0;
+    const warnings: string[] = [];
+
+    // Tổng hợp số lượng từng productId hiện đang có trong giỏ hàng
+    const currentCartQuantities: Record<number, number> = {};
+    for (const ci of cartItems) {
+      currentCartQuantities[ci.productId] = (currentCartQuantities[ci.productId] || 0) + ci.quantity;
+    }
+
+    for (const item of order.items) {
+      const liveProduct = freshCatalog.find((p) => p.id === item.productId);
+      const itemName = item.productName || liveProduct?.name || `Món #${item.productId}`;
+
+      // 1. Kiểm tra tồn tại
+      if (!liveProduct) {
+        warnings.push(`Món "${itemName}" đã ngừng kinh doanh`);
+        continue;
+      }
+
+      // 2. Kiểm tra đang kinh doanh (isAvailable)
+      if (!liveProduct.isAvailable) {
+        warnings.push(`Món "${liveProduct.name}" tạm ngừng kinh doanh`);
+        continue;
+      }
+
+      // 3. Kiểm tra tồn kho hợp lệ (FIX-05: không mặc định stock = 50 nếu thiếu hoặc sai dữ liệu)
+      if (typeof liveProduct.stock !== "number" || isNaN(liveProduct.stock) || liveProduct.stock < 0) {
+        warnings.push(`Món "${liveProduct.name}" thiếu dữ liệu tồn kho hợp lệ từ hệ thống`);
+        continue;
+      }
+
+      const currentStock = liveProduct.stock;
+      if (currentStock === 0) {
+        warnings.push(`Món "${liveProduct.name}" đã hết hàng (tồn kho: 0)`);
+        continue;
+      }
+
+      // 4. Kiểm tra số lượng khách muốn đặt lại và số lượng đã có trong giỏ
+      const alreadyInCart = currentCartQuantities[liveProduct.id] || 0;
+      const remainingStock = Math.max(0, currentStock - alreadyInCart);
+
+      if (remainingStock <= 0) {
+        warnings.push(
+          `Món "${liveProduct.name}" không thể thêm (trong giỏ đã có ${alreadyInCart} ly, đạt giới hạn kho: ${currentStock})`
+        );
+        continue;
+      }
+
+      // Nếu không đủ hàng, cảnh báo rõ ràng, không âm thầm thêm vượt số lượng
+      const qtyToAdd = Math.min(item.quantity, remainingStock);
+      if (qtyToAdd < item.quantity) {
+        warnings.push(
+          `Món "${liveProduct.name}" chỉ còn ${remainingStock} ly khả dụng (yêu cầu ${item.quantity} ly, trong giỏ có ${alreadyInCart} ly). Đã thêm ${qtyToAdd} ly.`
+        );
+      }
+
+      // 5. Thêm món vào giỏ hàng với giá tính theo dữ liệu sản phẩm hiện tại từ API (FIX-06: đồng bộ giá mới)
+      addItemToCart(
+        liveProduct,
+        item.size,
+        item.toppings || [],
+        item.note || "",
+        qtyToAdd
+      );
+
+      currentCartQuantities[liveProduct.id] = (currentCartQuantities[liveProduct.id] || 0) + qtyToAdd;
+      addedCount += qtyToAdd;
+    }
+
+    if (addedCount > 0) {
+      setIsCartOpen(true);
+      if (warnings.length > 0) {
+        setReorderNotice(
+          `Đã thêm ${addedCount} món vào giỏ hàng. Cảnh báo tồn kho: ${warnings.join("; ")}.`
+        );
+      } else {
+        setReorderNotice(
+          `Đã thêm toàn bộ món từ đơn ${order.orderCode || `#${order.id}`} vào giỏ hàng để bạn kiểm tra lại.`
+        );
+      }
+    } else {
+      const errorMsg = warnings.length > 0
+        ? `Không thể đặt lại đơn hàng: ${warnings.join("; ")}.`
+        : "Không thể đặt lại đơn hàng vì các sản phẩm hiện không khả dụng.";
+      setReorderNotice(errorMsg);
+      alert(errorMsg);
+    }
+  }
+
+  // Theo dõi đơn hàng thời gian thực: fetch dữ liệu mới nhất từ API (FIX-02)
+  async function handleTrackOrder(order: OrderHistoryItem) {
+    let latestStatus = order.status;
+    let latestOrder = order;
+
+    if (authToken) {
+      try {
+        const res = await fetch(`${API_URL}/orders/${order.id}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.ok) {
+          const fresh = (await res.json()) as OrderHistoryItem;
+          if (fresh && fresh.status) {
+            latestStatus = fresh.status;
+            latestOrder = fresh;
+            setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: fresh.status } : o)));
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch latest order status on track, using local status", err);
+      }
+    }
+
+    const items: CartItem[] = (latestOrder.items || []).map((i) => ({
+      key: `hist-${latestOrder.id}-${i.id}`,
+      productId: i.productId,
+      productName: i.productName,
+      basePrice: Number(i.unitPrice),
+      size: i.size,
+      toppings: i.toppings || [],
+      note: i.note || "",
+      unitPrice: Number(i.unitPrice),
+      quantity: i.quantity,
+      subtotal: Number(i.subtotal),
+    }));
+
+    setBuzzerTicket({
+      orderId: latestOrder.id,
+      orderCode: latestOrder.orderCode || `#BL-${latestOrder.id}`,
+      status: latestStatus,
+      pickupMethod: latestOrder.pickupMethod,
+      tableNumber: latestOrder.tableNumber || undefined,
+      totalAmount: Number(latestOrder.totalAmount),
+      items,
+    });
+    setIsBuzzerOpen(true);
+  }
+
+  // ================= POLLING TRẠNG THÁI ĐƠN HÀNG KHI THEO DÕI (FIX-02) =================
+  useEffect(() => {
+    if (!isBuzzerOpen || !buzzerTicket?.orderId || !authToken) return;
+
+    // Dừng polling khi đơn hàng đã đạt trạng thái kết thúc (COMPLETED hoặc CANCELLED)
+    if (["COMPLETED", "CANCELLED"].includes(buzzerTicket.status)) return;
+
+    let isMounted = true;
+    const orderId = buzzerTicket.orderId;
+
+    async function pollStatus() {
+      try {
+        const res = await fetch(`${API_URL}/orders/${orderId}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) return;
+        const freshOrder = (await res.json()) as OrderHistoryItem;
+        if (!isMounted || !freshOrder || !freshOrder.status) return;
+
+        // Cập nhật trạng thái modal nếu backend chuyển trạng thái
+        setBuzzerTicket((prev) => {
+          if (!prev || prev.orderId !== orderId) return prev;
+          if (prev.status !== freshOrder.status) {
+            return { ...prev, status: freshOrder.status };
+          }
+          return prev;
+        });
+
+        // Đồng bộ danh sách đơn hàng
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, status: freshOrder.status } : o))
+        );
+      } catch (err) {
+        console.warn("Lỗi cập nhật trạng thái đơn hàng khi theo dõi:", err);
+      }
+    }
+
+    // Polling định kỳ mỗi 3000ms
+    const intervalId = setInterval(() => {
+      void pollStatus();
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [isBuzzerOpen, buzzerTicket?.orderId, buzzerTicket?.status, authToken]);
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
   const loadProducts = useCallback((signal?: AbortSignal) => {
@@ -749,8 +1135,10 @@ export default function MenuPage() {
         const updatedQty = existing.quantity + quantity;
         next[existingIndex] = {
           ...existing,
+          basePrice: Number(product.price),
+          unitPrice,
           quantity: updatedQty,
-          subtotal: existing.unitPrice * updatedQty,
+          subtotal: unitPrice * updatedQty,
         };
         return next;
       } else {
@@ -956,9 +1344,39 @@ export default function MenuPage() {
           </a>
 
           <nav className={ui.navigation} aria-label="Điều hướng chính">
-            <a href="#top">Trang chủ</a>
-            <a href="#menu" className={ui.activeNav} aria-current="page">
+            <a
+              href="#top"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveNav("menu");
+              }}
+            >
+              Trang chủ
+            </a>
+            <a
+              href="#menu"
+              className={activeNav === "menu" ? ui.activeNav : ""}
+              aria-current={activeNav === "menu" ? "page" : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveNav("menu");
+              }}
+            >
               Menu
+            </a>
+            <a
+              href="#orders"
+              className={activeNav === "orders" ? ui.activeNav : ""}
+              aria-current={activeNav === "orders" ? "page" : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveNav("orders");
+                if (authToken) {
+                  void fetchOrders();
+                }
+              }}
+            >
+              Lịch sử
             </a>
             <a
               href="#cart"
@@ -1014,7 +1432,9 @@ export default function MenuPage() {
       </header>
 
       <div className={ui.content}>
-        <section className={ui.hero}>
+        {activeNav === "menu" ? (
+          <>
+            <section className={ui.hero}>
           <div className={ui.heroCopy}>
             <p className={ui.eyebrow}>
               <span aria-hidden="true">✦</span> HÔM NAY TẠI BREWLITE
@@ -1228,6 +1648,286 @@ export default function MenuPage() {
             </div>
           )}
         </section>
+          </>
+        ) : (
+          <section className={ui.historySection} id="orders" aria-label="Lịch sử đơn hàng">
+            {/* Header: Title & Refresh button */}
+            <div className={ui.historyHeader}>
+              <h1 className={ui.historyTitle}>
+                <span>📋</span> Lịch sử đơn hàng
+              </h1>
+              {user && (
+                <button
+                  type="button"
+                  className={ui.historyRefreshBtn}
+                  onClick={() => void fetchOrders()}
+                  disabled={ordersLoading}
+                  aria-label="Làm mới lịch sử đơn hàng"
+                >
+                  ↻ Làm mới
+                </button>
+              )}
+            </div>
+
+            {!user ? (
+              <div className={ui.historyLoginPrompt}>
+                <div className={ui.historyEmptyIcon} aria-hidden="true">
+                  🔐
+                </div>
+                <h2 className={ui.historyEmptyTitle}>Đăng nhập để xem lịch sử đơn hàng</h2>
+                <p className={ui.historyEmptyText}>
+                  Theo dõi tiến độ đơn hàng và xem lại các món đồ uống bạn đã thưởng thức tại BrewLite.
+                </p>
+                <button
+                  type="button"
+                  className={ui.historyLoginBtn}
+                  onClick={() => openAuthModal("login", false)}
+                >
+                  Đăng nhập ngay
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* 3 Tabs */}
+                <div className={ui.historyTabs} role="tablist" aria-label="Bộ lọc trạng thái đơn hàng">
+                  <button
+                    type="button"
+                    role="tab"
+                    id="tab-processing"
+                    aria-selected={historyTab === "processing"}
+                    aria-controls="panel-processing"
+                    className={`${ui.historyTabBtn} ${historyTab === "processing" ? ui.historyTabActive : ""}`}
+                    onClick={() => setHistoryTab("processing")}
+                  >
+                    <span>Đang xử lý</span>
+                    <span className={ui.historyTabBadge}>{processingOrders.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="tab-completed"
+                    aria-selected={historyTab === "completed"}
+                    aria-controls="panel-completed"
+                    className={`${ui.historyTabBtn} ${historyTab === "completed" ? ui.historyTabActive : ""}`}
+                    onClick={() => setHistoryTab("completed")}
+                  >
+                    <span>Hoàn tất</span>
+                    <span className={ui.historyTabBadge}>{completedOrders.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="tab-cancelled"
+                    aria-selected={historyTab === "cancelled"}
+                    aria-controls="panel-cancelled"
+                    className={`${ui.historyTabBtn} ${historyTab === "cancelled" ? ui.historyTabActive : ""}`}
+                    onClick={() => setHistoryTab("cancelled")}
+                  >
+                    <span>Đã hủy</span>
+                    <span className={ui.historyTabBadge}>{cancelledOrders.length}</span>
+                  </button>
+                </div>
+
+                {/* Loading State */}
+                {ordersLoading && (
+                  <div className={ui.historyLoading} role="status" aria-live="polite">
+                    <span className={ui.spinner} aria-hidden="true" />
+                    <p>Đang tải danh sách đơn hàng...</p>
+                  </div>
+                )}
+
+                {/* Error State */}
+                {!ordersLoading && ordersError && (
+                  <div className={ui.historyError} role="alert">
+                    <p>⚠️ {ordersError}</p>
+                    <button
+                      type="button"
+                      className={ui.historyRetryBtn}
+                      onClick={() => void fetchOrders()}
+                    >
+                      Thử lại
+                    </button>
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {!ordersLoading && !ordersError && displayedOrders.length === 0 && (
+                  <div className={ui.historyEmpty} role="status">
+                    <div className={ui.historyEmptyIcon} aria-hidden="true">☕</div>
+                    <h3 className={ui.historyEmptyTitle}>
+                      {historyTab === "processing"
+                        ? "Không có đơn hàng nào đang xử lý"
+                        : historyTab === "completed"
+                        ? "Chưa có đơn hàng nào hoàn tất"
+                        : "Không có đơn hàng nào bị hủy"}
+                    </h3>
+                    <p className={ui.historyEmptyText}>
+                      {historyTab === "processing"
+                        ? "Các món đồ uống thơm ngon đang chờ bạn khám phá và đặt hàng!"
+                        : "Hãy đặt món để lưu giữ lịch sử thưởng thức đồ uống tại BrewLite nhé."}
+                    </p>
+                    <button
+                      type="button"
+                      className={ui.historyGoMenuBtn}
+                      onClick={() => setActiveNav("menu")}
+                    >
+                      Khám phá Menu ngay
+                    </button>
+                  </div>
+                )}
+
+                {/* Order List */}
+                {!ordersLoading && !ordersError && displayedOrders.length > 0 && (
+                  <div className={ui.historyList} role="tabpanel" id={`panel-${historyTab}`}>
+                    {displayedOrders.map((order) => {
+                      const badge = getOrderStatusBadge(order.status);
+                      const totalItemCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
+                      const itemNamesSummary = (order.items || [])
+                        .map((item) => `${item.quantity}x ${item.productName}`)
+                        .join(", ");
+
+                      return (
+                        <article
+                          key={order.id}
+                          className={ui.historyCard}
+                          aria-labelledby={`order-code-${order.id}`}
+                        >
+                          {/* Top Row: Code, Time, Status */}
+                          <div className={ui.cardTopRow}>
+                            <div className={ui.cardOrderInfo}>
+                              <div className={ui.cardIconBox} aria-hidden="true">
+                                ☕
+                              </div>
+                              <div className={ui.cardCodeTime}>
+                                <span id={`order-code-${order.id}`} className={ui.cardOrderCode}>
+                                  {order.orderCode || `#BL-${order.id}`}
+                                </span>
+                                <span className={ui.cardOrderTime}>
+                                  {formatOrderTime(order.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className={`${ui.statusBadge} ${badge.className}`}>
+                              {badge.label}
+                            </div>
+                          </div>
+
+                          {/* Items Preview */}
+                          <div className={ui.cardItemsRow}>
+                            <div className={ui.cardThumbs}>
+                              {(order.items || []).slice(0, 3).map((item, idx) => {
+                                const itemImg =
+                                  item.product?.imageUrl ||
+                                  products.find((p) => p.id === item.productId)?.imageUrl;
+                                return itemImg ? (
+                                  <img
+                                    key={idx}
+                                    src={itemImg}
+                                    alt={item.productName}
+                                    className={ui.itemThumb}
+                                  />
+                                ) : (
+                                  <div key={idx} className={ui.itemThumbFallback}>
+                                    ☕
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className={ui.cardItemsText}>
+                              <span className={ui.cardItemsSummary}>
+                                {totalItemCount} món • {itemNamesSummary}
+                              </span>
+                              <span className={ui.cardPickupInfo}>
+                                {order.pickupMethod === "AT_TABLE"
+                                  ? `🍽️ Giao tại bàn: ${order.tableNumber || "Chưa ghi số bàn"}`
+                                  : "🏪 Lấy nước tại quầy"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Bottom Row: Price & Actions */}
+                          <div className={ui.cardBottomRow}>
+                            <span className={ui.cardPrice}>{formatPrice(order.totalAmount)}</span>
+                            <div className={ui.cardActions}>
+                              {["PAID", "PREPARING", "READY"].includes(order.status) && (
+                                <button
+                                  type="button"
+                                  className={ui.trackBtn}
+                                  onClick={() => handleTrackOrder(order)}
+                                  aria-label={`Theo dõi vé chuông ${order.orderCode || order.id}`}
+                                >
+                                  Theo dõi &gt;
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className={ui.detailBtn}
+                                onClick={() =>
+                                  setExpandedOrderId(expandedOrderId === order.id ? null : order.id)
+                                }
+                                aria-expanded={expandedOrderId === order.id}
+                              >
+                                {expandedOrderId === order.id ? "Thu gọn ▴" : "Chi tiết ▾"}
+                              </button>
+                              <button
+                                type="button"
+                                className={ui.reorderBtn}
+                                onClick={() => handleReorder(order)}
+                                aria-label={`Đặt lại đơn ${order.orderCode || order.id}`}
+                              >
+                                ↻ Đặt lại
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Expanded Details Breakdown */}
+                          {expandedOrderId === order.id && (
+                            <div className={ui.cardExpanded}>
+                              <div className={ui.breakdownTitle}>Chi tiết đồ uống:</div>
+                              <div className={ui.breakdownList}>
+                                {(order.items || []).map((item, itemIdx) => (
+                                  <div key={itemIdx} className={ui.breakdownItem}>
+                                    <div>
+                                      <div className={ui.breakdownItemName}>
+                                        {item.quantity}x {item.productName} (
+                                        {item.size === "SMALL"
+                                          ? "Size S"
+                                          : item.size === "MEDIUM"
+                                          ? "Size M"
+                                          : "Size L"}
+                                        )
+                                      </div>
+                                      <div className={ui.breakdownItemMeta}>
+                                        {item.toppings?.length > 0 &&
+                                          `Topping: ${item.toppings.join(", ")} • `}
+                                        {item.note && `Ghi chú: ${item.note}`}
+                                      </div>
+                                    </div>
+                                    <div className={ui.breakdownItemPrice}>
+                                      {formatPrice(
+                                        item.subtotal ||
+                                          Number(item.unitPrice) * item.quantity
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className={ui.breakdownCustomerInfo}>
+                                👤 Người nhận: <strong>{order.customerName}</strong> (
+                                {order.customerPhone})
+                                {order.note && ` • Ghi chú: ${order.note}`}
+                              </div>
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         {/* ================= FOOTER ================= */}
         <footer className={ui.footer}>
@@ -1326,6 +2026,20 @@ export default function MenuPage() {
             <p style={styles.error} role="alert">
               {orderError}
             </p>
+          )}
+
+          {/* Thông báo đặt lại món */}
+          {reorderNotice && (
+            <div className={ui.reorderAlert} role="status">
+              <span>ℹ️ {reorderNotice}</span>
+              <button
+                type="button"
+                onClick={() => setReorderNotice("")}
+                aria-label="Đóng thông báo đặt lại"
+              >
+                ✕
+              </button>
+            </div>
           )}
 
           {cartItems.length === 0 ? (
@@ -2282,6 +2996,11 @@ export default function MenuPage() {
               <h2 id="buzzer-modal-title" className={ui.buzzerCode}>
                 {buzzerTicket.orderCode}
               </h2>
+              <div style={{ marginTop: "4px", marginBottom: "8px" }}>
+                <span className={`${ui.statusBadge} ${getOrderStatusBadge(buzzerTicket.status).className}`}>
+                  {getOrderStatusBadge(buzzerTicket.status).label}
+                </span>
+              </div>
               <p className={ui.buzzerPickupInfo}>
                 {buzzerTicket.pickupMethod === "AT_TABLE"
                   ? `🍽️ Giao tận bàn: ${buzzerTicket.tableNumber || "Chưa ghi số bàn"}`
@@ -2309,19 +3028,45 @@ export default function MenuPage() {
 
               {/* INTERACTIVE 4-STAGE TIMELINE */}
               <div className={ui.timeline} role="list" aria-label="Tiến trình đơn hàng">
-                <div className={`${ui.timelineStep} ${ui.timelineActive}`} role="listitem">
+                <div
+                  className={`${ui.timelineStep} ${
+                    ["PAID", "PREPARING", "READY", "COMPLETED"].includes(buzzerTicket.status)
+                      ? ui.timelineActive
+                      : ""
+                  }`}
+                  role="listitem"
+                >
                   <div className={ui.timelineNode}>✓</div>
                   <span className={ui.timelineLabel}>PAID<br />Đã trả</span>
                 </div>
-                <div className={ui.timelineStep} role="listitem">
+                <div
+                  className={`${ui.timelineStep} ${
+                    ["PREPARING", "READY", "COMPLETED"].includes(buzzerTicket.status)
+                      ? ui.timelineActive
+                      : ""
+                  }`}
+                  role="listitem"
+                >
                   <div className={ui.timelineNode}>2</div>
                   <span className={ui.timelineLabel}>PREP<br />Pha chế</span>
                 </div>
-                <div className={ui.timelineStep} role="listitem">
+                <div
+                  className={`${ui.timelineStep} ${
+                    ["READY", "COMPLETED"].includes(buzzerTicket.status)
+                      ? ui.timelineActive
+                      : ""
+                  }`}
+                  role="listitem"
+                >
                   <div className={ui.timelineNode}>3</div>
                   <span className={ui.timelineLabel}>READ<br />Sẵn sàng</span>
                 </div>
-                <div className={ui.timelineStep} role="listitem">
+                <div
+                  className={`${ui.timelineStep} ${
+                    buzzerTicket.status === "COMPLETED" ? ui.timelineActive : ""
+                  }`}
+                  role="listitem"
+                >
                   <div className={ui.timelineNode}>4</div>
                   <span className={ui.timelineLabel}>COMP<br />Hoàn tất</span>
                 </div>
@@ -2330,12 +3075,26 @@ export default function MenuPage() {
               <div className={ui.buzzerActions}>
                 <button
                   type="button"
+                  className={ui.buzzerHistoryBtn}
+                  onClick={() => {
+                    setIsBuzzerOpen(false);
+                    setActiveNav("orders");
+                    if (authToken) {
+                      void fetchOrders();
+                    }
+                  }}
+                >
+                  📋 Xem trong Lịch sử đơn
+                </button>
+                <button
+                  type="button"
                   className={ui.buzzerNewOrderBtn}
                   onClick={() => {
                     setIsBuzzerOpen(false);
                     setBuzzerTicket(null);
                     setPendingOrder(null);
                     clearCart();
+                    setActiveNav("menu");
                   }}
                 >
                   + Đặt đơn hàng mới
