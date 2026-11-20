@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { saveDeploymentState, loadDeploymentState, captureRunningImages } from './deployment-state.mjs';
+import { newTestProject, prepareTestCompose } from './isolated-test-compose.mjs';
 import { readHeaderSample } from './backup-db.mjs';
 import {
   serializeEnv,
@@ -647,16 +648,16 @@ runTest('SIMULATION', 'FIX-11: Real Docker Compose rollback simulation in isolat
   }
 
   // Setup isolated Docker Compose project
-  const projectName = 'brewlite-test-rollback-sim';
-  const tempDir = path.join(tmpdir(), 'sim-compose-' + Date.now());
+  const projectName = newTestProject();
+  const tempDir = path.join(tmpdir(), projectName);
   mkdirSync(tempDir, { recursive: true });
 
   const composeSimPath = path.join(tempDir, 'docker-compose.sim.yml');
   const stateFilePath = path.join(tempDir, '.sim-state.json');
-  const simVolume = 'sim_pg_vol_' + Date.now();
+  const simVolume = 'postgres_data';
 
-  const tagV1 = 'brewlite-sim-app:v1-stable';
-  const tagV2 = 'brewlite-sim-app:v2-broken';
+  const tagV1 = projectName + ':v1-stable';
+  const tagV2 = projectName + ':v2-broken';
 
   const simComposeYaml = `
 services:
@@ -703,6 +704,7 @@ volumes:
 `;
 
   writeFileSync(composeSimPath, simComposeYaml.trim(), 'utf8');
+  const simulation = prepareTestCompose(projectName, ['-f', composeSimPath]);
 
   try {
     // 1. Ensure alpine:latest and postgres:16-alpine base images are cached locally
@@ -812,7 +814,29 @@ volumes:
     assert.equal(restoredImg, tagV1, `API image must be rolled back to ${tagV1}`);
     assert.equal(restoredHealth, 'healthy', 'Rolled back API container must be healthy');
 
-    // 7. Verify PostgreSQL data was preserved 100% on named volume
+    // While the rollback DB is live, a second project fails with the same logical volume key.
+    // Its teardown must preserve the first project's marker, which is read below.
+    assert.throws(() => prepareTestCompose(projectName, ['-f', composeSimPath]), /pre-existing volume/);
+    const failedProject = newTestProject();
+    const fixturePath = path.join(tempDir, 'cleanup-fixture.json');
+    const fixture = {
+      services: { db: { image: 'alpine:latest', volumes: [simVolume + ':/var/lib/postgresql/data'] } },
+      volumes: { [simVolume]: { external: true, name: projectName + '_' + simVolume } },
+    };
+    writeFileSync(fixturePath, JSON.stringify(fixture));
+    assert.throws(() => prepareTestCompose(failedProject, ['-f', fixturePath]), /project-scoped volume/);
+    fixture.volumes[simVolume] = {};
+    writeFileSync(fixturePath, JSON.stringify(fixture));
+    const failed = prepareTestCompose(failedProject, ['-f', fixturePath]);
+    assert.throws(() => {
+      try {
+        failed.compose('run', '--rm', '--no-deps', 'db', 'sh', '-c', 'exit 23');
+      } finally {
+        failed.cleanup();
+      }
+    }, error => error.status === 23);
+
+    // 7. Verify PostgreSQL data survived both rollback and the other project's teardown.
     const queryData = spawnSync('docker', [
       'exec',
       '-e',
@@ -832,7 +856,7 @@ volumes:
     assert.ok(queryData.stdout.includes('persisted_across_rollback'), `Database data must be preserved across rollback, stdout: "${queryData.stdout}", stderr: "${queryData.stderr}"`);
   } finally {
     // 8. Clean up ONLY this isolated simulation project
-    spawnSync('docker', ['compose', '-p', projectName, '-f', composeSimPath, 'down', '-v'], { stdio: 'ignore' });
+    simulation.cleanup();
     spawnSync('docker', ['rmi', tagV1, tagV2], { stdio: 'ignore' });
     try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }

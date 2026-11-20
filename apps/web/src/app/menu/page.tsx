@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import type { FormEvent } from "react";
 import { fetchProducts } from "./products.mjs";
 import {
@@ -17,16 +18,11 @@ import {
   buildCartItemKey,
   combineItemNote,
 } from "./menu-controller.mjs";
+import { useSessionCart, type CartItem } from "./session-cart";
 import ui from "./menu.module.css";
 
 // ================= API BACKEND =================
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" &&
-  window.location.hostname !== "localhost" &&
-  window.location.hostname !== "127.0.0.1"
-    ? "/api"
-    : "http://localhost:3001");
+import { API_URL } from "../api-url";
 
 // ================= KIỂU DỮ LIỆU =================
 interface Product {
@@ -38,19 +34,6 @@ interface Product {
   isAvailable: boolean;
   stock?: number;
   version?: number;
-}
-
-export interface CartItem {
-  key: string;
-  productId: number;
-  productName: string;
-  basePrice: number;
-  size: "SMALL" | "MEDIUM" | "LARGE";
-  toppings: string[];
-  note: string;
-  unitPrice: number;
-  quantity: number;
-  subtotal: number;
 }
 
 interface OrderResponse {
@@ -104,12 +87,15 @@ function getFallbackImage(product: Product): string {
 }
 
 // ================= COMPONENT MENU =================
+type View = "home" | "menu" | "orders";
+
 export default function MenuPage() {
+  const initialView = usePathname() === "/" ? "home" : "menu";
   // Danh sách sản phẩm
   const [products, setProducts] = useState<Product[]>([]);
 
   // Giỏ hàng danh sách CartItem (Task 5.1.1)
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useSessionCart();
 
   // Trạng thái tải dữ liệu
   const [loading, setLoading] = useState(true);
@@ -212,12 +198,13 @@ export default function MenuPage() {
     items: OrderHistoryDetailItem[];
   }
 
-  const [activeNav, setActiveNav] = useState<"menu" | "orders">(() => {
-    if (typeof window !== "undefined" && window.location.hash === "#orders") {
-      return "orders";
-    }
-    return "menu";
-  });
+  const [activeNav, setActiveNav] = useState<View>(initialView);
+  function navigate(view: View) {
+    const hash = view === "home" ? "#top" : "#" + view;
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
+    setActiveNav(view);
+  }
+
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState("");
@@ -645,7 +632,7 @@ export default function MenuPage() {
       setBuzzerTicket({
         orderId: pendingOrder.id,
         orderCode: buzzerCode,
-        status: "PAID",
+        status: paidOrder.status || "PAID",
         pickupMethod,
         tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
         totalAmount: totalPrice,
@@ -655,6 +642,7 @@ export default function MenuPage() {
       // Tự động xóa giỏ hàng theo đúng FR-06 khi đã thanh toán PAID thành công
       setCartItems([]);
 
+      setTicketError("");
       setIsBuzzerOpen(true);
       setIsPaymentOpen(false);
       setPendingOrder({ id: pendingOrder.id, status: "PAID" });
@@ -724,13 +712,14 @@ export default function MenuPage() {
         setBuzzerTicket({
           orderId: pendingOrder!.id,
           orderCode: buzzerCode,
-          status: "PAID",
+          status: data.order?.status || "PAID",
           pickupMethod,
           tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
           totalAmount: totalPrice,
           items: [...cartItems],
         });
         setCartItems([]);
+        setTicketError("");
         setIsBuzzerOpen(true);
         setIsPaymentOpen(false);
         setPendingOrder({ id: pendingOrder!.id, status: "PAID" });
@@ -750,7 +739,10 @@ export default function MenuPage() {
   }
 
   // ================= XỬ LÝ LỊCH SỬ ĐƠN HÀNG (TASK 5.1 & FIGMA SCREEN 07) =================
+  const historyRequest = useRef(0);
   const fetchOrders = useCallback(async () => {
+    const requestId = ++historyRequest.current;
+    const isCurrent = () => requestId === historyRequest.current && authController.getState().token === authToken;
     if (!authToken) {
       setOrders([]);
       return;
@@ -765,6 +757,7 @@ export default function MenuPage() {
         },
       });
 
+      if (!isCurrent()) return;
       if (res.status === 401) {
         authController.clearSession();
         setOrders([]);
@@ -777,13 +770,15 @@ export default function MenuPage() {
       }
 
       const data = await res.json();
+      if (!isCurrent()) return;
       setOrders(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       setOrdersError(
         err instanceof Error ? err.message : "Không thể tải lịch sử đơn hàng. Vui lòng thử lại."
       );
     } finally {
-      setOrdersLoading(false);
+      if (isCurrent()) setOrdersLoading(false);
     }
   }, [authToken, authController, setOrders, setOrdersLoading, setOrdersError]);
 
@@ -794,16 +789,22 @@ export default function MenuPage() {
   }, [authToken, activeNav, fetchOrders]);
 
   useEffect(() => {
-    function handleHashChange() {
-      if (window.location.hash === "#orders") {
-        setActiveNav("orders");
-      } else if (window.location.hash === "#menu" || window.location.hash === "#top") {
-        setActiveNav("menu");
-      }
+    function handleLocation() {
+      const hash = window.location.hash;
+      if (hash === "#login") openAuthModal("login");
+      else if (hash === "#orders") setActiveNav("orders");
+      else if (hash === "#menu") setActiveNav("menu");
+      else if (hash === "#top") setActiveNav("home");
+      else setActiveNav(initialView);
     }
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
+    handleLocation();
+    window.addEventListener("hashchange", handleLocation);
+    window.addEventListener("popstate", handleLocation);
+    return () => {
+      window.removeEventListener("hashchange", handleLocation);
+      window.removeEventListener("popstate", handleLocation);
+    };
+  }, [initialView, openAuthModal]);
 
   function formatOrderTime(dateStr: string): string {
     try {
@@ -976,29 +977,7 @@ export default function MenuPage() {
     }
   }
 
-  // Theo dõi đơn hàng thời gian thực: fetch dữ liệu mới nhất từ API (FIX-02)
-  async function handleTrackOrder(order: OrderHistoryItem) {
-    let latestStatus = order.status;
-    let latestOrder = order;
-
-    if (authToken) {
-      try {
-        const res = await fetch(`${API_URL}/orders/${order.id}`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        if (res.ok) {
-          const fresh = (await res.json()) as OrderHistoryItem;
-          if (fresh && fresh.status) {
-            latestStatus = fresh.status;
-            latestOrder = fresh;
-            setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: fresh.status } : o)));
-          }
-        }
-      } catch (err) {
-        console.warn("Could not fetch latest order status on track, using local status", err);
-      }
-    }
-
+  function openOrderTicket(latestOrder: OrderHistoryItem) {
     const items: CartItem[] = (latestOrder.items || []).map((i) => ({
       key: `hist-${latestOrder.id}-${i.id}`,
       productId: i.productId,
@@ -1015,62 +994,50 @@ export default function MenuPage() {
     setBuzzerTicket({
       orderId: latestOrder.id,
       orderCode: latestOrder.orderCode || `#BL-${latestOrder.id}`,
-      status: latestStatus,
+      status: latestOrder.status,
       pickupMethod: latestOrder.pickupMethod,
       tableNumber: latestOrder.tableNumber || undefined,
       totalAmount: Number(latestOrder.totalAmount),
       items,
     });
+    setTicketError("");
     setIsBuzzerOpen(true);
   }
 
-  // ================= POLLING TRẠNG THÁI ĐƠN HÀNG KHI THEO DÕI (FIX-02) =================
+  const ticketId = isBuzzerOpen ? buzzerTicket?.orderId : undefined;
+  const [ticketError, setTicketError] = useState("");
   useEffect(() => {
-    if (!isBuzzerOpen || !buzzerTicket?.orderId || !authToken) return;
-
-    // Dừng polling khi đơn hàng đã đạt trạng thái kết thúc (COMPLETED hoặc CANCELLED)
-    if (["COMPLETED", "CANCELLED"].includes(buzzerTicket.status)) return;
-
-    let isMounted = true;
-    const orderId = buzzerTicket.orderId;
-
-    async function pollStatus() {
+    if (!ticketId || !authToken) return;
+    const request = new AbortController();
+    async function refresh() {
       try {
-        const res = await fetch(`${API_URL}/orders/${orderId}`, {
+        const response = await fetch(`${API_URL}/orders/${ticketId}`, {
           headers: { Authorization: `Bearer ${authToken}` },
+          signal: request.signal,
+          cache: "no-store",
         });
-        if (!res.ok) return;
-        const freshOrder = (await res.json()) as OrderHistoryItem;
-        if (!isMounted || !freshOrder || !freshOrder.status) return;
-
-        // Cập nhật trạng thái modal nếu backend chuyển trạng thái
-        setBuzzerTicket((prev) => {
-          if (!prev || prev.orderId !== orderId) return prev;
-          if (prev.status !== freshOrder.status) {
-            return { ...prev, status: freshOrder.status };
-          }
-          return prev;
-        });
-
-        // Đồng bộ danh sách đơn hàng
-        setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, status: freshOrder.status } : o))
-        );
-      } catch (err) {
-        console.warn("Lỗi cập nhật trạng thái đơn hàng khi theo dõi:", err);
+        if (request.signal.aborted) return;
+        if (response.status === 401) {
+          handleLogout();
+          openAuthModal("login");
+          setAuthError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+          return;
+        }
+        if (!response.ok) throw new Error("Không thể đọc trạng thái đơn.");
+        const order: OrderHistoryItem = await response.json();
+        if (request.signal.aborted) return;
+        if (order.id !== ticketId || !order.status) throw new Error("Phản hồi đơn hàng không hợp lệ.");
+        setTicketError("");
+        setBuzzerTicket(ticket => ticket?.orderId === order.id ? { ...ticket, status: order.status } : ticket);
+        setOrders(history => history.map(item => item.id === order.id ? order : item));
+      } catch {
+        if (request.signal.aborted) return;
+        setTicketError("Chưa đọc được trạng thái mới nhất. Vui lòng mở lại vé để thử lại.");
       }
     }
-
-    // Polling định kỳ mỗi 3000ms
-    const intervalId = setInterval(() => {
-      void pollStatus();
-    }, 3000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [isBuzzerOpen, buzzerTicket?.orderId, buzzerTicket?.status, authToken]);
+    void refresh();
+    return () => request.abort();
+  }, [ticketId, authToken, handleLogout, openAuthModal]);
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
   const loadProducts = useCallback((signal?: AbortSignal) => {
@@ -1343,7 +1310,7 @@ export default function MenuPage() {
     <main className={ui.page} id="top">
       <header className={ui.topbar}>
         <div className={ui.navInner}>
-          <a className={ui.brand} href="#top" aria-label="BrewLite - Trang chủ">
+          <a className={ui.brand} href="#top" onClick={() => navigate("home")} aria-label="BrewLite - Trang chủ">
             <span className={ui.brandIcon} aria-hidden="true">☕</span>
             <span>Brew<span>Lite</span></span>
           </a>
@@ -1351,9 +1318,11 @@ export default function MenuPage() {
           <nav className={ui.navigation} aria-label="Điều hướng chính">
             <a
               href="#top"
+              className={activeNav === "home" ? ui.activeNav : ""}
+              aria-current={activeNav === "home" ? "page" : undefined}
               onClick={(e) => {
                 e.preventDefault();
-                setActiveNav("menu");
+                navigate("home");
               }}
             >
               Trang chủ
@@ -1364,7 +1333,7 @@ export default function MenuPage() {
               aria-current={activeNav === "menu" ? "page" : undefined}
               onClick={(e) => {
                 e.preventDefault();
-                setActiveNav("menu");
+                navigate("menu");
               }}
             >
               Menu
@@ -1375,10 +1344,8 @@ export default function MenuPage() {
               aria-current={activeNav === "orders" ? "page" : undefined}
               onClick={(e) => {
                 e.preventDefault();
-                setActiveNav("orders");
-                if (authToken) {
-                  void fetchOrders();
-                }
+                navigate("orders");
+
               }}
             >
               Lịch sử
@@ -1437,35 +1404,15 @@ export default function MenuPage() {
       </header>
 
       <div className={ui.content}>
-        {activeNav === "menu" ? (
+        {activeNav === "home" ? (
+          <section className={`${ui.hero} ${ui.welcome}`}>
+            <div className={ui.heroCopy}>
+              <h1>Mỗi ly cà phê,<br /><span>một khoảnh khắc.</span></h1>
+              <button className={ui.explore} onClick={() => navigate("menu")}>Khám phá thực đơn</button>
+            </div>
+          </section>
+        ) : activeNav === "menu" ? (
           <>
-            <section className={ui.hero}>
-          <div className={ui.heroCopy}>
-            <p className={ui.eyebrow}>
-              <span aria-hidden="true">✦</span> HÔM NAY TẠI BREWLITE
-            </p>
-            <h1>
-              Mỗi ly cà phê,
-              <br />
-              <span>một khoảnh khắc.</span>
-            </h1>
-            <p className={ui.heroDescription}>
-              Pha chế tỉ mỉ · Hương vị thật ngon · Đặt món thật dễ
-            </p>
-          </div>
-          <div className={ui.heroStats}>
-            <div>
-              <strong>{products.length}</strong>
-              <span>MÓN HÔM NAY</span>
-            </div>
-            <span className={ui.statDivider} />
-            <div>
-              <strong>+</strong>
-              <span>ĐẶT HÀNG NHANH</span>
-            </div>
-          </div>
-        </section>
-
         <section className={ui.menuSection} id="menu">
           <label className={ui.searchBox}>
             <span className={ui.searchIcon} aria-hidden="true" />
@@ -1681,7 +1628,7 @@ export default function MenuPage() {
                 </div>
                 <h2 className={ui.historyEmptyTitle}>Đăng nhập để xem lịch sử đơn hàng</h2>
                 <p className={ui.historyEmptyText}>
-                  Theo dõi tiến độ đơn hàng và xem lại các món đồ uống bạn đã thưởng thức tại BrewLite.
+                  Xem lại đơn hàng, mã nhận món và các đồ uống bạn đã đặt tại BrewLite.
                 </p>
                 <button
                   type="button"
@@ -1774,7 +1721,7 @@ export default function MenuPage() {
                     <button
                       type="button"
                       className={ui.historyGoMenuBtn}
-                      onClick={() => setActiveNav("menu")}
+                      onClick={() => navigate("menu")}
                     >
                       Khám phá Menu ngay
                     </button>
@@ -1858,10 +1805,10 @@ export default function MenuPage() {
                                 <button
                                   type="button"
                                   className={ui.trackBtn}
-                                  onClick={() => handleTrackOrder(order)}
-                                  aria-label={`Theo dõi vé chuông ${order.orderCode || order.id}`}
+                                  onClick={() => openOrderTicket(order)}
+                                  aria-label={`Xem vé xác nhận ${order.orderCode || order.id}`}
                                 >
-                                  Theo dõi &gt;
+                                  Xem vé &gt;
                                 </button>
                               )}
                               <button
@@ -3009,7 +2956,7 @@ export default function MenuPage() {
               <p className={ui.buzzerPickupInfo}>
                 {buzzerTicket.pickupMethod === "AT_TABLE"
                   ? `🍽️ Giao tận bàn: ${buzzerTicket.tableNumber || "Chưa ghi số bàn"}`
-                  : "🏪 Lấy nước tại quầy khi chuông báo rung"}
+                  : "🏪 Nhận đồ uống tại quầy"}
               </p>
             </div>
 
@@ -3027,55 +2974,18 @@ export default function MenuPage() {
                   <div className={ui.qrPlaceholder} aria-label="Mã QR nhận nước" />
                 </div>
                 <span className={ui.qrCaption}>
-                  Mock QR Code • Đưa mã QR cho Barista khi đến lấy đồ uống
+                  Mã QR minh họa
                 </span>
               </div>
 
-              {/* INTERACTIVE 4-STAGE TIMELINE */}
-              <div className={ui.timeline} role="list" aria-label="Tiến trình đơn hàng">
-                <div
-                  className={`${ui.timelineStep} ${
-                    ["PAID", "PREPARING", "READY", "COMPLETED"].includes(buzzerTicket.status)
-                      ? ui.timelineActive
-                      : ""
-                  }`}
-                  role="listitem"
-                >
-                  <div className={ui.timelineNode}>✓</div>
-                  <span className={ui.timelineLabel}>PAID<br />Đã trả</span>
-                </div>
-                <div
-                  className={`${ui.timelineStep} ${
-                    ["PREPARING", "READY", "COMPLETED"].includes(buzzerTicket.status)
-                      ? ui.timelineActive
-                      : ""
-                  }`}
-                  role="listitem"
-                >
-                  <div className={ui.timelineNode}>2</div>
-                  <span className={ui.timelineLabel}>PREP<br />Pha chế</span>
-                </div>
-                <div
-                  className={`${ui.timelineStep} ${
-                    ["READY", "COMPLETED"].includes(buzzerTicket.status)
-                      ? ui.timelineActive
-                      : ""
-                  }`}
-                  role="listitem"
-                >
-                  <div className={ui.timelineNode}>3</div>
-                  <span className={ui.timelineLabel}>READ<br />Sẵn sàng</span>
-                </div>
-                <div
-                  className={`${ui.timelineStep} ${
-                    buzzerTicket.status === "COMPLETED" ? ui.timelineActive : ""
-                  }`}
-                  role="listitem"
-                >
-                  <div className={ui.timelineNode}>4</div>
-                  <span className={ui.timelineLabel}>COMP<br />Hoàn tất</span>
-                </div>
-              </div>
+              {buzzerTicket.status === "PAID" && (
+                <p role="status">
+                  {buzzerTicket.pickupMethod === "AT_TABLE"
+                    ? "Đã thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại bàn."
+                    : "Đã thanh toán thành công. Vui lòng sử dụng mã đơn để nhận đồ uống tại quầy."}
+                </p>
+              )}
+              {ticketError && <p role="alert">{ticketError}</p>}
 
               <div className={ui.buzzerActions}>
                 <button
@@ -3083,10 +2993,8 @@ export default function MenuPage() {
                   className={ui.buzzerHistoryBtn}
                   onClick={() => {
                     setIsBuzzerOpen(false);
-                    setActiveNav("orders");
-                    if (authToken) {
-                      void fetchOrders();
-                    }
+                    navigate("orders");
+                    if (activeNav === "orders") void fetchOrders();
                   }}
                 >
                   📋 Xem trong Lịch sử đơn
@@ -3099,7 +3007,7 @@ export default function MenuPage() {
                     setBuzzerTicket(null);
                     setPendingOrder(null);
                     clearCart();
-                    setActiveNav("menu");
+                    navigate("menu");
                   }}
                 >
                   + Đặt đơn hàng mới

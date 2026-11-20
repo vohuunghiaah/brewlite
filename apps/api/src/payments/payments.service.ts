@@ -393,21 +393,8 @@ export class PaymentsService {
           );
         }
 
-        // Chống race condition: nếu order đã được PAID bởi request đối soát khác
-        if (order.status === OrderStatus.PAID) {
-          const freshPayment = await manager.findOne(Payment, {
-            where: { id: paymentAttempt.id },
-            relations: { order: true },
-          });
-          return {
-            isDuplicate: true,
-            success: true,
-            status: PaymentStatus.SUCCESS,
-            message: 'Giao dịch đã được ghi nhận thành công trước đó.',
-            payment: freshPayment!,
-            order,
-          };
-        }
+        const recorded = await this.readSettledPayment(manager, order, paymentAttempt.id);
+        if (recorded) return recorded;
 
         const items = await manager.find(OrderItem, {
           where: { order: { id: order.id } },
@@ -447,6 +434,20 @@ export class PaymentsService {
     }
   }
 
+  // Reconciliation may have committed this transaction before the gateway reply arrives.
+  private async readSettledPayment(manager: EntityManager, order: Order, paymentId: number) {
+    if (order.status !== OrderStatus.PAID) return null;
+    const payment = await manager.findOne(Payment, {
+      where: { id: paymentId, orderId: order.id, status: PaymentStatus.SUCCESS },
+      relations: { order: true },
+    });
+    if (!payment) throw new ConflictException('Đơn đã thanh toán bằng giao dịch khác.');
+    return {
+      isDuplicate: true, success: true, status: PaymentStatus.SUCCESS,
+      message: 'Giao dịch đã được ghi nhận thành công trước đó.', payment, order,
+    };
+  }
+
   /**
    * Cơ chế chung hoàn tất thanh toán và trừ kho OCC cho cả luồng chính và reconciliation (FIX-09)
    */
@@ -456,6 +457,7 @@ export class PaymentsService {
     payment: Payment,
     transactionId: string,
   ): Promise<PaymentProcessResult> {
+    assertOrderTransition(order.status, OrderStatus.PAID, order.id);
     for (const item of order.items) {
       if (!item.productId) continue;
 
@@ -492,7 +494,6 @@ export class PaymentsService {
       }
     }
 
-    assertOrderTransition(order.status, OrderStatus.PAID, order.id);
     const buzzerCode = `#BL-${order.id.toString().padStart(4, '0')}`;
     order.status = OrderStatus.PAID;
     order.orderCode = buzzerCode;
@@ -728,6 +729,7 @@ export class PaymentsService {
           lock: { mode: 'pessimistic_write' },
         });
         if (order && order.status !== OrderStatus.PAYMENT_FAILED) {
+          assertOrderTransition(order.status, OrderStatus.PAYMENT_FAILED, order.id);
           order.status = OrderStatus.PAYMENT_FAILED;
           await manager.save(Order, order);
         }
@@ -757,21 +759,8 @@ export class PaymentsService {
           throw new NotFoundException(`Đơn hàng #${payment.orderId} không tồn tại.`);
         }
 
-        // Chống concurrent reconcile
-        if (order.status === OrderStatus.PAID) {
-          const freshPayment = await manager.findOne(Payment, {
-            where: { id: payment.id },
-            relations: { order: true },
-          });
-          return {
-            isDuplicate: true,
-            success: true,
-            status: PaymentStatus.SUCCESS,
-            message: 'Giao dịch đã được đối soát thành công trước đó.',
-            payment: freshPayment!,
-            order,
-          };
-        }
+        const recorded = await this.readSettledPayment(manager, order, payment.id);
+        if (recorded) return recorded;
 
         const items = await manager.find(OrderItem, {
           where: { order: { id: order.id } },
