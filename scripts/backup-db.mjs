@@ -71,7 +71,7 @@ async function runBackup() {
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
   } catch (err) {
-    console.error('❌ Failed to check docker container status:', maskSecret(err.message));
+    console.error('❌ FAIL-CLOSED: Failed to check docker container status:', maskSecret(err.message));
     process.exit(1);
   }
 

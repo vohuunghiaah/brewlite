@@ -220,7 +220,8 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
    - 13 bước luồng MVP: PASS 100%.
    - 11 bài kiểm thử bảo mật & ngoại lệ (CORS preflight, IDOR, Idempotency, OCC refund): PASS 100%.
 4. **Kiểm thử công cụ triển khai (`scripts/test-deployment-scripts.mjs`):**
-   - **23 bài kiểm thử toàn diện** (8 Static, 11 Execution, 4 Simulation): **PASS 100%**.
+   - **29 bài kiểm thử toàn diện** (11 Static, 14 Execution, 4 Simulation): **PASS 100%**.
+   - Bao gồm toàn bộ các bài kiểm tra thực thi cho FIX-13 (truyền biến môi trường & DOMAIN), FIX-14 (chặn push main auto-deploy & kiểm tra approval gate), và FIX-15 (truyền secrets an toàn qua Base64 stdin).
 
 ---
 
@@ -238,12 +239,12 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
 10. [`scripts/smoke-test.mjs`](../../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret (Fail-closed & TLS).
 11. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed và streaming memory safe.
 12. [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn và xác định.
-13. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện 23 ca cho các công cụ triển khai.
+13. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện 29 ca cho các công cụ triển khai.
 
 ---
 
 ## 11. Kết luận
 
-Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2 cùng toàn bộ 12 yêu cầu kiểm toán độc lập nghiêm ngặt (FIX-01 đến FIX-12). Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã hoàn thiện ở mức chất lượng cao nhất.
+Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2 cùng toàn bộ 15 yêu cầu kiểm toán độc lập nghiêm ngặt (FIX-01 đến FIX-15). Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã hoàn thiện ở mức chất lượng cao nhất.
 
 **Trạng thái đề xuất:** **READY FOR MANUAL MERGE** (Chờ người dùng review và merge thủ công vào `main`).

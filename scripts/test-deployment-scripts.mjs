@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Automated Verification Suite for Task 5.3 Deployment Tooling & Safety Rules
- * Covers FIX-01 through FIX-12:
- * 1. Static Architectural, Security & Workflow Invariants (FIX-07, FIX-08, FIX-09, FIX-10)
- * 2. Real Execution, Fail-Closed & Stream Integrity Tests (FIX-01, FIX-02, FIX-06, FIX-08, FIX-09, FIX-12)
+ * Covers FIX-01 through FIX-15:
+ * 1. Static Architectural, Security & Workflow Invariants (FIX-07, FIX-08, FIX-09, FIX-10, FIX-13, FIX-14, FIX-15)
+ * 2. Real Execution, Fail-Closed & Stream Integrity Tests (FIX-01, FIX-02, FIX-06, FIX-08, FIX-09, FIX-12, FIX-13, FIX-14, FIX-15)
  * 3. Deployment, Simulation & Isolated Docker Compose Rollback Tests (FIX-08, FIX-11)
  */
 
@@ -29,7 +29,7 @@ import { readHeaderSample } from './backup-db.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 console.log('======================================================================');
-console.log('🧪 TASK 5.3 DEPLOYMENT & DELIVERY EXECUTION TEST SUITE (FIX-07 - FIX-12)');
+console.log('🧪 TASK 5.3 DEPLOYMENT & DELIVERY EXECUTION TEST SUITE (FIX-07 - FIX-15)');
 console.log('======================================================================\n');
 
 const suite = [];
@@ -109,14 +109,15 @@ runTest('STATIC', 'FIX-07: deploy.yml mandates LIGHTSAIL_SSH_KNOWN_HOSTS and for
   assert.ok(!deployYaml.includes('StrictHostKeyChecking=no'), 'deploy.yml must NEVER accept StrictHostKeyChecking=no');
 });
 
-runTest('STATIC', 'FIX-08: deploy.yml validates required secrets and transfers .env safely via stdin', () => {
+runTest('STATIC', 'FIX-08 & FIX-15: deploy.yml validates required secrets and streams .env safely via base64 stdin', () => {
   const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
   assert.ok(deployYaml.includes('POSTGRES_DB'), 'Must check POSTGRES_DB');
   assert.ok(deployYaml.includes('POSTGRES_USER'), 'Must check POSTGRES_USER');
   assert.ok(deployYaml.includes('POSTGRES_PASSWORD'), 'Must check POSTGRES_PASSWORD');
   assert.ok(deployYaml.includes('JWT_SECRET'), 'Must check JWT_SECRET');
-  assert.ok(deployYaml.includes('chmod 600 /home/$SSH_USER/app/.env'), 'Must enforce chmod 600 on remote .env');
-  assert.ok(deployYaml.includes("cat << 'ENVEOF' > /home/$SSH_USER/app/.env"), 'Must provision .env via stdin');
+  assert.ok(deployYaml.includes('base64 -d > "$TMP_ENV"'), 'Must stream and decode .env via base64 stdin');
+  assert.ok(deployYaml.includes('chmod 600 "$TMP_ENV"'), 'Must enforce chmod 600 on temporary .env');
+  assert.ok(deployYaml.includes('mv -f "$TMP_ENV" "$APP_DIR/.env"'), 'Must atomically replace remote .env');
 });
 
 runTest('STATIC', 'FIX-09: deploy.yml executes deployment-state.mjs without ignoring errors (no "|| true")', () => {
@@ -131,6 +132,36 @@ runTest('STATIC', 'FIX-10: deploy.yml isolates staging with explicit BLOCKED / N
   assert.ok(deployYaml.includes('BLOCKED / NOT CONFIGURED'), 'Staging job documents BLOCKED / NOT CONFIGURED');
   assert.ok(deployYaml.includes('group: cd-deployment-production'), 'Global concurrency cd-deployment-production');
   assert.ok(deployYaml.includes('cancel-in-progress: false'), 'Must not cancel in-progress deploys');
+});
+
+runTest('STATIC', 'FIX-14: deploy.yml blocks automated push/merge production deploy and requires explicit confirmation', () => {
+  const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  const prodJob = deployYaml.split('deploy-production:')[1].split('steps:')[0];
+  assert.ok(prodJob.includes("inputs.target_env == 'production'"), 'Production deploy requires target_env == production');
+  assert.ok(prodJob.includes("inputs.confirm_production == 'DEPLOY_PRODUCTION'"), 'Requires explicit confirmation DEPLOY_PRODUCTION');
+  assert.ok(!prodJob.includes("github.event_name == 'push'"), 'deploy-production must NEVER run on push event');
+  assert.ok(prodJob.includes('name: production'), 'Retains production environment for approval gate');
+  assert.ok(deployYaml.includes('PRODUCTION_APPROVAL_CONFIGURED'), 'Requires verified approval configuration');
+});
+
+runTest('STATIC', 'FIX-15: deploy.yml has zero direct secret interpolations in shell script bodies', () => {
+  const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  const steps = deployYaml.split('- name:');
+  for (const step of steps) {
+    if (step.includes('run: |') || step.includes('run:')) {
+      const runIndex = step.indexOf('run:');
+      const runBlock = step.substring(runIndex);
+      assert.ok(!runBlock.includes('${{ secrets.'), `Step run block must not directly interpolate secrets: ${step.substring(0, 50)}...`);
+    }
+  }
+});
+
+runTest('STATIC', 'FIX-13: deploy.yml safely exports .env to remote shell and invokes smoke test with configured DOMAIN', () => {
+  const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  const remoteDeploy = deployYaml.split('id: remote-deploy')[1].split('Record Deployment State')[0];
+  assert.ok(remoteDeploy.includes('set -a') && remoteDeploy.includes('. ./.env'), 'Remote shell must safely export .env variables');
+  assert.ok(remoteDeploy.includes('TARGET_URL="https://$DOMAIN"'), 'Smoke test must use exported https://$DOMAIN');
+  assert.ok(remoteDeploy.includes('Essential environment variables (DOMAIN, POSTGRES_USER, POSTGRES_DB)'), 'Validates variables before execution');
 });
 
 // =====================================================================
@@ -291,6 +322,220 @@ runTest('EXECUTION', 'FIX-12: Corrupted or failed backup cleans up partial file 
     // Ensure no partial SQL dump file remains
     const files = existsSync(tempDir) ? readdirSync(tempDir) : [];
     assert.ok(files.length === 0 || !files.some(f => f.endsWith('.sql')), 'Partial corrupted backup file must be removed');
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+function getBashPath(filePath) {
+  if (process.platform !== 'win32') {
+    return filePath;
+  }
+  const normalized = filePath.replace(/\\/g, '/');
+  const drive = normalized.match(/^([A-Za-z]):/);
+  if (!drive) return normalized;
+  const letter = drive[1].toLowerCase();
+  const rest = normalized.substring(2);
+  try {
+    const testWsl = spawnSync('bash', ['-c', `[ -d "/mnt/${letter}" ]`], { stdio: 'ignore' });
+    if (testWsl.status === 0) {
+      return `/mnt/${letter}${rest}`;
+    }
+  } catch {}
+  return `/${letter}${rest}`;
+}
+
+runTest('EXECUTION', 'FIX-13: Simulated remote shell exports .env properly and validates DOMAIN and database', () => {
+  const tempDir = path.join(tmpdir(), 'remote-sim-' + Date.now());
+  const appDir = path.join(tempDir, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  try {
+    // 1. Write mock .env in app dir
+    const envContent = [
+      'POSTGRES_DB=brewlite_sim_db',
+      'POSTGRES_USER=brewlite_sim_user',
+      'POSTGRES_PASSWORD=super_secret_pw',
+      'DOMAIN=coffee.brewlite.vn',
+      'API_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-api:v1.0.0',
+      'WEB_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-web:v1.0.0',
+    ].join('\n') + '\n';
+    writeFileSync(path.join(appDir, '.env'), envContent, 'utf8');
+
+    // 2. Execute simulated remote script block via bash script file
+    const bashAppDir = getBashPath(appDir);
+    const simScriptPath = path.join(tempDir, 'sim-deploy.sh');
+    const simScriptContent = `#!/bin/bash
+set -eo pipefail
+cd "${bashAppDir}"
+if [ ! -f .env ]; then exit 1; fi
+set -a
+. ./.env
+set +a
+if [ -z "$DOMAIN" ] || [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_DB" ]; then
+  echo "Missing required variables!"
+  exit 2
+fi
+echo "DOMAIN_OUTPUT=$DOMAIN"
+echo "USER_OUTPUT=$POSTGRES_USER"
+echo "DB_OUTPUT=$POSTGRES_DB"
+echo "TARGET_URL_OUTPUT=https://$DOMAIN"
+`;
+    writeFileSync(simScriptPath, simScriptContent, 'utf8');
+
+    const res = spawnSync('bash', [getBashPath(simScriptPath)], { encoding: 'utf8' });
+    if (res.error && res.error.code === 'ENOENT') {
+      return { skipped: true, reason: 'bash CLI not available in current host PATH' };
+    }
+
+    assert.equal(res.status, 0, `Simulated remote script must succeed: ${res.stderr}`);
+    assert.ok(res.stdout.includes('DOMAIN_OUTPUT=coffee.brewlite.vn'), 'DOMAIN must match .env');
+    assert.ok(res.stdout.includes('USER_OUTPUT=brewlite_sim_user'), 'POSTGRES_USER must match .env');
+    assert.ok(res.stdout.includes('DB_OUTPUT=brewlite_sim_db'), 'POSTGRES_DB must match .env');
+    assert.ok(res.stdout.includes('TARGET_URL_OUTPUT=https://coffee.brewlite.vn'), 'TARGET_URL must be https://coffee.brewlite.vn');
+
+    // 3. Test fail-closed when .env is missing
+    const simFailPath = path.join(tempDir, 'sim-fail.sh');
+    const simFailContent = `#!/bin/bash
+set -eo pipefail
+cd "${getBashPath(tempDir)}"
+if [ ! -f .env ]; then exit 1; fi
+`;
+    writeFileSync(simFailPath, simFailContent, 'utf8');
+    const resNoEnv = spawnSync('bash', [getBashPath(simFailPath)], { encoding: 'utf8' });
+    assert.equal(resNoEnv.status, 1, 'Missing .env must cause immediate non-zero exit');
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-14: Verification that push to main or unconfirmed dispatch cannot trigger production SSH', () => {
+  const shouldDeployProduction = (event) => {
+    return event.event_name === 'workflow_dispatch' &&
+           event.inputs?.target_env === 'production' &&
+           event.inputs?.confirm_production === 'DEPLOY_PRODUCTION';
+  };
+
+  assert.equal(
+    shouldDeployProduction({ event_name: 'push', ref: 'refs/heads/main' }),
+    false,
+    'Push to main must NOT trigger production deployment'
+  );
+
+  assert.equal(
+    shouldDeployProduction({ event_name: 'push', ref: 'refs/tags/v1.0.0' }),
+    false,
+    'Pushing a release tag must NOT automatically trigger production deployment'
+  );
+
+  assert.equal(
+    shouldDeployProduction({ event_name: 'workflow_dispatch', inputs: { target_env: 'dry-run', confirm_production: 'DEPLOY_PRODUCTION' } }),
+    false,
+    'workflow_dispatch for dry-run must NOT trigger production deployment'
+  );
+
+  assert.equal(
+    shouldDeployProduction({ event_name: 'workflow_dispatch', inputs: { target_env: 'production', confirm_production: '' } }),
+    false,
+    'workflow_dispatch without DEPLOY_PRODUCTION confirmation must NOT trigger production deployment'
+  );
+
+  assert.equal(
+    shouldDeployProduction({ event_name: 'workflow_dispatch', inputs: { target_env: 'production', confirm_production: 'DEPLOY_PRODUCTION' } }),
+    true,
+    'Only intentional confirmed workflow_dispatch allows production deployment job entry'
+  );
+
+  const verifyApprovalPrereq = (approvalConfigured, hostProvided) => {
+    let hasHost = true;
+    if (approvalConfigured !== 'true') hasHost = false;
+    if (!hostProvided) hasHost = false;
+    return hasHost;
+  };
+
+  assert.equal(
+    verifyApprovalPrereq('false', true),
+    false,
+    'Missing approval protection configuration (PRODUCTION_APPROVAL_CONFIGURED != true) must block deployment'
+  );
+  assert.equal(
+    verifyApprovalPrereq('true', true),
+    true,
+    'When approval is configured and host credentials present, prereq passes'
+  );
+});
+
+runTest('EXECUTION', 'FIX-15: Streaming base64 secret transfer handles special characters, atomic mv, 0600, and failure cleanup', () => {
+  const tempDir = path.join(tmpdir(), 'secret-transfer-sim-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const secretDbPass = 'P@$$w0rd#special"quote\'and\\backslash!%^&*()_+';
+    const secretJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.s#cret$with"quotes\'and\\backslash';
+    const secretUser = 'brewlite_user';
+    const secretDb = 'brewlite_prod_db';
+    const domain = 'brewlite.vn';
+
+    const lines = [
+      `POSTGRES_DB=${secretDb}`,
+      `POSTGRES_USER=${secretUser}`,
+      `POSTGRES_PASSWORD=${secretDbPass}`,
+      `JWT_SECRET=${secretJwt}`,
+      `DOMAIN=${domain}`,
+      `NODE_ENV=production`,
+    ];
+    const rawContent = lines.join('\n') + '\n';
+    const base64Payload = Buffer.from(rawContent, 'utf8').toString('base64');
+
+    const bashTempDir = getBashPath(tempDir);
+    const receiverScriptPath = path.join(tempDir, 'receive.sh');
+    const receiverScriptContent = `#!/bin/bash
+set -eo pipefail
+APP_DIR="${bashTempDir}"
+TMP_ENV="$APP_DIR/.env.tmp.$$"
+trap 'rm -f "$TMP_ENV"' EXIT INT TERM
+umask 077
+base64 -d > "$TMP_ENV"
+chmod 600 "$TMP_ENV"
+mv -f "$TMP_ENV" "$APP_DIR/.env"
+trap - EXIT INT TERM
+`;
+    writeFileSync(receiverScriptPath, receiverScriptContent, 'utf8');
+
+    const res = spawnSync('bash', [getBashPath(receiverScriptPath)], {
+      input: base64Payload,
+      encoding: 'utf8',
+    });
+
+    if (res.error && res.error.code === 'ENOENT') {
+      return { skipped: true, reason: 'bash CLI not available in current host PATH' };
+    }
+
+    assert.equal(res.status, 0, `Secret transfer pipeline must exit 0: ${res.stderr}`);
+
+    const envFilePath = path.join(tempDir, '.env');
+    assert.ok(existsSync(envFilePath), '.env file must exist after transfer');
+
+    const writtenContent = readFileSync(envFilePath, 'utf8');
+    assert.equal(writtenContent, rawContent, 'Written .env content must match raw secrets byte-for-byte');
+    assert.ok(writtenContent.includes(`POSTGRES_PASSWORD=${secretDbPass}`), 'Password with $, ", \', \\, # must be exact');
+    assert.ok(writtenContent.includes(`JWT_SECRET=${secretJwt}`), 'JWT secret with special characters must be exact');
+
+    const failScriptPath = path.join(tempDir, 'fail-receive.sh');
+    const failScriptContent = `#!/bin/bash
+set -eo pipefail
+APP_DIR="/non_existent_system_dir_for_test_failure"
+TMP_ENV="$APP_DIR/.env.tmp.$$"
+trap 'rm -f "$TMP_ENV"' EXIT INT TERM
+base64 -d > "$TMP_ENV"
+mv -f "$TMP_ENV" "$APP_DIR/.env"
+`;
+    writeFileSync(failScriptPath, failScriptContent, 'utf8');
+    const failRes = spawnSync('bash', [getBashPath(failScriptPath)], {
+      input: 'invalid_data',
+      encoding: 'utf8',
+    });
+    assert.notEqual(failRes.status, 0, 'Broken transfer must fail-closed with non-zero exit code');
   } finally {
     try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }

@@ -55,10 +55,35 @@ Truy cập `Settings -> Secrets and variables -> Actions -> Variables`:
 | `DOMAIN` | `brewlite.vn` hoặc `localhost` | Tên miền phục vụ reverse proxy Caddy và cấp phát HTTPS tự động |
 | `ACME_EMAIL` | `admin@brewlite.vn` | Địa chỉ email đăng ký chứng chỉ SSL/TLS Let's Encrypt |
 | `FRONTEND_URL` | `https://brewlite.vn` | Domain cấu hình CORS backend cho phép kết nối |
+| `PRODUCTION_APPROVAL_CONFIGURED` | `true` | Cờ xác nhận GitHub Environment 'production' đã được cấu hình Required Reviewers (FIX-14) |
 
 ---
 
-## 4. Phân quyền GitHub Container Registry (GHCR)
+## 4. Cơ chế Kích hoạt và Truyền Secrets an toàn (FIX-13, FIX-14, FIX-15)
+
+1. **Kích hoạt có chủ đích (FIX-14):**
+   - Push vào nhánh `main` hoặc merge PR chỉ chạy Quality Gates và Build/Publish image lên GHCR.
+   - Job `deploy-production` tuyệt đối KHÔNG tự động chạy khi push `main`.
+   - Triển khai production chỉ được kích hoạt thủ công qua `workflow_dispatch` với:
+     - `target_env: production`
+     - `confirm_production: DEPLOY_PRODUCTION`
+   - Bắt buộc kiểm tra `vars.PRODUCTION_APPROVAL_CONFIGURED == 'true'`. Nếu thiếu cấu hình bảo vệ phê duyệt, deployment tự động chuyển trạng thái **BLOCKED** mà không thực hiện bất kỳ lệnh SSH nào.
+
+2. **Truyền Secrets an toàn qua SSH stdin (FIX-15):**
+   - Không chèn trực tiếp `${{ secrets.* }}` vào nội dung mã shell script (toàn bộ mapping qua `env:`).
+   - Nội dung cấu hình `.env` được mã hóa Base64 phía runner và truyền qua luồng `stdin` của SSH tới `base64 -d`.
+   - Không xuất hiện mật khẩu hay khóa JWT trong danh sách tiến trình (`ps`) hoặc log CI.
+   - Tệp `.env` được ghi vào file tạm, gán quyền `0600` và thay thế nguyên tử (`mv -f .env.tmp.$$ .env`).
+   - Xử lý hoàn hảo mọi ký tự đặc biệt: dấu nháy kép `"`, dấu nháy đơn `'`, `$`, `#`, `\`, newlines.
+
+3. **Phân tách biến Runner và Remote Host (FIX-13):**
+   - Remote script trên máy chủ tự động nạp cấu hình bằng `set -a; . ./.env; set +a`.
+   - Kiểm tra database readiness bằng Docker healthcheck và `pg_isready` với biến đã load.
+   - Production smoke test sử dụng trực tiếp biến `https://$DOMAIN` đã được cấu hình, không fallback ngầm.
+
+---
+
+## 5. Phân quyền GitHub Container Registry (GHCR)
 
 Workflow `deploy.yml` sử dụng biến mặc định `${{ secrets.GITHUB_TOKEN }}` được cấp quyền tối thiểu:
 

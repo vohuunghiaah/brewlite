@@ -41,6 +41,8 @@ Tài liệu này tổng hợp toàn bộ các điều kiện kỹ thuật và v�
   - `DOMAIN`: Tên miền chính thức.
   - `ACME_EMAIL`: Email quản trị chứng chỉ Let's Encrypt.
   - `FRONTEND_URL`: `https://${DOMAIN}`.
+  - `PRODUCTION_APPROVAL_CONFIGURED`: Đặt thành `true` sau khi bật Required Reviewers trên GitHub Environment `production` (FIX-14).
+- [ ] **Kích hoạt có chủ đích (FIX-14):** Kích hoạt qua `workflow_dispatch` với input `target_env: production` và `confirm_production: DEPLOY_PRODUCTION`. Push vào `main` sẽ không tự ý deploy.
 
 ---
 
