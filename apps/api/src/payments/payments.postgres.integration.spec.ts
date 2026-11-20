@@ -147,6 +147,32 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
     expect((await productRepo.findOneByOrFail({ id: product.id })).stock).toBe(3);
   });
 
+  it('replays a delayed gateway success after reconciliation and staff acceptance without refunding the last drink', async () => {
+    const { product, order } = await createTestProductAndOrder(1, 1);
+    const orders = new OrdersService(orderRepo, productRepo, dataSource);
+    const key = crypto.randomUUID();
+    const charge = mockGateway.charge.bind(mockGateway);
+    const delayed = jest.spyOn(mockGateway, 'charge').mockImplementationOnce(async request => {
+      const result = await charge(request);
+      await service.reconcilePayment(key, testUser1.id);
+      await orders.updateServiceStatus(order.id, OrderStatus.PREPARING);
+      return result;
+    });
+    try {
+      const result = await service.processPayment({
+        orderId: order.id, amount: 40000, method: PaymentMethod.MOMO,
+        idempotencyKey: key, pickupMethod: PickupMethod.AT_COUNTER,
+      }, testUser1.id);
+      expect(result.isDuplicate).toBe(true);
+      expect(result.payment.status).toBe(PaymentStatus.SUCCESS);
+      expect(result.order.status).toBe(OrderStatus.PREPARING);
+      expect((await productRepo.findOneByOrFail({ id: product.id })).stock).toBe(0);
+      expect((await orderRepo.findOneByOrFail({ id: order.id })).status).toBe(OrderStatus.PREPARING);
+    } finally {
+      delayed.mockRestore();
+    }
+  });
+
   it('defaults legacy users to CUSTOMER and preserves linked orders', async () => {
     const runner = dataSource.createQueryRunner();
     await runner.connect();

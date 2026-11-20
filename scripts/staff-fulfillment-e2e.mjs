@@ -72,6 +72,7 @@ export async function verifyFulfillment({ browser, page, api, web, order, produc
     }
     await advanceOnScreen('Bắt đầu pha chế');
     await verifyStep('PREPARING', 'Đang pha chế — BrewLite đang chuẩn bị đồ uống của bạn.');
+    await card.getByRole('button', { name: 'Đánh dấu sẵn sàng' }).waitFor();
     const concurrent = await Promise.all([patch('READY', staff.accessToken), patch('READY', secondStaff.accessToken)]);
     for (const result of concurrent) {
       assert.equal(result.status(), 200);
@@ -79,9 +80,9 @@ export async function verifyFulfillment({ browser, page, api, web, order, produc
     }
     await verifyStep('READY', 'Đồ uống đã sẵn sàng — Vui lòng đến quầy nhận món.');
     await advanceOnScreen('Đánh dấu sẵn sàng'); // replay from the stale staff card
-    assert.equal((await patch('COMPLETED', admin.accessToken)).status(), 200);
-    await verifyStep('COMPLETED', 'Hoàn tất — Cảm ơn bạn đã lựa chọn BrewLite.');
     await advanceOnScreen('Xác nhận đã giao món');
+    await verifyStep('COMPLETED', 'Hoàn tất — Cảm ơn bạn đã lựa chọn BrewLite.');
+    assert.equal((await patch('COMPLETED', admin.accessToken)).status(), 200);
     await card.waitFor({ state: 'detached' });
     assert.equal((await patch('PREPARING', staff.accessToken)).status(), 409);
     assert.equal(financialSnapshot(), before);

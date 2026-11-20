@@ -19,6 +19,7 @@ import {
   buildCartItemKey,
   combineItemNote,
 } from "./menu-controller.mjs";
+import { useSessionCart, type CartItem } from "./session-cart";
 import ui from "./menu.module.css";
 
 // ================= API BACKEND =================
@@ -34,19 +35,6 @@ interface Product {
   isAvailable: boolean;
   stock?: number;
   version?: number;
-}
-
-export interface CartItem {
-  key: string;
-  productId: number;
-  productName: string;
-  basePrice: number;
-  size: "SMALL" | "MEDIUM" | "LARGE";
-  toppings: string[];
-  note: string;
-  unitPrice: number;
-  quantity: number;
-  subtotal: number;
 }
 
 interface OrderResponse {
@@ -116,7 +104,7 @@ export default function MenuPage() {
   const [products, setProducts] = useState<Product[]>([]);
 
   // Giỏ hàng danh sách CartItem (Task 5.1.1)
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useSessionCart();
 
   // Trạng thái tải dữ liệu
   const [loading, setLoading] = useState(true);

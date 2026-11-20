@@ -13,6 +13,7 @@ describe('MenuPage React Component Tests', () => {
   };
 
   beforeEach(() => {
+    sessionStorage.clear();
     window.history.replaceState(null, "", "/menu");
     localStorage.setItem('brewlite_access_token', 'mock_jwt_token_123');
     localStorage.setItem('brewlite_user', JSON.stringify({ id: 1, email: 'user@brewlite.vn' }));

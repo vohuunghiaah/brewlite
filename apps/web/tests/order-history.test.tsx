@@ -214,6 +214,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
   ];
 
   beforeEach(() => {
+    sessionStorage.clear();
     window.history.replaceState(null, "", "/menu");
     localStorage.clear();
     localStorage.setItem('brewlite_access_token', 'mock_jwt_token_123');

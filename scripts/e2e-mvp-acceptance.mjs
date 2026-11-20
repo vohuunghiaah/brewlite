@@ -144,6 +144,8 @@ async function runAcceptanceTest() {
     const cartSummaryBtn = page.locator('button[class*="cartSummary"]').first();
     const beforeNavigation = await cartSummaryBtn.getAttribute('aria-label');
     await verifyNavigation(page);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: beforeNavigation, exact: true }).waitFor();
     assert.equal(await cartSummaryBtn.getAttribute('aria-label'), beforeNavigation);
     await cartSummaryBtn.click();
 
