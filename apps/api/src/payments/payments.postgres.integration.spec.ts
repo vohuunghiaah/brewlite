@@ -1,5 +1,3 @@
-import { AddUserRole1732233600000 } from '../migrations/1732233600000-add-user-role';
-import { OrdersService } from '../orders/orders.service';
 import { migrations } from '../database';
 import * as crypto from 'crypto';
 import { DataSource, Repository } from 'typeorm';
@@ -138,24 +136,13 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
   // PHẦN 1: 12 INTEGRATION TESTS THỰC TẾ TRÊN POSTGRESQL (BẢO TOÀN TỪ BASELINE)
   // =========================================================================
 
-  it('keeps a pending order and stock intact when service progress or payment status is requested', async () => {
-    const { order, product } = await createTestProductAndOrder(3, 1);
-    const orders = new OrdersService(orderRepo, productRepo, dataSource);
-    await expect(orders.updateServiceStatus(order.id, OrderStatus.READY)).rejects.toBeInstanceOf(ConflictException);
-    expect(() => orders.updateServiceStatus(order.id, OrderStatus.PAID)).toThrow(BadRequestException);
-    expect((await orderRepo.findOneByOrFail({ id: order.id })).status).toBe(OrderStatus.PENDING);
-    expect((await productRepo.findOneByOrFail({ id: product.id })).stock).toBe(3);
-  });
-
-  it('replays a delayed gateway success after reconciliation and staff acceptance without refunding the last drink', async () => {
+  it('replays a delayed gateway success after reconciliation without refunding the last drink', async () => {
     const { product, order } = await createTestProductAndOrder(1, 1);
-    const orders = new OrdersService(orderRepo, productRepo, dataSource);
     const key = crypto.randomUUID();
     const charge = mockGateway.charge.bind(mockGateway);
     const delayed = jest.spyOn(mockGateway, 'charge').mockImplementationOnce(async request => {
       const result = await charge(request);
       await service.reconcilePayment(key, testUser1.id);
-      await orders.updateServiceStatus(order.id, OrderStatus.PREPARING);
       return result;
     });
     try {
@@ -165,30 +152,11 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
       }, testUser1.id);
       expect(result.isDuplicate).toBe(true);
       expect(result.payment.status).toBe(PaymentStatus.SUCCESS);
-      expect(result.order.status).toBe(OrderStatus.PREPARING);
+      expect(result.order.status).toBe(OrderStatus.PAID);
       expect((await productRepo.findOneByOrFail({ id: product.id })).stock).toBe(0);
-      expect((await orderRepo.findOneByOrFail({ id: order.id })).status).toBe(OrderStatus.PREPARING);
+      expect((await orderRepo.findOneByOrFail({ id: order.id })).status).toBe(OrderStatus.PAID);
     } finally {
       delayed.mockRestore();
-    }
-  });
-
-  it('defaults legacy users to CUSTOMER and preserves linked orders', async () => {
-    const runner = dataSource.createQueryRunner();
-    await runner.connect();
-    await runner.startTransaction();
-    try {
-      await runner.query('CREATE TEMP TABLE users (id integer PRIMARY KEY, email text)');
-      await runner.query('CREATE TEMP TABLE orders (id integer PRIMARY KEY, owner integer REFERENCES users(id))');
-      await runner.query("INSERT INTO users VALUES (7, 'legacy@example.test')");
-      await runner.query('INSERT INTO orders VALUES (12, 7)');
-      await new AddUserRole1732233600000().up(runner);
-      expect(await runner.query('SELECT o.id, u.email, u.role FROM orders o JOIN users u ON u.id=o.owner'))
-        .toEqual([{ id: 12, email: 'legacy@example.test', role: 'CUSTOMER' }]);
-      await expect(runner.query("UPDATE users SET role='OWNER'")).rejects.toThrow();
-    } finally {
-      await runner.rollbackTransaction();
-      await runner.release();
     }
   });
 

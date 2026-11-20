@@ -69,16 +69,17 @@ try {
   const snapshot = () => sql('SELECT id, name, price, stock, version FROM products ORDER BY id');
   setup('db:migrate');
   setup('db:seed');
-  assert.equal(sql('SELECT count(*) FROM migrations'), '5');
+  assert.equal(sql('SELECT count(*) FROM migrations'), '4');
   assert.equal(sql('SELECT count(*) FROM products'), '4');
+  assert.equal(sql("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='role'"), '0');
   // Simulate an inventory correction. A second seed must preserve it.
   sql('UPDATE products SET stock = stock + 1 WHERE id = (SELECT min(id) FROM products)');
   const before = snapshot();
   setup('db:migrate');
   setup('db:seed');
-  assert.equal(sql('SELECT count(*) FROM migrations'), '5');
+  assert.equal(sql('SELECT count(*) FROM migrations'), '4');
   assert.equal(snapshot(), before);
-  console.log('Repeated setup preserved five migrations and catalog rows:\n' + before);
+  console.log('Repeated setup preserved four migrations and catalog rows:\n' + before);
 
   if (process.argv.includes('--quality')) {
     // The legacy concurrency suite clears gateway fixtures. Give it its own database.
@@ -113,8 +114,8 @@ try {
   throw error;
 } finally {
   try {
-    // Only this run owns this freshly generated Compose project and its volumes.
-    compose('down', '--volumes', '--rmi', 'local');
+    // Preserve database volumes when shutting down the isolated acceptance project.
+    compose('down', '--rmi', 'local');
   } finally {
     rmSync(envFile, { force: true });
     rmdirSync(temp);

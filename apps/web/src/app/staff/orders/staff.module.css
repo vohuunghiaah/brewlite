@@ -1,8 +1,0 @@
-.board { margin: 0 auto; padding: 32px 18px; max-width: 880px; color: #43291f; }
-.board header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; }
-.board h1, .board h2, .board p, .board ul { margin-block: 12px; }
-.board header a { text-decoration: underline; }
-.board article { padding: 20px; margin-block: 16px; border-radius: 16px; border: 1px solid #dfd4c8; background: #fffcf7; overflow-wrap: anywhere; }
-.board button { background: #43291f; color: white; padding: 10px 16px; border-radius: 20px; border: 0; cursor: pointer; }
-.board button:disabled { opacity: .6; cursor: wait; }
-.board ul { padding-left: 20px; }

@@ -434,10 +434,9 @@ export class PaymentsService {
     }
   }
 
-  // A worker can finish TX2 and a barista can start service while the gateway reply is in flight.
+  // Reconciliation may have committed this transaction before the gateway reply arrives.
   private async readSettledPayment(manager: EntityManager, order: Order, paymentId: number) {
-    const settled = [OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.COMPLETED];
-    if (!settled.includes(order.status as OrderStatus)) return null;
+    if (order.status !== OrderStatus.PAID) return null;
     const payment = await manager.findOne(Payment, {
       where: { id: paymentId, orderId: order.id, status: PaymentStatus.SUCCESS },
       relations: { order: true },

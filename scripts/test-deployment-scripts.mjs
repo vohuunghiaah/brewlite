@@ -832,7 +832,7 @@ volumes:
     assert.ok(queryData.stdout.includes('persisted_across_rollback'), `Database data must be preserved across rollback, stdout: "${queryData.stdout}", stderr: "${queryData.stderr}"`);
   } finally {
     // 8. Clean up ONLY this isolated simulation project
-    spawnSync('docker', ['compose', '-p', projectName, '-f', composeSimPath, 'down', '-v'], { stdio: 'ignore' });
+    spawnSync('docker', ['compose', '-p', projectName, '-f', composeSimPath, 'down'], { stdio: 'ignore' });
     spawnSync('docker', ['rmi', tagV1, tagV2], { stdio: 'ignore' });
     try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }

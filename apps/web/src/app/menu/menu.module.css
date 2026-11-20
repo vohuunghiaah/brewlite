@@ -2160,68 +2160,6 @@
   font-weight: 600;
 }
 
-/* Timeline 4 trạng thái */
-.timeline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 20px 0;
-  position: relative;
-}
-
-.timeline::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  left: 20px;
-  right: 20px;
-  height: 2px;
-  background: #ebd9c8;
-  z-index: 0;
-}
-
-.timelineStep {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  z-index: 1;
-}
-
-.timelineNode {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 2px solid #ebd9c8;
-  color: #8c7566;
-  font-size: 11px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  transition: all 160ms ease;
-}
-
-.timelineActive .timelineNode {
-  background: #c28d58;
-  border-color: #c28d58;
-  color: #ffffff;
-  box-shadow: 0 0 0 4px rgba(194, 141, 88, 0.2);
-}
-
-.timelineLabel {
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #7c695e;
-  text-align: center;
-}
-
-.timelineActive .timelineLabel {
-  color: #3d261d;
-  font-weight: 800;
-}
-
 .buzzerActions {
   display: flex;
   gap: 10px;
@@ -2891,8 +2829,6 @@
   color: #43291f;
   cursor: pointer;
 }
-.timeline { list-style: none; padding-inline: 0; }
-.timelineStep { flex: 1; min-width: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .welcome { animation: welcomeIn 260ms ease-out; }
   @keyframes welcomeIn { from { opacity: 0; transform: translateY(6px); } }
@@ -2909,5 +2845,4 @@
   .navigation { gap: 2px; }
   .navigation a { padding-inline: 8px; }
   .cartSummary > span:nth-last-child(-n+2) { display: none; }
-  .timelineLabel { font-size: 12px; }
 }

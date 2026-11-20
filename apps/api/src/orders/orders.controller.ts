@@ -2,9 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
-  Header,
   Post,
-  Patch,
   Body,
   Param,
   ParseIntPipe,
@@ -16,9 +14,6 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-
-import { StaffGuard } from '../auth/staff.guard';
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -37,20 +32,6 @@ export class OrdersController {
   @Get('me')
   findMyOrders(@CurrentUser() user: AuthenticatedUser) {
     return this.ordersService.findAll(user.id);
-  }
-
-  @Get('staff')
-  @Header('Cache-Control', 'private, no-store')
-  @UseGuards(StaffGuard)
-  serviceQueue() {
-    return this.ordersService.serviceQueue();
-  }
-
-  @Patch(':id/status')
-  @UseGuards(StaffGuard)
-  updateStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateOrderStatusDto) {
-    if (id < 1 || id > 2_147_483_647) throw new BadRequestException('ID đơn hàng không hợp lệ');
-    return this.ordersService.updateServiceStatus(id, dto.status);
   }
 
   // GET /orders/:id

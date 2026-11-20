@@ -667,7 +667,7 @@ describe('MenuPage React Component Tests', () => {
     expect(buzzerDialog).toBeInTheDocument();
     expect(buzzerDialog).toHaveTextContent(/BrewLite Digital Buzzer/i);
     expect(buzzerDialog).toHaveTextContent(/Bàn số 8/i);
-    expect(buzzerDialog).toHaveTextContent("Đã thanh toán — Đang chờ cửa hàng tiếp nhận.");
+    expect(buzzerDialog).toHaveTextContent("Đã thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại bàn.");
 
     // 8. Đóng vé chuông và kiểm tra giỏ hàng đã được làm trống đúng FR-06
     const dismissBtns = screen.getAllByRole('button', { name: /đóng vé chuông/i });

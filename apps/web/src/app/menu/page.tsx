@@ -2,7 +2,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { FormEvent } from "react";
 import { fetchProducts } from "./products.mjs";
@@ -88,14 +87,6 @@ function getFallbackImage(product: Product): string {
 }
 
 // ================= COMPONENT MENU =================
-const ticketSteps = [["PAID", "Đã trả"], ["PREPARING", "Pha chế"], ["READY", "Sẵn sàng"], ["COMPLETED", "Hoàn tất"]];
-const ticketMessages: Record<string, string> = {
-  PAID: "Đã thanh toán — Đang chờ cửa hàng tiếp nhận.",
-  PREPARING: "Đang pha chế — BrewLite đang chuẩn bị đồ uống của bạn.",
-  READY: "Đồ uống đã sẵn sàng — Vui lòng đến quầy nhận món.",
-  COMPLETED: "Hoàn tất — Cảm ơn bạn đã lựa chọn BrewLite.",
-  CANCELLED: "Đơn hàng đã hủy.",
-};
 type View = "home" | "menu" | "orders";
 
 export default function MenuPage() {
@@ -131,7 +122,6 @@ export default function MenuPage() {
   interface AuthUser {
     id: number;
     email: string;
-    role?: string;
   }
   interface AuthSession {
     token: string | null;
@@ -652,7 +642,7 @@ export default function MenuPage() {
       // Tự động xóa giỏ hàng theo đúng FR-06 khi đã thanh toán PAID thành công
       setCartItems([]);
 
-      setTrackingError("");
+      setTicketError("");
       setIsBuzzerOpen(true);
       setIsPaymentOpen(false);
       setPendingOrder({ id: pendingOrder.id, status: "PAID" });
@@ -729,7 +719,7 @@ export default function MenuPage() {
           items: [...cartItems],
         });
         setCartItems([]);
-        setTrackingError("");
+        setTicketError("");
         setIsBuzzerOpen(true);
         setIsPaymentOpen(false);
         setPendingOrder({ id: pendingOrder!.id, status: "PAID" });
@@ -781,13 +771,7 @@ export default function MenuPage() {
 
       const data = await res.json();
       if (!isCurrent()) return;
-      setOrders(previous => (Array.isArray(data) ? data : []).map((item: OrderHistoryItem) => {
-        const known = previous.find(entry => entry.id === item.id);
-        if (!known || item.status === "CANCELLED") return item;
-        const rank = (status: string) => ticketSteps.findIndex(([step]) => step === status);
-        return known.status === "CANCELLED" || rank(known.status) > rank(item.status)
-          ? { ...item, status: known.status } : item;
-      }));
+      setOrders(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
       if (!isCurrent()) return;
       setOrdersError(
@@ -993,8 +977,7 @@ export default function MenuPage() {
     }
   }
 
-  // Theo dõi đơn hàng thời gian thực: fetch dữ liệu mới nhất từ API (FIX-02)
-  function handleTrackOrder(latestOrder: OrderHistoryItem) {
+  function openOrderTicket(latestOrder: OrderHistoryItem) {
     const items: CartItem[] = (latestOrder.items || []).map((i) => ({
       key: `hist-${latestOrder.id}-${i.id}`,
       productId: i.productId,
@@ -1017,17 +1000,15 @@ export default function MenuPage() {
       totalAmount: Number(latestOrder.totalAmount),
       items,
     });
-    setTrackingError("");
+    setTicketError("");
     setIsBuzzerOpen(true);
   }
 
-  // ================= POLLING TRẠNG THÁI ĐƠN HÀNG KHI THEO DÕI (FIX-02) =================
   const ticketId = isBuzzerOpen ? buzzerTicket?.orderId : undefined;
-  const [trackingError, setTrackingError] = useState("");
+  const [ticketError, setTicketError] = useState("");
   useEffect(() => {
     if (!ticketId || !authToken) return;
     const request = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
       try {
         const response = await fetch(`${API_URL}/orders/${ticketId}`, {
@@ -1046,18 +1027,16 @@ export default function MenuPage() {
         const order: OrderHistoryItem = await response.json();
         if (request.signal.aborted) return;
         if (order.id !== ticketId || !order.status) throw new Error("Phản hồi đơn hàng không hợp lệ.");
-        setTrackingError("");
+        setTicketError("");
         setBuzzerTicket(ticket => ticket?.orderId === order.id ? { ...ticket, status: order.status } : ticket);
         setOrders(history => history.map(item => item.id === order.id ? order : item));
-        if (order.status === "COMPLETED" || order.status === "CANCELLED") return;
       } catch {
         if (request.signal.aborted) return;
-        setTrackingError("Chưa cập nhật được trạng thái. BrewLite sẽ thử lại.");
+        setTicketError("Chưa đọc được trạng thái mới nhất. Vui lòng mở lại vé để thử lại.");
       }
-      timer = setTimeout(refresh, 3000);
     }
     void refresh();
-    return () => { request.abort(); clearTimeout(timer); };
+    return () => request.abort();
   }, [ticketId, authToken, handleLogout, openAuthModal]);
 
   // ================= LẤY DANH SÁCH SẢN PHẨM =================
@@ -1385,7 +1364,6 @@ export default function MenuPage() {
           <div className={ui.navActions}>
             {user ? (
               <div className={ui.userSession}>
-                {(user.role === "STAFF" || user.role === "ADMIN") && <Link href="/staff/orders">Quầy pha chế</Link>}
                 <span className={ui.userEmail} title={user.email}>
                   👤 {user.email}
                 </span>
@@ -1650,7 +1628,7 @@ export default function MenuPage() {
                 </div>
                 <h2 className={ui.historyEmptyTitle}>Đăng nhập để xem lịch sử đơn hàng</h2>
                 <p className={ui.historyEmptyText}>
-                  Theo dõi tiến độ đơn hàng và xem lại các món đồ uống bạn đã thưởng thức tại BrewLite.
+                  Xem lại đơn hàng, mã nhận món và các đồ uống bạn đã đặt tại BrewLite.
                 </p>
                 <button
                   type="button"
@@ -1827,10 +1805,10 @@ export default function MenuPage() {
                                 <button
                                   type="button"
                                   className={ui.trackBtn}
-                                  onClick={() => handleTrackOrder(order)}
-                                  aria-label={`Theo dõi vé chuông ${order.orderCode || order.id}`}
+                                  onClick={() => openOrderTicket(order)}
+                                  aria-label={`Xem vé xác nhận ${order.orderCode || order.id}`}
                                 >
-                                  Theo dõi &gt;
+                                  Xem vé &gt;
                                 </button>
                               )}
                               <button
@@ -2996,21 +2974,18 @@ export default function MenuPage() {
                   <div className={ui.qrPlaceholder} aria-label="Mã QR nhận nước" />
                 </div>
                 <span className={ui.qrCaption}>
-                  Mock QR Code • Đưa mã QR cho Barista khi đến lấy đồ uống
+                  Mã QR minh họa
                 </span>
               </div>
 
-              <p role="status">{ticketMessages[buzzerTicket.status]}</p>
-              {trackingError && <p role="alert">{trackingError}</p>}
-              <ol className={ui.timeline} aria-label="Tiến trình đơn hàng">
-                {ticketSteps.map(([status, label], index) => (
-                  <li key={status} aria-current={status === buzzerTicket.status ? "step" : undefined}
-                    className={`${ui.timelineStep} ${index <= ticketSteps.findIndex(([step]) => step === buzzerTicket.status) ? ui.timelineActive : ""}`}>
-                    <span className={ui.timelineNode}>{index + 1}</span>
-                    <span className={ui.timelineLabel}>{label}</span>
-                  </li>
-                ))}
-              </ol>
+              {buzzerTicket.status === "PAID" && (
+                <p role="status">
+                  {buzzerTicket.pickupMethod === "AT_TABLE"
+                    ? "Đã thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại bàn."
+                    : "Đã thanh toán thành công. Vui lòng sử dụng mã đơn để nhận đồ uống tại quầy."}
+                </p>
+              )}
+              {ticketError && <p role="alert">{ticketError}</p>}
 
               <div className={ui.buzzerActions}>
                 <button

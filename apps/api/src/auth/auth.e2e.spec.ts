@@ -6,7 +6,7 @@ import { compare, getRounds } from 'bcryptjs';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { QueryFailedError } from 'typeorm';
-import { User, UserRole, USER_EMAIL_UNIQUE } from '../users/entities/user.entity';
+import { User, USER_EMAIL_UNIQUE } from '../users/entities/user.entity';
 import { AuthModule } from './auth.module';
 
 const TEST_SECRET = 'local-auth-endpoint-verification-secret';
@@ -35,7 +35,6 @@ describe('Auth endpoints', () => {
       const account = {
         ...details,
         id: accounts.size + 1,
-        role: UserRole.CUSTOMER,
         createdAt: new Date(),
       };
       accounts.set(details.email, account);
@@ -91,7 +90,6 @@ describe('Auth endpoints', () => {
     expect(response.body).toEqual({
       id: account!.id,
       email: account!.email,
-      role: UserRole.CUSTOMER,
       createdAt: account!.createdAt.toISOString(),
     });
 
@@ -110,7 +108,6 @@ describe('Auth endpoints', () => {
     { ...credentials, password: '😀'.repeat(19) },
     { ...credentials, password: 123456 },
     { ...credentials, role: 'ADMIN' },
-    { ...credentials, role: 'STAFF' },
   ])('rejects invalid or extra credentials fields', async (body) => {
     await request(app.getHttpServer())
       .post('/auth/register')
