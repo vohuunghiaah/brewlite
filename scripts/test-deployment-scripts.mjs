@@ -182,6 +182,7 @@ runTest('STATIC', 'FIX-16: deploy.yml eliminates hazardous source .env, extracts
   assert.ok(remoteDeploy.includes('scripts/safe-env.mjs get .env POSTGRES_DB'), 'Must extract POSTGRES_DB safely via safe-env.mjs');
   assert.ok(remoteDeploy.includes('TARGET_URL="https://$DOMAIN"'), 'Smoke test must use exported https://$DOMAIN');
   assert.ok(remoteDeploy.includes('scripts/safe-env.mjs validate .env'), 'Validates .env via safe-env.mjs before execution');
+  assert.ok(remoteDeploy.includes('node scripts/safe-env.mjs validate .env DOMAIN CADDY_HOSTS POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET'), 'Must validate CADDY_HOSTS in remote .env');
   assert.ok(deployYaml.includes('serializeEnv'), 'Step 2 must serialize secrets via safe-env.mjs');
 });
 
@@ -383,6 +384,7 @@ runTest('EXECUTION', 'FIX-13 & FIX-16: Simulated remote deployment extracts vari
       POSTGRES_PASSWORD: 'super_secret_pw',
       JWT_SECRET: 'jwt_secret_token_123',
       DOMAIN: 'coffee.brewlite.vn',
+      CADDY_HOSTS: 'coffee.brewlite.vn, alt.brewlite.vn',
       API_IMAGE_REF: 'ghcr.io/vohuunghiaah/brewlite-api:v1.0.0',
       WEB_IMAGE_REF: 'ghcr.io/vohuunghiaah/brewlite-web:v1.0.0',
     });
@@ -396,7 +398,7 @@ set -eo pipefail
 cd "${bashAppDir}"
 if [ ! -f .env ]; then exit 1; fi
 NODE_BIN="$(command -v node || command -v node.exe || echo 'node')"
-"$NODE_BIN" scripts/safe-env.mjs validate .env DOMAIN POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET
+"$NODE_BIN" scripts/safe-env.mjs validate .env DOMAIN CADDY_HOSTS POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET
 DOMAIN=$("$NODE_BIN" scripts/safe-env.mjs get .env DOMAIN)
 POSTGRES_USER=$("$NODE_BIN" scripts/safe-env.mjs get .env POSTGRES_USER)
 POSTGRES_DB=$("$NODE_BIN" scripts/safe-env.mjs get .env POSTGRES_DB)
@@ -610,6 +612,123 @@ runTest('SIMULATION', 'FIX-03 & FIX-04: Missing production host credentials bloc
   assert.ok(deployYaml.includes('has_host=false'), 'Must detect missing host secrets');
   assert.ok(deployYaml.includes('BLOCKED / DRY-RUN'), 'Step summary records BLOCKED / DRY-RUN status');
   assert.ok(deployYaml.includes('deployed_real'), 'Only claims VERIFIED IN PRODUCTION if deployed_real is true');
+});
+
+runTest('SIMULATION', 'FIX-01: Preflight validation mandates CADDY_HOSTS and blocks deployment before SSH if missing, invalid, or lacking primary DOMAIN', () => {
+  const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+
+  // Verify static yaml enforcement
+  assert.ok(deployYaml.includes('check_var "$INPUT_CADDY_HOSTS" "CADDY_HOSTS (variable)"'), 'Must check INPUT_CADDY_HOSTS');
+  assert.ok(deployYaml.includes('CADDY_HOSTS_INVALID_SCHEME'), 'Must check for http/https scheme in CADDY_HOSTS');
+  assert.ok(deployYaml.includes('CADDY_HOSTS_MISSING_PRIMARY_DOMAIN'), 'Must check that CADDY_HOSTS contains primary DOMAIN');
+  assert.ok(!deployYaml.includes('vars.CADDY_HOSTS || vars.DOMAIN'), 'deploy.yml must not silently fallback CADDY_HOSTS to DOMAIN');
+
+  // Helper to run simulated preflight bash logic
+  function runPreflightCheck(envVars) {
+    const tempDir = path.join(tmpdir(), 'preflight-test-' + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    try {
+      const envDefs = Object.entries(envVars)
+        .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+        .join('\n');
+
+      const scriptContent = `#!/bin/bash
+${envDefs}
+HAS_HOST=true
+MISSING_SECRETS=""
+check_var() {
+  local val="$1"
+  local name="$2"
+  if [ -z "$val" ]; then
+    HAS_HOST=false
+    MISSING_SECRETS="$MISSING_SECRETS $name"
+  fi
+}
+
+check_var "$INPUT_SSH_KEY" "LIGHTSAIL_SSH_KEY"
+check_var "$INPUT_HOST" "LIGHTSAIL_HOST"
+check_var "$INPUT_KNOWN_HOSTS" "LIGHTSAIL_SSH_KNOWN_HOSTS"
+check_var "$INPUT_PG_DB" "POSTGRES_DB"
+check_var "$INPUT_PG_USER" "POSTGRES_USER"
+check_var "$INPUT_PG_PASS" "POSTGRES_PASSWORD"
+check_var "$INPUT_JWT_SEC" "JWT_SECRET"
+check_var "$INPUT_DOMAIN" "DOMAIN (variable)"
+check_var "$INPUT_CADDY_HOSTS" "CADDY_HOSTS (variable)"
+
+if [ -n "$INPUT_DOMAIN" ]; then
+  if [[ "$INPUT_DOMAIN" =~ [,\\ ] ]] || [[ "$INPUT_DOMAIN" =~ ^https?:// ]]; then
+    HAS_HOST=false
+    MISSING_SECRETS="$MISSING_SECRETS DOMAIN_FORMAT_INVALID"
+  fi
+fi
+
+if [ -n "$INPUT_CADDY_HOSTS" ]; then
+  if [[ "$INPUT_CADDY_HOSTS" =~ https?:// ]]; then
+    HAS_HOST=false
+    MISSING_SECRETS="$MISSING_SECRETS CADDY_HOSTS_INVALID_SCHEME"
+  fi
+
+  if [ -n "$INPUT_DOMAIN" ]; then
+    if ! echo "$INPUT_CADDY_HOSTS" | grep -qw "$INPUT_DOMAIN"; then
+      HAS_HOST=false
+      MISSING_SECRETS="$MISSING_SECRETS CADDY_HOSTS_MISSING_PRIMARY_DOMAIN"
+    fi
+  fi
+fi
+
+echo "HAS_HOST=$HAS_HOST"
+echo "MISSING_SECRETS=$MISSING_SECRETS"
+`;
+      const scriptPath = path.join(tempDir, 'check.sh');
+      writeFileSync(scriptPath, scriptContent, 'utf8');
+      const res = spawnSync('bash', [getBashPath(scriptPath)], {
+        env: { ...process.env, ...envVars },
+        encoding: 'utf8',
+      });
+      if (res.error && res.error.code === 'ENOENT') {
+        return { has_host: 'bash_not_found' };
+      }
+      return {
+        has_host: res.stdout.includes('HAS_HOST=true') ? 'true' : 'false',
+        missing: (res.stdout.match(/MISSING_SECRETS=(.*)/) || [])[1] || '',
+      };
+    } finally {
+      try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+    }
+  }
+
+  const baseValidEnv = {
+    INPUT_SSH_KEY: 'mock_key',
+    INPUT_HOST: '1.2.3.4',
+    INPUT_KNOWN_HOSTS: 'mock_hosts',
+    INPUT_PG_DB: 'brewlite',
+    INPUT_PG_USER: 'user',
+    INPUT_PG_PASS: 'pass',
+    INPUT_JWT_SEC: 'jwt',
+    INPUT_DOMAIN: 'brewlite.vn',
+    INPUT_CADDY_HOSTS: 'brewlite.vn, swe-brewlite.vn',
+  };
+
+  // Case 1: Valid configuration -> HAS_HOST=true
+  const validRes = runPreflightCheck(baseValidEnv);
+  if (validRes.has_host !== 'bash_not_found') {
+    assert.equal(validRes.has_host, 'true', 'Valid environment must set HAS_HOST=true');
+
+    // Case 2: Missing CADDY_HOSTS -> HAS_HOST=false, missing contains CADDY_HOSTS
+    const missingCaddyRes = runPreflightCheck({ ...baseValidEnv, INPUT_CADDY_HOSTS: '' });
+    assert.equal(missingCaddyRes.has_host, 'false', 'Missing CADDY_HOSTS must set HAS_HOST=false');
+    assert.ok(missingCaddyRes.missing.includes('CADDY_HOSTS (variable)'), 'Must report CADDY_HOSTS (variable) missing');
+
+    // Case 3: CADDY_HOSTS has http(s):// scheme -> HAS_HOST=false
+    const schemeCaddyRes = runPreflightCheck({ ...baseValidEnv, INPUT_CADDY_HOSTS: 'https://brewlite.vn' });
+    assert.equal(schemeCaddyRes.has_host, 'false', 'CADDY_HOSTS with URI scheme must set HAS_HOST=false');
+    assert.ok(schemeCaddyRes.missing.includes('CADDY_HOSTS_INVALID_SCHEME'), 'Must report CADDY_HOSTS_INVALID_SCHEME');
+
+    // Case 4: CADDY_HOSTS does not contain primary DOMAIN -> HAS_HOST=false
+    const missingDomainRes = runPreflightCheck({ ...baseValidEnv, INPUT_CADDY_HOSTS: 'otherdomain.vn, another.vn' });
+    assert.equal(missingDomainRes.has_host, 'false', 'CADDY_HOSTS without primary DOMAIN must set HAS_HOST=false');
+    assert.ok(missingDomainRes.missing.includes('CADDY_HOSTS_MISSING_PRIMARY_DOMAIN'), 'Must report CADDY_HOSTS_MISSING_PRIMARY_DOMAIN');
+  }
 });
 
 runTest('SIMULATION', 'FIX-08 & FIX-11: Simulated backup failure prevents subsequent migration from running', () => {
@@ -1319,6 +1438,53 @@ THIS IS AN INVALID SQL SYNTAX ERROR THAT MUST HALT PSQL;
     ], { encoding: 'utf8' });
 
     assert.equal(badRestoreRes.status, 1, 'Restore must fail (exit code 1) when SQL syntax error occurs due to ON_ERROR_STOP=1');
+
+    // 6. FIX-02: Test fail-closed on sample data read-back (empty products table)
+    const emptyProductsSql = `--
+-- PostgreSQL database dump
+-- Dumped by pg_dump version 16.6
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+
+DROP TABLE IF EXISTS public.products CASCADE;
+CREATE TABLE public.products (
+    id integer NOT NULL,
+    name character varying(255),
+    price numeric(10,2)
+);
+CREATE TABLE IF NOT EXISTS public.orders (id uuid NOT NULL, total_amount numeric(10,2) NOT NULL);
+CREATE TABLE IF NOT EXISTS public.order_items (id uuid NOT NULL, product_id integer NOT NULL);
+CREATE TABLE IF NOT EXISTS public.users (id uuid NOT NULL, email character varying(255) NOT NULL);
+CREATE TABLE IF NOT EXISTS public.migrations (id integer NOT NULL, timestamp bigint NOT NULL, name character varying NOT NULL);
+INSERT INTO public.migrations (id, timestamp, name) VALUES (1, 1731888000000, 'InitCatalog1731888000000');
+INSERT INTO public.products (id, name, price) VALUES (1, NULL, NULL);
+
+--
+-- PostgreSQL database dump complete
+--
+`;
+    const emptyBackupFile = path.join(tempDir, 'empty-products.sql');
+    writeFileSync(emptyBackupFile, emptyProductsSql, 'utf8');
+
+    const emptyRestoreRes = spawnSync(process.execPath, [
+      path.join(root, 'scripts/restore-db.mjs'),
+      '--confirm-restore-database',
+      '--container', containerName,
+      '--db', testDb,
+      '--user', 'brewlite',
+      '--backup-file', emptyBackupFile
+    ], { encoding: 'utf8' });
+
+    assert.equal(emptyRestoreRes.status, 1, 'Restore must fail (exit code 1) when sample data read-back is empty');
+    assert.ok(
+      emptyRestoreRes.stderr.includes('VERIFICATION FAILED') && emptyRestoreRes.stderr.includes('Sample data read-back returned empty output'),
+      'Stderr must indicate verification failure on empty sample data'
+    );
+    assert.ok(
+      !emptyRestoreRes.stdout.includes('Database restoration verified successfully'),
+      'Must NEVER print success message when read-back is empty'
+    );
   } finally {
     spawnSync('docker', ['rm', '-f', containerName], { stdio: 'ignore' });
     try { rmSync(tempDir, { recursive: true, force: true }); } catch {}

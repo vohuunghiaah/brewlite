@@ -286,16 +286,24 @@ async function runRestore() {
     process.exit(1);
   }
 
-  // C. Sample data read-back verification
+  // C. Sample data read-back verification (FIX-02: strictly fail-closed on query error or empty data)
   const sampleCheck = spawnSync('docker', [
     'exec', container, 'psql', '-U', user, '-d', targetDbArg, '-t', '-A', '-c',
     "SELECT name || ' (' || price || ')' FROM products ORDER BY id LIMIT 1;"
   ], { encoding: 'utf8' });
 
-  if (sampleCheck.status === 0 && sampleCheck.stdout.trim()) {
-    console.log(`✔ Sample product read-back verified: "${sampleCheck.stdout.trim()}"`);
+  if (sampleCheck.status !== 0) {
+    console.error('❌ FAIL-CLOSED: Sample data read-back query failed:', maskSecret(sampleCheck.stderr));
+    process.exit(1);
   }
 
+  const sampleData = sampleCheck.stdout ? sampleCheck.stdout.trim() : '';
+  if (!sampleData) {
+    console.error('❌ VERIFICATION FAILED: Sample data read-back returned empty output. No valid records found in products table.');
+    process.exit(1);
+  }
+
+  console.log(`✔ Sample product read-back verified: "${sampleData}"`);
   console.log('🎉 Database restoration verified successfully with real data read-back.');
   process.exit(0);
 }

@@ -34,7 +34,7 @@ Tất cả các mục trong giai đoạn này phải đạt trạng thái **PASS
   - [ ] `JWT_SECRET` (Khóa ký xác thực JWT)
 - [ ] **Đầy đủ Variables bắt buộc tại Environment:**
   - [ ] `DOMAIN` (Tên miền chính duy nhất, ví dụ: `brewlite.54-255-241-1.sslip.io` — không chứa dấu phẩy, khoảng trắng hay giao thức)
-  - [ ] `CADDY_HOSTS` (Danh sách đầy đủ các hostname cho Caddy, ví dụ: `brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io`)
+  - [ ] `CADDY_HOSTS` (Bắt buộc; danh sách các hostname phân tách bởi dấu phẩy/khoảng trắng cho Caddy, ví dụ: `brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io` — không chứa scheme http/https và bắt buộc phải chứa `DOMAIN` chính)
   - [ ] `PRODUCTION_APPROVAL_CONFIGURED` (`true`)
 
 ### D. Kiểm tra Trạng thái Máy Chủ & Cơ sở dữ liệu (Host & Database Preflight)
