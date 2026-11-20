@@ -1,0 +1,14 @@
+{
+  "name": "brewlite-e2e-scripts",
+  "version": "1.0.0",
+  "description": "E2E acceptance and security verification test scripts for BrewLite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:mvp": "node e2e-mvp-acceptance.mjs",
+    "test:security": "node e2e-security-exceptions.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

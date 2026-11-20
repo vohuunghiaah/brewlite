@@ -1,11 +1,49 @@
 import { execSync } from 'child_process';
 import * as crypto from 'crypto';
 
+// ================= CẤU HÌNH MÔI TRƯỜNG & PORTABLE DB =================
 const API_URL = process.env.API_URL || 'http://localhost:3001';
+const DB_CONTAINER = process.env.DB_CONTAINER || 'brewlite-db';
+const DB_USER = process.env.DB_USER || 'brewlite';
+const DB_NAME = process.env.DB_NAME || 'brewlite';
 
+// ================= BẢO VỆ AN TOÀN MÔI TRƯỜNG (SECTION B) =================
+function assertSafeTestEnvironment() {
+  const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
+  const dbName = (process.env.DB_NAME || DB_NAME).toLowerCase();
+
+  if (nodeEnv === 'production' || nodeEnv === 'prod') {
+    throw new Error('AN TOÀN HỆ THỐNG: Tuyệt đối không chạy script kiểm thử bảo mật trên môi trường PRODUCTION (NODE_ENV=production)!');
+  }
+
+  if (dbName.includes('prod') || dbName.includes('production')) {
+    throw new Error(`AN TOÀN HỆ THỐNG: Tên database "${dbName}" có thể là môi trường PRODUCTION! Hủy thực thi script.`);
+  }
+
+  const isSafeDevTestDb = dbName === 'brewlite' || dbName === 'brewlite_test' || dbName.includes('test') || dbName.includes('dev');
+  const allowFlag = process.env.ALLOW_TEST_SCRIPTS === 'true';
+
+  if (!isSafeDevTestDb && !allowFlag) {
+    throw new Error(
+      `AN TOÀN HỆ THỐNG: Chưa xác nhận database "${dbName}" là môi trường thử nghiệm an toàn. Vui lòng đặt ALLOW_TEST_SCRIPTS=true nếu đây là môi trường test.`
+    );
+  }
+}
+
+// ================= TRUY VẤN POSTGRESQL AN TOÀN =================
 function queryDb(sql) {
   const singleLine = sql.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
-  const cmd = `docker exec brewlite-db psql -U brewlite -d brewlite -t -A -c "${singleLine}"`;
+  let cmd;
+  if (process.env.DB_DIRECT_PSQL === 'true' || process.env.RUN_PG_TESTS === 'true') {
+    const host = process.env.POSTGRES_HOST || 'localhost';
+    const port = process.env.POSTGRES_PORT || '5432';
+    const user = process.env.POSTGRES_USER || DB_USER;
+    const db = process.env.POSTGRES_DB || DB_NAME;
+    const pwd = process.env.POSTGRES_PASSWORD || 'brewlite_dev_password';
+    cmd = `PGPASSWORD="${pwd}" psql -h ${host} -p ${port} -U ${user} -d ${db} -t -A -c "${singleLine}"`;
+  } else {
+    cmd = `docker exec ${DB_CONTAINER} psql -U ${DB_USER} -d ${DB_NAME} -t -A -c "${singleLine}"`;
+  }
   const result = execSync(cmd, { encoding: 'utf8' }).trim();
   return result;
 }
@@ -20,22 +58,32 @@ async function apiRequest(path, options = {}) {
     },
   });
   const data = await res.json().catch(() => ({}));
-  return { status: res.status, ok: res.ok, data };
+  return { status: res.status, ok: res.ok, headers: res.headers, data };
 }
 
+// ================= TIẾN TRÌNH KIỂM THỬ BẢO MẬT & NGOẠI LỆ =================
 async function runSecurityAndExceptionsTests() {
+  assertSafeTestEnvironment();
+
   console.log('======================================================================');
   console.log('🛡️ BẮT ĐẦU KIỂM THỬ BẢO MẬT VÀ NGOẠI LỆ (SECTION 3)');
+  console.log(`🔌 Backend API: ${API_URL}`);
+  console.log(`🗄️ Database: ${DB_NAME} (Container: ${DB_CONTAINER})`);
   console.log('======================================================================\n');
 
   const results = [];
+
+  // Lấy productId có sẵn động từ database (không phụ thuộc cứng vào productId=1)
+  const availableProdIdStr = queryDb(`SELECT id FROM products WHERE "isAvailable" = true LIMIT 1;`);
+  const activeProductId = parseInt(availableProdIdStr, 10);
+  console.log(`✔ Sử dụng sản phẩm động #${activeProductId} cho các ca kiểm thử bảo mật`);
 
   // 1. Tạo 2 người dùng để kiểm thử xác thực và IDOR
   const user1Email = `sec-user1-${Date.now()}@brewlite.vn`;
   const user2Email = `sec-user2-${Date.now()}@brewlite.vn`;
   const userPassword = 'SecurityPassword123!';
 
-  const reg1 = await apiRequest('/auth/register', {
+  await apiRequest('/auth/register', {
     method: 'POST',
     body: JSON.stringify({ email: user1Email, password: userPassword }),
   });
@@ -46,7 +94,7 @@ async function runSecurityAndExceptionsTests() {
   const token1 = login1.data.accessToken;
   const user1Id = login1.data.user.id;
 
-  const reg2 = await apiRequest('/auth/register', {
+  await apiRequest('/auth/register', {
     method: 'POST',
     body: JSON.stringify({ email: user2Email, password: userPassword }),
   });
@@ -94,18 +142,18 @@ async function runSecurityAndExceptionsTests() {
   // Test 3: IDOR - User 2 truy cập hoặc thanh toán đơn hàng của User 1
   // -------------------------------------------------------------
   console.log('\n--- TEST 3: Bảo vệ IDOR (User 2 cố truy cập đơn của User 1) ---');
-  // User 1 tạo đơn hàng
   const orderRes = await apiRequest('/orders', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token1}` },
     body: JSON.stringify({
       customerName: 'User 1 Order',
       customerPhone: '0901111111',
-      items: [{ productId: 1, quantity: 1, size: 'SMALL', toppings: [] }],
+      items: [{ productId: activeProductId, quantity: 1, size: 'SMALL', toppings: [] }],
     }),
   });
   const order1Id = orderRes.data.id;
-  console.log(`User 1 tạo thành công đơn #${order1Id}`);
+  const order1Amount = Number(orderRes.data.totalAmount);
+  console.log(`User 1 tạo thành công đơn #${order1Id} (Số tiền: ${order1Amount} đ)`);
 
   // User 2 gọi GET /orders/:id của User 1
   const idorGet = await apiRequest(`/orders/${order1Id}`, {
@@ -123,7 +171,7 @@ async function runSecurityAndExceptionsTests() {
     },
     body: JSON.stringify({
       orderId: order1Id,
-      amount: 45000,
+      amount: order1Amount,
       method: 'MOMO',
       idempotencyKey: crypto.randomUUID(),
       pickupMethod: 'AT_COUNTER',
@@ -139,19 +187,16 @@ async function runSecurityAndExceptionsTests() {
   }
 
   // -------------------------------------------------------------
-  // Test 4: Thanh toán Thất bại & Thử lại (EX-06)
+  // Test 4: Thanh toán Thất bại và Thử lại (EX-06)
   // -------------------------------------------------------------
   console.log('\n--- TEST 4: Thanh toán thất bại và retry (EX-06) ---');
   const failKey = crypto.randomUUID();
   const payFailRes = await apiRequest('/payments', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token1}`,
-      'Idempotency-Key': failKey,
-    },
+    headers: { Authorization: `Bearer ${token1}`, 'Idempotency-Key': failKey },
     body: JSON.stringify({
       orderId: order1Id,
-      amount: 45000,
+      amount: order1Amount,
       method: 'CARD',
       idempotencyKey: failKey,
       mockOutcome: 'FAILED',
@@ -164,32 +209,28 @@ async function runSecurityAndExceptionsTests() {
   const paymentAfterFail = queryDb(`SELECT status FROM payments WHERE "idempotencyKey" = '${failKey}';`);
   console.log(`Trạng thái trong PostgreSQL: Order = ${orderAfterFail}, Payment = ${paymentAfterFail}`);
 
-  // Thử lại với idempotency key mới và outcome SUCCESS
+  // Khách bấm thanh toán lại với outcome = SUCCESS
   const retryKey = crypto.randomUUID();
-  const payRetryRes = await apiRequest('/payments', {
+  const retryRes = await apiRequest('/payments', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token1}`,
-      'Idempotency-Key': retryKey,
-    },
+    headers: { Authorization: `Bearer ${token1}`, 'Idempotency-Key': retryKey },
     body: JSON.stringify({
       orderId: order1Id,
-      amount: 45000,
-      method: 'MOMO',
+      amount: order1Amount,
+      method: 'CARD',
       idempotencyKey: retryKey,
       mockOutcome: 'SUCCESS',
       pickupMethod: 'AT_COUNTER',
     }),
   });
-  console.log(`Retry Payment SUCCESS response status: ${payRetryRes.data.status}`);
-
+  console.log(`Retry Payment SUCCESS response status: ${retryRes.data.status}`);
   const orderAfterRetry = queryDb(`SELECT status, "orderCode" FROM orders WHERE id = ${order1Id};`);
   console.log(`Trạng thái Order sau retry trong DB: ${orderAfterRetry}`);
 
   if (
+    payFailRes.data.status === 'FAILED' &&
     orderAfterFail === 'PAYMENT_FAILED' &&
-    paymentAfterFail === 'FAILED' &&
-    payRetryRes.data.status === 'SUCCESS' &&
+    retryRes.data.status === 'SUCCESS' &&
     orderAfterRetry.includes('PAID')
   ) {
     results.push({ test: 'Payment FAILED & Retry to PAID (EX-06)', status: 'PASS' });
@@ -199,31 +240,28 @@ async function runSecurityAndExceptionsTests() {
   }
 
   // -------------------------------------------------------------
-  // Test 5: Idempotency Replay & Tránh trừ kho hai lần (FR-08)
+  // Test 5: Replay Idempotency Key (FR-08)
   // -------------------------------------------------------------
   console.log('\n--- TEST 5: Idempotency Replay (FR-08) ---');
-  const stockBeforeReplay = parseInt(queryDb(`SELECT stock FROM products WHERE id = 1;`), 10);
-  const versionBeforeReplay = parseInt(queryDb(`SELECT version FROM products WHERE id = 1;`), 10);
+  const stockBeforeReplay = parseInt(queryDb(`SELECT stock FROM products WHERE id = ${activeProductId};`), 10);
+  const versionBeforeReplay = parseInt(queryDb(`SELECT version FROM products WHERE id = ${activeProductId};`), 10);
 
   const replayRes = await apiRequest('/payments', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token1}`,
-      'Idempotency-Key': retryKey,
-    },
+    headers: { Authorization: `Bearer ${token1}`, 'Idempotency-Key': retryKey },
     body: JSON.stringify({
       orderId: order1Id,
-      amount: 45000,
-      method: 'MOMO',
+      amount: order1Amount,
+      method: 'CARD',
       idempotencyKey: retryKey,
+      mockOutcome: 'SUCCESS',
       pickupMethod: 'AT_COUNTER',
     }),
   });
-
-  const stockAfterReplay = parseInt(queryDb(`SELECT stock FROM products WHERE id = 1;`), 10);
-  const versionAfterReplay = parseInt(queryDb(`SELECT version FROM products WHERE id = 1;`), 10);
-
   console.log(`Replay response isDuplicate: ${replayRes.data.isDuplicate}, status: ${replayRes.data.status}`);
+
+  const stockAfterReplay = parseInt(queryDb(`SELECT stock FROM products WHERE id = ${activeProductId};`), 10);
+  const versionAfterReplay = parseInt(queryDb(`SELECT version FROM products WHERE id = ${activeProductId};`), 10);
   console.log(`Tồn kho: Trước (${stockBeforeReplay}, v${versionBeforeReplay}), Sau (${stockAfterReplay}, v${versionAfterReplay})`);
 
   if (
@@ -239,34 +277,34 @@ async function runSecurityAndExceptionsTests() {
   }
 
   // -------------------------------------------------------------
-  // Test 6: Hai Request Thanh Toán Đồng Thời (Pessimistic Row Lock)
+  // Test 6: Hai Request Thanh Toán Đồng Thời (Race Condition)
   // -------------------------------------------------------------
   console.log('\n--- TEST 6: Hai Request Thanh Toán Đồng Thời ---');
-  // Tạo đơn hàng mới cho User 1
   const orderRes2 = await apiRequest('/orders', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token1}` },
     body: JSON.stringify({
-      customerName: 'Concurrent Test Order',
+      customerName: 'Concurrent User',
       customerPhone: '0902222222',
-      items: [{ productId: 1, quantity: 1, size: 'SMALL', toppings: [] }],
+      items: [{ productId: activeProductId, quantity: 1, size: 'SMALL', toppings: [] }],
     }),
   });
   const order2Id = orderRes2.data.id;
+  const order2Amount = Number(orderRes2.data.totalAmount);
+
+  const stockBeforeRace = parseInt(queryDb(`SELECT stock FROM products WHERE id = ${activeProductId};`), 10);
+
   const keyA = crypto.randomUUID();
   const keyB = crypto.randomUUID();
 
-  const stockBeforeConcurrent = parseInt(queryDb(`SELECT stock FROM products WHERE id = 1;`), 10);
-
-  // Gửi 2 request thanh toán đồng thời với 2 key khác nhau
-  const [resA, resB] = await Promise.all([
+  const [raceA, raceB] = await Promise.all([
     apiRequest('/payments', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token1}`, 'Idempotency-Key': keyA },
       body: JSON.stringify({
         orderId: order2Id,
-        amount: 45000,
-        method: 'MOMO',
+        amount: order2Amount,
+        method: 'VIETQR',
         idempotencyKey: keyA,
         mockOutcome: 'SUCCESS',
         pickupMethod: 'AT_COUNTER',
@@ -277,7 +315,7 @@ async function runSecurityAndExceptionsTests() {
       headers: { Authorization: `Bearer ${token1}`, 'Idempotency-Key': keyB },
       body: JSON.stringify({
         orderId: order2Id,
-        amount: 45000,
+        amount: order2Amount,
         method: 'VIETQR',
         idempotencyKey: keyB,
         mockOutcome: 'SUCCESS',
@@ -286,77 +324,89 @@ async function runSecurityAndExceptionsTests() {
     }),
   ]);
 
-  const stockAfterConcurrent = parseInt(queryDb(`SELECT stock FROM products WHERE id = 1;`), 10);
-  console.log(`Request A status: ${resA.status}, Request B status: ${resB.status}`);
-  console.log(`Tồn kho: ${stockBeforeConcurrent} -> ${stockAfterConcurrent} (chênh lệch: ${stockBeforeConcurrent - stockAfterConcurrent})`);
+  console.log(`Request A status: ${raceA.status}, Request B status: ${raceB.status}`);
+  const stockAfterRace = parseInt(queryDb(`SELECT stock FROM products WHERE id = ${activeProductId};`), 10);
+  console.log(`Tồn kho: ${stockBeforeRace} -> ${stockAfterRace} (chênh lệch: ${stockBeforeRace - stockAfterRace})`);
 
-  // Đúng 1 request thành công (201) và 1 request bị từ chối (400 hoặc 409)
-  const oneSuccess = (resA.status === 201 && (resB.status === 400 || resB.status === 409)) ||
-                     (resB.status === 201 && (resA.status === 400 || resA.status === 409));
-  const deductedOnce = stockBeforeConcurrent - stockAfterConcurrent === 1;
+  const exactlyOneSucceeded =
+    (raceA.status === 201 && (raceB.status === 400 || raceB.status === 409)) ||
+    (raceB.status === 201 && (raceA.status === 400 || raceA.status === 409));
 
-  if (oneSuccess && deductedOnce) {
+  if (exactlyOneSucceeded && stockBeforeRace - stockAfterRace === 1) {
     results.push({ test: 'Concurrent Payment Protection (Pessimistic Row Lock)', status: 'PASS' });
     console.log('✔ Pessimistic Row Lock chặn race condition: chỉ 1 request thành công, kho trừ đúng 1 ly');
   } else {
-    results.push({ test: 'Concurrent Payment Protection (Pessimistic Row Lock)', status: 'FAIL', detail: { resA: resA.status, resB: resB.status, diff: stockBeforeConcurrent - stockAfterConcurrent } });
+    results.push({
+      test: 'Concurrent Payment Protection (Pessimistic Row Lock)',
+      status: 'FAIL',
+      detail: { statusA: raceA.status, statusB: raceB.status, diff: stockBeforeRace - stockAfterRace },
+    });
   }
 
   // -------------------------------------------------------------
-  // Test 7: Timeout & Đối Soát (EX-07)
+  // Test 7: Timeout và Tự Động Đối Soát (EX-07)
   // -------------------------------------------------------------
   console.log('\n--- TEST 7: Timeout và Đối Soát (EX-07) ---');
   const orderRes3 = await apiRequest('/orders', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token1}` },
     body: JSON.stringify({
-      customerName: 'Pending Reconcile Order',
+      customerName: 'Timeout User',
       customerPhone: '0903333333',
-      items: [{ productId: 1, quantity: 1, size: 'SMALL', toppings: [] }],
+      items: [{ productId: activeProductId, quantity: 1, size: 'SMALL', toppings: [] }],
     }),
   });
   const order3Id = orderRes3.data.id;
-  const pendingKey = crypto.randomUUID();
+  const order3Amount = Number(orderRes3.data.totalAmount);
+  const timeoutKey = crypto.randomUUID();
 
-  // Gọi với mockOutcome PENDING
-  const pendingPayRes = await apiRequest('/payments', {
+  const timeoutPayRes = await apiRequest('/payments', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token1}`, 'Idempotency-Key': pendingKey },
+    headers: { Authorization: `Bearer ${token1}`, 'Idempotency-Key': timeoutKey },
     body: JSON.stringify({
       orderId: order3Id,
-      amount: 45000,
-      method: 'MOMO',
-      idempotencyKey: pendingKey,
+      amount: order3Amount,
+      method: 'VIETQR',
+      idempotencyKey: timeoutKey,
       mockOutcome: 'PENDING',
       pickupMethod: 'AT_COUNTER',
     }),
   });
-  console.log(`Pending payment response: status = ${pendingPayRes.data.status}`);
+  console.log(`Pending payment response: status = ${timeoutPayRes.data.status}`);
 
-  // Cổng thanh toán chuyển sang SUCCESS
-  const merchantRef = pendingPayRes.data.payment.merchantReference;
+  // Lấy merchantReference và cập nhật Mock Gateway sang SUCCESS (mô phỏng đối soát sau timeout)
+  const merchantRef = queryDb(`SELECT "merchantReference" FROM payments WHERE "idempotencyKey" = '${timeoutKey}';`);
   queryDb(`UPDATE mock_gateway_transactions SET status = 'SUCCESS' WHERE "merchantReference" = '${merchantRef}';`);
+  console.log(`Đã cập nhật trạng thái Mock Gateway merchantRef "${merchantRef}" sang SUCCESS`);
 
-  // Thực hiện đối soát qua POST /payments/reconcile/:key
-  const reconcileRes = await apiRequest(`/payments/reconcile/${pendingKey}`, {
+  // Gọi API reconcile
+  const reconcileRes = await apiRequest(`/payments/reconcile/${timeoutKey}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token1}` },
   });
   console.log(`Reconcile response: status = ${reconcileRes.data.status}, orderStatus = ${reconcileRes.data.order?.status}`);
 
   const order3InDb = queryDb(`SELECT status FROM orders WHERE id = ${order3Id};`);
-  if (reconcileRes.data.status === 'SUCCESS' && order3InDb === 'PAID') {
+
+  if (
+    timeoutPayRes.data.status === 'PENDING' &&
+    reconcileRes.data.status === 'SUCCESS' &&
+    order3InDb === 'PAID'
+  ) {
     results.push({ test: 'Payment Timeout & Reconcile to PAID (EX-07)', status: 'PASS' });
     console.log('✔ Đối soát chuyển thành công đơn PENDING sang PAID');
   } else {
-    results.push({ test: 'Payment Timeout & Reconcile to PAID (EX-07)', status: 'FAIL' });
+    results.push({
+      test: 'Payment Timeout & Reconcile to PAID (EX-07)',
+      status: 'FAIL',
+      detail: { pendingStatus: timeoutPayRes.data.status, reconcileStatus: reconcileRes.data.status, dbStatus: order3InDb },
+    });
   }
 
   // -------------------------------------------------------------
   // Test 8: Hoàn Tiền Bồi Hoàn Khi Xung Đột Tồn Kho (BR-REFUND-OCC)
   // -------------------------------------------------------------
   console.log('\n--- TEST 8: Bồi hoàn hoàn tiền BR-REFUND-OCC (Tồn kho không đủ tại TX2) ---');
-  // Tạo sản phẩm đặc biệt chỉ có tồn kho 1 ly
   const specialProdId = parseInt(
     queryDb(`INSERT INTO products ("name", "price", "isAvailable", "stock", "version", "createdAt", "updatedAt")
              VALUES ('Exclusive Gesha ${Date.now()}', 100000.00, true, 1, 1, now(), now()) RETURNING id;`),
@@ -364,7 +414,6 @@ async function runSecurityAndExceptionsTests() {
   );
   console.log(`Tạo sản phẩm giới hạn #${specialProdId} với tồn kho = 1 ly`);
 
-  // Đặt mua 2 ly -> chắc chắn gây xung đột tồn kho OCC
   const orderRes4 = await apiRequest('/orders', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token1}` },
@@ -424,14 +473,54 @@ async function runSecurityAndExceptionsTests() {
     results.push({ test: 'PostgreSQL Zero Lingering Advisory Locks (FIX-23)', status: 'FAIL', detail: activeLocks });
   }
 
+  // -------------------------------------------------------------
+  // Test 10: Actual CORS Preflight OPTIONS Check (Section A)
+  // -------------------------------------------------------------
+  console.log('\n--- TEST 10: Kiểm thử Preflight OPTIONS thực tế cho Idempotency-Key (Section A) ---');
+  const preflightRes = await fetch(`${API_URL}/payments`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://localhost:3000',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'authorization,content-type,idempotency-key',
+    },
+  });
+
+  const corsStatus = preflightRes.status;
+  const allowOrigin = preflightRes.headers.get('access-control-allow-origin');
+  const allowHeaders = (preflightRes.headers.get('access-control-allow-headers') || '').toLowerCase();
+  const allowMethods = preflightRes.headers.get('access-control-allow-methods') || '';
+
+  console.log(`Preflight OPTIONS response status: ${corsStatus}`);
+  console.log(`Access-Control-Allow-Origin: ${allowOrigin}`);
+  console.log(`Access-Control-Allow-Headers: ${allowHeaders}`);
+  console.log(`Access-Control-Allow-Methods: ${allowMethods}`);
+
+  const hasIdempotencyHeader = allowHeaders.includes('idempotency-key');
+  const hasAuthHeader = allowHeaders.includes('authorization');
+  const hasContentType = allowHeaders.includes('content-type');
+  const allowsPost = allowMethods.includes('POST');
+  const validStatus = corsStatus === 204 || corsStatus === 200;
+
+  if (validStatus && hasIdempotencyHeader && hasAuthHeader && hasContentType && allowsPost) {
+    results.push({ test: 'Actual CORS Preflight OPTIONS for Idempotency-Key (Section A)', status: 'PASS' });
+    console.log('✔ Preflight OPTIONS thực tế được chấp thuận 100%: Cho phép Idempotency-Key, Authorization, POST');
+  } else {
+    results.push({
+      test: 'Actual CORS Preflight OPTIONS for Idempotency-Key (Section A)',
+      status: 'FAIL',
+      detail: { corsStatus, allowOrigin, allowHeaders, allowMethods },
+    });
+  }
+
   console.log('\n======================================================================');
-  console.log('📊 KẾT QUẢ KIỂM THỬ BẢO MẬT VÀ NGOẠI LỆ (SECTION 3)');
+  console.log(`📊 KẾT QUẢ KIỂM THỬ BẢO MẬT VÀ NGOẠI LỆ (${results.length} CA TEST)`);
   console.log('======================================================================');
   console.table(results);
 
-  const allPass = results.every((r) => r.status === 'PASS');
+  const allPass = results.length === 10 && results.every((r) => r.status === 'PASS');
   if (allPass) {
-    console.log('\n🎉 TẤT CẢ CÁC BÀI TEST BẢO MẬT & NGOẠI LỆ ĐÃ PASS 100%!');
+    console.log('\n🎉 TẤT CẢ 10 BÀI TEST BẢO MẬT & NGOẠI LỆ ĐÃ PASS 100%!');
     process.exit(0);
   } else {
     console.error('\n⚠️ CÓ BÀI TEST NGOẠI LỆ THẤT BẠI!');
