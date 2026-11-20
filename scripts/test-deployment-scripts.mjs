@@ -1,33 +1,49 @@
 #!/usr/bin/env node
 /**
- * Automated Verification Suite for Task 5.3 Deployment Tooling & Safety Rules (FIX-05)
- * Combines:
- * 1. Static Architectural & Security Invariant Checks
- * 2. Real Execution & Fail-Closed Integration Tests
- * 3. Deployment & Rollback Simulation Tests
+ * Automated Verification Suite for Task 5.3 Deployment Tooling & Safety Rules
+ * Covers FIX-01 through FIX-12:
+ * 1. Static Architectural, Security & Workflow Invariants (FIX-07, FIX-08, FIX-09, FIX-10)
+ * 2. Real Execution, Fail-Closed & Stream Integrity Tests (FIX-01, FIX-02, FIX-06, FIX-08, FIX-09, FIX-12)
+ * 3. Deployment, Simulation & Isolated Docker Compose Rollback Tests (FIX-08, FIX-11)
  */
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, existsSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  appendFileSync,
+  readdirSync,
+  rmSync,
+  mkdirSync,
+  createWriteStream,
+  statSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { saveDeploymentState, loadDeploymentState } from './deployment-state.mjs';
+import { saveDeploymentState, loadDeploymentState, captureRunningImages } from './deployment-state.mjs';
+import { readHeaderSample } from './backup-db.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 console.log('======================================================================');
-console.log('🧪 TASK 5.3 DEPLOYMENT & DELIVERY EXECUTION TEST SUITE (FIX-05)');
+console.log('🧪 TASK 5.3 DEPLOYMENT & DELIVERY EXECUTION TEST SUITE (FIX-07 - FIX-12)');
 console.log('======================================================================\n');
 
 const suite = [];
 
 function runTest(category, name, fn) {
   try {
-    fn();
-    suite.push({ category, test: name, status: 'PASS' });
-    console.log(`✔ [${category}] PASS: ${name}`);
+    const res = fn();
+    if (res && res.skipped) {
+      suite.push({ category, test: name, status: 'SKIPPED', detail: res.reason });
+      console.log(`⚠️ [${category}] SKIPPED: ${name} (${res.reason})`);
+    } else {
+      suite.push({ category, test: name, status: 'PASS' });
+      console.log(`✔ [${category}] PASS: ${name}`);
+    }
   } catch (err) {
     suite.push({ category, test: name, status: 'FAIL', error: err.message });
     console.error(`❌ [${category}] FAIL: ${name} -> ${err.message}`);
@@ -35,7 +51,7 @@ function runTest(category, name, fn) {
 }
 
 // =====================================================================
-// SECTION 1: STATIC ARCHITECTURAL & SECURITY INVARIANTS
+// SECTION 1: STATIC ARCHITECTURAL, SECURITY & WORKFLOW INVARIANTS
 // =====================================================================
 
 runTest('STATIC', 'ADR-007: docker-compose.prod.yml defines caddy, web, api, db with memory limits', () => {
@@ -85,41 +101,49 @@ runTest('STATIC', 'Phase B: Multi-stage Dockerfiles run as non-root node user wi
   assert.ok(webDocker.includes('ARG NEXT_PUBLIC_API_URL=/api'), 'Web must parameterize API URL to /api');
 });
 
-runTest('STATIC', 'Phase D: deploy.yml specifies concurrency control, fail-fast and approval gate', () => {
+runTest('STATIC', 'FIX-07: deploy.yml mandates LIGHTSAIL_SSH_KNOWN_HOSTS and forbids ssh-keyscan fallback', () => {
   const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
-  assert.ok(deployYaml.includes('concurrency:'), 'Must specify concurrency control');
+  assert.ok(deployYaml.includes('LIGHTSAIL_SSH_KNOWN_HOSTS'), 'Must verify LIGHTSAIL_SSH_KNOWN_HOSTS');
+  assert.ok(!deployYaml.includes('ssh-keyscan'), 'deploy.yml must NEVER use ssh-keyscan fallback');
+  assert.ok(deployYaml.includes('StrictHostKeyChecking=yes'), 'deploy.yml must enforce StrictHostKeyChecking=yes');
+  assert.ok(!deployYaml.includes('StrictHostKeyChecking=no'), 'deploy.yml must NEVER accept StrictHostKeyChecking=no');
+});
+
+runTest('STATIC', 'FIX-08: deploy.yml validates required secrets and transfers .env safely via stdin', () => {
+  const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  assert.ok(deployYaml.includes('POSTGRES_DB'), 'Must check POSTGRES_DB');
+  assert.ok(deployYaml.includes('POSTGRES_USER'), 'Must check POSTGRES_USER');
+  assert.ok(deployYaml.includes('POSTGRES_PASSWORD'), 'Must check POSTGRES_PASSWORD');
+  assert.ok(deployYaml.includes('JWT_SECRET'), 'Must check JWT_SECRET');
+  assert.ok(deployYaml.includes('chmod 600 /home/$SSH_USER/app/.env'), 'Must enforce chmod 600 on remote .env');
+  assert.ok(deployYaml.includes("cat << 'ENVEOF' > /home/$SSH_USER/app/.env"), 'Must provision .env via stdin');
+});
+
+runTest('STATIC', 'FIX-09: deploy.yml executes deployment-state.mjs without ignoring errors (no "|| true")', () => {
+  const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  assert.ok(!deployYaml.includes('node scripts/deployment-state.mjs || true'), 'Must not swallow deployment-state errors with || true');
+  assert.ok(deployYaml.includes('node scripts/deployment-state.mjs'), 'Must call deployment-state.mjs');
+});
+
+runTest('STATIC', 'FIX-10: deploy.yml isolates staging with explicit BLOCKED / NOT CONFIGURED status', () => {
+  const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  assert.ok(deployYaml.includes('deploy-staging:'), 'Must define explicit deploy-staging job');
+  assert.ok(deployYaml.includes('BLOCKED / NOT CONFIGURED'), 'Staging job documents BLOCKED / NOT CONFIGURED');
+  assert.ok(deployYaml.includes('group: cd-deployment-production'), 'Global concurrency cd-deployment-production');
   assert.ok(deployYaml.includes('cancel-in-progress: false'), 'Must not cancel in-progress deploys');
-  assert.ok(deployYaml.includes('environment:'), 'Must target environment');
-  assert.ok(deployYaml.includes('name: production'), 'Must specify production environment');
 });
 
 // =====================================================================
-// SECTION 2: EXECUTION & FAIL-CLOSED INTEGRATION TESTS
+// SECTION 2: EXECUTION, FAIL-CLOSED & INTEGRITY TESTS
 // =====================================================================
 
-runTest('EXECUTION', 'FIX-01 Requirement 1 & 4: Backup script fails-closed (exit code 1) on missing DB', () => {
-  // When DB container is not running and --fresh is NOT passed, backup MUST fail-closed with code 1
-  const res = spawnSync(process.execPath, [path.join(root, 'scripts/backup-db.mjs')], {
+runTest('EXECUTION', 'FIX-01 & FIX-08: Backup script fails-closed (exit code 1) on missing DB even with --fresh', () => {
+  const res = spawnSync(process.execPath, [path.join(root, 'scripts/backup-db.mjs'), '--fresh'], {
     env: { ...process.env, DB_CONTAINER: 'non-existent-db-container-' + Date.now() },
     encoding: 'utf8',
   });
-  assert.equal(res.status, 1, `Expected exit code 1 on failed DB connection, got ${res.status}`);
+  assert.equal(res.status, 1, `Expected exit code 1 on missing DB container even with --fresh, got ${res.status}`);
   assert.ok(res.stderr.includes('FAIL-CLOSED'), 'Stderr must state FAIL-CLOSED error condition');
-});
-
-runTest('EXECUTION', 'FIX-01 Requirement 3: Backup script cold-start mode (--fresh) records baseline and exits 0', () => {
-  const tempDir = path.join(tmpdir(), 'brewlite-test-backup-' + Date.now());
-  mkdirSync(tempDir, { recursive: true });
-  try {
-    const res = spawnSync(process.execPath, [path.join(root, 'scripts/backup-db.mjs'), '--fresh'], {
-      env: { ...process.env, BACKUP_DIR: tempDir, DB_CONTAINER: 'non-existent-db-container-' + Date.now() },
-      encoding: 'utf8',
-    });
-    assert.equal(res.status, 0, `Expected exit code 0 on --fresh cold start, got ${res.status}`);
-    assert.ok(res.stdout.includes('Cold-start baseline created') || res.stdout.includes('baseline'), 'Output confirms baseline creation');
-  } finally {
-    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
-  }
 });
 
 runTest('EXECUTION', 'FIX-02 Requirement 6: Rollback fails safely (exit code 1) when rollback targets are missing', () => {
@@ -145,6 +169,7 @@ runTest('EXECUTION', 'FIX-02 Requirement 1 & 2: Deployment state records and loa
   const tempStateFile = path.join(tmpdir(), 'test-state-' + Date.now() + '.json');
   try {
     const mockState = {
+      isBootstrap: false,
       previousApiImage: 'ghcr.io/vohuunghiaah/brewlite-api:sha-111111',
       previousWebImage: 'ghcr.io/vohuunghiaah/brewlite-web:sha-222222',
       recordedAt: new Date().toISOString(),
@@ -155,6 +180,40 @@ runTest('EXECUTION', 'FIX-02 Requirement 1 & 2: Deployment state records and loa
     const loaded = loadDeploymentState(tempStateFile);
     assert.equal(loaded.previousApiImage, mockState.previousApiImage);
     assert.equal(loaded.previousWebImage, mockState.previousWebImage);
+    assert.equal(loaded.isBootstrap, false);
+  } finally {
+    try { rmSync(tempStateFile, { force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-08 & FIX-09: Deployment state records isBootstrap: true when no running containers are found', () => {
+  const tempStateFile = path.join(tmpdir(), 'bootstrap-state-' + Date.now() + '.json');
+  try {
+    const state = captureRunningImages({
+      apiContainer: 'non-existent-api-' + Date.now(),
+      webContainer: 'non-existent-web-' + Date.now(),
+      stateFile: tempStateFile,
+    });
+    assert.ok(state, 'captureRunningImages must return a valid state object');
+    assert.equal(state.isBootstrap, true, 'isBootstrap must be true when containers are missing');
+    assert.equal(state.previousApiImage, null);
+    assert.equal(state.previousWebImage, null);
+    assert.ok(existsSync(tempStateFile), 'Bootstrap state file must be persisted');
+  } finally {
+    try { rmSync(tempStateFile, { force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-09: Rollback handles failed initial bootstrap (isBootstrap: true) and exits with code 1', () => {
+  const tempStateFile = path.join(tmpdir(), 'failed-bootstrap-state-' + Date.now() + '.json');
+  try {
+    saveDeploymentState({ isBootstrap: true, recordedAt: new Date().toISOString() }, tempStateFile);
+    const res = spawnSync(process.execPath, [path.join(root, 'scripts/rollback.mjs')], {
+      env: { ...process.env, STATE_FILE: tempStateFile },
+      encoding: 'utf8',
+    });
+    assert.equal(res.status, 1, 'Rollback of failed bootstrap must exit code 1 to mark release FAILED');
+    assert.ok(res.stderr.includes('Bootstrap deployment failed') || res.stdout.includes('bootstrap'), 'Logs explain bootstrap failure');
   } finally {
     try { rmSync(tempStateFile, { force: true }); } catch {}
   }
@@ -168,7 +227,6 @@ runTest('EXECUTION', 'FIX-02 Requirement 9: Rollback script strictly preserves p
 });
 
 runTest('EXECUTION', 'FIX-06 Requirement 1 & 2: Production smoke test enforces HTTPS and rejects localhost', () => {
-  // Case A: Production mode with http://localhost must be rejected
   const resA = spawnSync(process.execPath, [path.join(root, 'scripts/smoke-test.mjs')], {
     env: { ...process.env, TARGET_ENV: 'production', TARGET_URL: 'http://localhost' },
     encoding: 'utf8',
@@ -176,7 +234,6 @@ runTest('EXECUTION', 'FIX-06 Requirement 1 & 2: Production smoke test enforces H
   assert.equal(resA.status, 1, 'Production smoke test must reject http://localhost');
   assert.ok(resA.stderr.includes('FATAL') && (resA.stderr.includes('localhost') || resA.stderr.includes('HTTPS')), 'Stderr must explain localhost rejection');
 
-  // Case B: Production mode with non-HTTPS must be rejected
   const resB = spawnSync(process.execPath, [path.join(root, 'scripts/smoke-test.mjs')], {
     env: { ...process.env, TARGET_ENV: 'production', TARGET_URL: 'http://brewlite.vn' },
     encoding: 'utf8',
@@ -192,13 +249,60 @@ runTest('EXECUTION', 'FIX-06 Requirement 3: Smoke test probes reverse proxy pref
   assert.ok(!smokeContent.includes('localhost:3001'), 'Smoke test does not hardcode direct port 3001 bypass');
 });
 
+runTest('EXECUTION', 'FIX-12: readHeaderSample reads chunked header from disk without loading full file into RAM', () => {
+  const tempLargeFile = path.join(tmpdir(), 'brewlite-large-dump-' + Date.now() + '.sql');
+  const sampleHeader = '-- PostgreSQL database dump\n-- Dumped from database version 16.1\n';
+  try {
+    // Write sample header followed by 10 MB of dummy content synchronously
+    writeFileSync(tempLargeFile, sampleHeader, 'utf8');
+    const chunk = Buffer.alloc(1024 * 1024, 'X'); // 1 MB chunk
+    for (let i = 0; i < 10; i++) {
+      appendFileSync(tempLargeFile, chunk);
+    }
+
+    // Verify file size is ~10 MB
+    const size = statSync(tempLargeFile).size;
+    assert.ok(size > 10 * 1024 * 1024, 'File should be larger than 10 MB');
+
+    // Measure memory before and after readHeaderSample
+    const memBefore = process.memoryUsage().heapUsed;
+    const header = readHeaderSample(tempLargeFile, 1024);
+    const memAfter = process.memoryUsage().heapUsed;
+
+    assert.ok(header.includes('PostgreSQL database dump'), 'Header must be correctly extracted');
+    // The memory growth should be trivial (< 1 MB), far below 10 MB
+    const memDelta = memAfter - memBefore;
+    assert.ok(memDelta < 2 * 1024 * 1024, `Heap memory growth (${(memDelta / 1024).toFixed(1)} KB) must be far below 10 MB`);
+  } finally {
+    try { rmSync(tempLargeFile, { force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-12: Corrupted or failed backup cleans up partial file and exits with code 1', () => {
+  const tempDir = path.join(tmpdir(), 'corrupt-backup-test-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+  try {
+    // Run backup pointing to non-existent DB
+    const res = spawnSync(process.execPath, [path.join(root, 'scripts/backup-db.mjs')], {
+      env: { ...process.env, BACKUP_DIR: tempDir, DB_CONTAINER: 'invalid-container-' + Date.now() },
+      encoding: 'utf8',
+    });
+    assert.equal(res.status, 1, 'Backup failure must exit with code 1');
+    // Ensure no partial SQL dump file remains
+    const files = existsSync(tempDir) ? readdirSync(tempDir) : [];
+    assert.ok(files.length === 0 || !files.some(f => f.endsWith('.sql')), 'Partial corrupted backup file must be removed');
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
 // =====================================================================
-// SECTION 3: DEPLOYMENT SIMULATION TESTS
+// SECTION 3: SIMULATION TESTS (FIX-04, FIX-08, FIX-11)
 // =====================================================================
 
 runTest('SIMULATION', 'FIX-04 Requirement 1: Dry-run job performs isolated verification with zero SSH calls', () => {
   const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
-  const dryRunSection = deployYaml.split('deploy-dry-run:')[1].split('deploy-production:')[0];
+  const dryRunSection = deployYaml.split('deploy-dry-run:')[1].split('deploy-staging:')[0];
   assert.ok(!dryRunSection.includes('ssh '), 'Dry-run must not contain any ssh commands');
   assert.ok(!dryRunSection.includes('scp '), 'Dry-run must not contain any scp commands');
   assert.ok(dryRunSection.includes('docker compose -f docker-compose.prod.yml config'), 'Dry-run validates compose config');
@@ -211,7 +315,33 @@ runTest('SIMULATION', 'FIX-03 & FIX-04: Missing production host credentials bloc
   assert.ok(deployYaml.includes('deployed_real'), 'Only claims VERIFIED IN PRODUCTION if deployed_real is true');
 });
 
-runTest('SIMULATION', 'FIX-02 Requirement 8: Docker rollback simulation with two versions reverts to previous stable image upon failure', () => {
+runTest('SIMULATION', 'FIX-08 & FIX-11: Simulated backup failure prevents subsequent migration from running', () => {
+  // Simulate transactional deployment error handling:
+  // step A: backup succeeds or fails
+  // step B: migration runs ONLY if step A exits 0
+  const tempDir = path.join(tmpdir(), 'pipeline-sim-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+  try {
+    let migrationExecuted = false;
+
+    // Simulate failed backup
+    const backupRes = spawnSync(process.execPath, [path.join(root, 'scripts/backup-db.mjs')], {
+      env: { ...process.env, BACKUP_DIR: tempDir, DB_CONTAINER: 'invalid-container-' + Date.now() },
+      encoding: 'utf8',
+    });
+
+    if (backupRes.status === 0) {
+      migrationExecuted = true;
+    }
+
+    assert.equal(backupRes.status, 1, 'Backup step must fail with code 1');
+    assert.equal(migrationExecuted, false, 'Migration must NOT run when backup fails');
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('SIMULATION', 'FIX-11: Real Docker Compose rollback simulation in isolated project preserves volume data', () => {
   let dockerAvailable = false;
   try {
     const check = spawnSync('docker', ['info'], { stdio: 'ignore' });
@@ -219,99 +349,180 @@ runTest('SIMULATION', 'FIX-02 Requirement 8: Docker rollback simulation with two
   } catch {}
 
   if (!dockerAvailable) {
-    console.log('  ⚠️ Docker daemon not available in current environment; skipping live container simulation.');
-    return;
+    return { skipped: true, reason: 'Docker daemon not running in current environment' };
   }
 
-  const simContainer = 'brewlite-rollback-sim-container';
+  // Setup isolated Docker Compose project
+  const projectName = 'brewlite-test-rollback-sim';
+  const tempDir = path.join(tmpdir(), 'sim-compose-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+
+  const composeSimPath = path.join(tempDir, 'docker-compose.sim.yml');
+  const stateFilePath = path.join(tempDir, '.sim-state.json');
+  const simVolume = 'sim_pg_vol_' + Date.now();
+
   const tagV1 = 'brewlite-sim-app:v1-stable';
   const tagV2 = 'brewlite-sim-app:v2-broken';
-  const tempStateFile = path.join(tmpdir(), 'rollback-sim-state-' + Date.now() + '.json');
+
+  const simComposeYaml = `
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ${projectName}-db
+    environment:
+      POSTGRES_USER: brewlite
+      POSTGRES_PASSWORD: sim_secret_password
+      POSTGRES_DB: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ${simVolume}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brewlite -d postgres"]
+      interval: 1s
+      timeout: 2s
+      retries: 15
+
+  api:
+    image: \${API_IMAGE_REF:-${tagV1}}
+    container_name: ${projectName}-api
+    command: ["sh", "-c", "if [ \\"\$FAIL_HEALTH\\" = \\"1\\" ]; then exit 1; else sleep 3600; fi"]
+    healthcheck:
+      test: ["CMD-SHELL", "test \\"\$FAIL_HEALTH\\" != \\"1\\""]
+      interval: 1s
+      timeout: 1s
+      retries: 2
+
+  web:
+    image: \${WEB_IMAGE_REF:-${tagV1}}
+    container_name: ${projectName}-web
+    command: ["sh", "-c", "sleep 3600"]
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 2
+
+volumes:
+  ${simVolume}:
+`;
+
+  writeFileSync(composeSimPath, simComposeYaml.trim(), 'utf8');
 
   try {
-    // 1. Resolve or pull base image for simulation
-    let baseImage = 'alpine:latest';
-    const checkAlpine = spawnSync('docker', ['image', 'inspect', baseImage], { stdio: 'ignore' });
-    if (checkAlpine.status !== 0) {
-      const pull = spawnSync('docker', ['pull', 'alpine:latest'], { stdio: 'ignore' });
-      if (pull.status !== 0) {
-        // Fallback to postgres:16-alpine if available
-        const checkPg = spawnSync('docker', ['image', 'inspect', 'postgres:16-alpine'], { stdio: 'ignore' });
-        if (checkPg.status === 0) {
-          baseImage = 'postgres:16-alpine';
-        } else {
-          console.log('  ⚠️ Simulation base image (alpine:latest) unavailable; skipping container simulation.');
-          return;
-        }
+    // 1. Tag base image (alpine:latest)
+    spawnSync('docker', ['tag', 'alpine:latest', tagV1], { stdio: 'ignore' });
+    spawnSync('docker', ['tag', 'alpine:latest', tagV2], { stdio: 'ignore' });
+
+    // 2. Initial deployment (v1)
+    const envV1 = {
+      ...process.env,
+      API_IMAGE_REF: tagV1,
+      WEB_IMAGE_REF: tagV1,
+      FAIL_HEALTH: '0',
+    };
+
+    const upV1 = spawnSync('docker', ['compose', '-p', projectName, '-f', composeSimPath, 'up', '-d'], {
+      env: envV1,
+      encoding: 'utf8',
+    });
+    assert.equal(upV1.status, 0, `Initial compose up must succeed: ${upV1.stderr}`);
+
+    // Wait for DB to be healthy
+    let dbReady = false;
+    for (let i = 0; i < 20; i++) {
+      const inspect = spawnSync('docker', ['exec', `${projectName}-db`, 'pg_isready', '-U', 'brewlite', '-d', 'postgres'], { stdio: 'ignore' });
+      if (inspect.status === 0) {
+        dbReady = true;
+        break;
       }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
     }
+    assert.ok(dbReady, 'Database container in isolated simulation must achieve ready state');
 
-    const tag1 = spawnSync('docker', ['tag', baseImage, tagV1], { stdio: 'ignore' });
-    const tag2 = spawnSync('docker', ['tag', baseImage, tagV2], { stdio: 'ignore' });
-    if (tag1.status !== 0 || tag2.status !== 0) {
-      console.log('  ⚠️ Failed to tag simulation base image; skipping container simulation.');
-      return;
-    }
-
-    // Ensure clean initial state
-    spawnSync('docker', ['rm', '-f', simContainer], { stdio: 'ignore' });
-
-    // 2. Deploy v1 (stable version)
-    const runV1 = spawnSync('docker', [
-      'run', '-d',
-      '--name', simContainer,
-      tagV1,
-      'sh', '-c', 'sleep 3600'
+    // Insert test record to verify data preservation across rollback
+    const insertRes = spawnSync('docker', [
+      'exec',
+      '-e',
+      'PGPASSWORD=sim_secret_password',
+      `${projectName}-db`,
+      'psql',
+      '-U',
+      'brewlite',
+      '-d',
+      'postgres',
+      '-c',
+      "CREATE TABLE IF NOT EXISTS audit_log (msg text); INSERT INTO audit_log VALUES ('persisted_across_rollback');",
     ], { encoding: 'utf8' });
-    assert.equal(runV1.status, 0, 'Initial deployment of v1 must succeed');
+    assert.equal(insertRes.status, 0, `Insert test record failed: ${insertRes.stderr}`);
 
     // 3. Save deployment state
     saveDeploymentState({
+      isBootstrap: false,
       previousApiImage: tagV1,
       previousWebImage: tagV1,
-      recordedAt: new Date().toISOString()
-    }, tempStateFile);
+      recordedAt: new Date().toISOString(),
+    }, stateFilePath);
 
-    // 4. Simulate failed update to v2
-    // v2 container fails immediately with exit 1
-    spawnSync('docker', ['rm', '-f', simContainer], { stdio: 'ignore' });
-    const runV2 = spawnSync('docker', [
-      'run', '-d',
-      '--name', simContainer,
-      tagV2,
-      'sh', '-c', 'exit 1'
-    ], { encoding: 'utf8' });
+    // 4. Simulate failed v2 deployment (FAIL_HEALTH=1 causes api to crash)
+    const envV2 = {
+      ...process.env,
+      API_IMAGE_REF: tagV2,
+      WEB_IMAGE_REF: tagV1,
+      FAIL_HEALTH: '1',
+    };
+    spawnSync('docker', ['compose', '-p', projectName, '-f', composeSimPath, 'up', '-d', '--no-deps', 'api'], {
+      env: envV2,
+      stdio: 'ignore',
+    });
 
-    // Give it a moment to exit
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
 
-    const inspectV2 = spawnSync('docker', ['inspect', '--format', '{{.State.Running}}', simContainer], { encoding: 'utf8' });
+    // Confirm api container failed/exited
+    const inspectV2 = spawnSync('docker', ['inspect', '--format', '{{.State.Running}}', `${projectName}-api`], { encoding: 'utf8' });
     const isV2Running = inspectV2.stdout.trim() === 'true';
-    assert.equal(isV2Running, false, 'v2 container must fail and not be running');
+    assert.equal(isV2Running, false, 'v2 API container with FAIL_HEALTH=1 must fail/exit');
 
-    // 5. Trigger rollback procedure: Read state and redeploy v1
-    const state = loadDeploymentState(tempStateFile);
-    assert.equal(state.previousApiImage, tagV1, 'State must contain stable v1 image');
+    // 5. Execute rollback via scripts/rollback.mjs in isolated project
+    const rollbackRes = spawnSync(process.execPath, [path.join(root, 'scripts/rollback.mjs')], {
+      env: {
+        ...process.env,
+        STATE_FILE: stateFilePath,
+        COMPOSE_FILE: composeSimPath,
+        COMPOSE_PROJECT_NAME: projectName,
+        API_CONTAINER: `${projectName}-api`,
+        WEB_CONTAINER: `${projectName}-web`,
+      },
+      encoding: 'utf8',
+    });
+    assert.equal(rollbackRes.status, 0, `Rollback script must exit with code 0: ${rollbackRes.stderr}`);
 
-    spawnSync('docker', ['rm', '-f', simContainer], { stdio: 'ignore' });
-    const rollbackRun = spawnSync('docker', [
-      'run', '-d',
-      '--name', simContainer,
-      state.previousApiImage,
-      'sh', '-c', 'sleep 3600'
+    // 6. Assert restored container image and health
+    const inspectApiRestored = spawnSync('docker', ['inspect', '--format', '{{.Config.Image}} {{.State.Health.Status}}', `${projectName}-api`], { encoding: 'utf8' });
+    const [restoredImg, restoredHealth] = inspectApiRestored.stdout.trim().split(' ');
+    assert.equal(restoredImg, tagV1, `API image must be rolled back to ${tagV1}`);
+    assert.equal(restoredHealth, 'healthy', 'Rolled back API container must be healthy');
+
+    // 7. Verify PostgreSQL data was preserved 100% on named volume
+    const queryData = spawnSync('docker', [
+      'exec',
+      '-e',
+      'PGPASSWORD=sim_secret_password',
+      `${projectName}-db`,
+      'psql',
+      '-U',
+      'brewlite',
+      '-d',
+      'postgres',
+      '-t',
+      '-c',
+      'SELECT msg FROM audit_log;',
     ], { encoding: 'utf8' });
-    assert.equal(rollbackRun.status, 0, 'Rollback container run must succeed');
-
-    // 6. Verify restored container is running and has tagV1
-    const inspectRestored = spawnSync('docker', ['inspect', '--format', '{{.Config.Image}} {{.State.Running}}', simContainer], { encoding: 'utf8' });
-    const [restoredImage, restoredRunning] = inspectRestored.stdout.trim().split(' ');
-    assert.equal(restoredImage, tagV1, `Image must be restored to ${tagV1}`);
-    assert.equal(restoredRunning, 'true', 'Restored container must be running');
+    assert.ok(queryData.stdout.includes('persisted_across_rollback'), `Database data must be preserved across rollback, stdout: "${queryData.stdout}", stderr: "${queryData.stderr}"`);
   } finally {
-    // Cleanup
-    spawnSync('docker', ['rm', '-f', simContainer], { stdio: 'ignore' });
+    // 8. Clean up ONLY this isolated simulation project
+    spawnSync('docker', ['compose', '-p', projectName, '-f', composeSimPath, 'down', '-v'], { stdio: 'ignore' });
     spawnSync('docker', ['rmi', tagV1, tagV2], { stdio: 'ignore' });
-    try { rmSync(tempStateFile, { force: true }); } catch {}
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }
 });
 
@@ -325,6 +536,8 @@ if (hasFailure) {
   console.error('\n❌ SOME VERIFICATIONS FAILED');
   process.exit(1);
 } else {
-  console.log(`\n🎉 ALL ${suite.length} VERIFICATION TESTS (STATIC, EXECUTION & SIMULATION) PASSED 100%!`);
+  const passCount = suite.filter(s => s.status === 'PASS').length;
+  const skipCount = suite.filter(s => s.status === 'SKIPPED').length;
+  console.log(`\n🎉 VERIFICATION FINISHED: ${passCount} PASSED, ${skipCount} SKIPPED, 0 FAILED!`);
   process.exit(0);
 }

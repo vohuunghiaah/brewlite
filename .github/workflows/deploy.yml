@@ -3,13 +3,13 @@ name: Continuous Delivery & Deployment
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       target_env:
-        description: 'Deployment target environment (dry-run, staging, production)'
+        description: "Deployment target environment (dry-run, staging, production)"
         required: true
-        default: 'dry-run'
+        default: "dry-run"
         type: choice
         options:
           - dry-run
@@ -52,7 +52,7 @@ jobs:
       - name: Set up Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             apps/api/package-lock.json
@@ -72,9 +72,9 @@ jobs:
 
       - name: Unit & Integration Tests (API)
         env:
-          RUN_PG_TESTS: 'true'
+          RUN_PG_TESTS: "true"
           POSTGRES_HOST: localhost
-          POSTGRES_PORT: '5432'
+          POSTGRES_PORT: "5432"
           POSTGRES_USER: brewlite
           POSTGRES_PASSWORD: brewlite_dev_password
           POSTGRES_DB: brewlite_test
@@ -214,7 +214,25 @@ jobs:
           echo "**Result:** All compose descriptors, fail-closed backups, and rollback invariants verified successfully." >> $GITHUB_STEP_SUMMARY
           echo "**Zero Remote Calls:** No remote SSH connection was initiated." >> $GITHUB_STEP_SUMMARY
 
-  # Production Deployment Job (Requires Manual Approval Gate via GitHub Environment 'production')
+  # Staging Deployment Job (Explicitly reports status if staging is selected - FIX-10)
+  deploy-staging:
+    name: Deploy to Staging Environment
+    needs: [quality-gate, build-and-push]
+    if: github.event_name == 'workflow_dispatch' && inputs.target_env == 'staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Report Staging Status
+        run: |
+          echo "### ⚠️ Staging Deployment Audit (FIX-10)" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** BLOCKED / NOT CONFIGURED" >> $GITHUB_STEP_SUMMARY
+          echo "**Reason:** Staging cloud instance is not provisioned in this milestone (ADR-007 defines single-VM production topology)." >> $GITHUB_STEP_SUMMARY
+          echo "**Safety:** No deployment was performed to avoid false claims of staging readiness." >> $GITHUB_STEP_SUMMARY
+
+  # Production Deployment Job (Requires Manual Approval Gate via GitHub Environment 'production' - FIX-07, FIX-08, FIX-09, FIX-10)
   deploy-production:
     name: Deploy to Production (AWS Lightsail)
     needs: [quality-gate, build-and-push]
@@ -228,25 +246,40 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Verify Production Host Prerequisites & Secrets
+      - name: Verify Production Host Prerequisites & Required Secrets (FIX-07, FIX-08)
         id: check-prereqs
         shell: bash
         run: |
-          echo "=== Verifying AWS Lightsail Production Host Configuration ==="
+          echo "=== Verifying AWS Lightsail Production Host Configuration & Required Secrets ==="
           HAS_HOST=true
-          if [ -z "${{ secrets.LIGHTSAIL_SSH_KEY }}" ]; then HAS_HOST=false; echo "Missing secret: LIGHTSAIL_SSH_KEY"; fi
-          if [ -z "${{ secrets.LIGHTSAIL_HOST }}" ]; then HAS_HOST=false; echo "Missing secret: LIGHTSAIL_HOST"; fi
-          if [ -z "${{ secrets.LIGHTSAIL_SSH_KNOWN_HOSTS }}" ]; then
-            echo "⚠️ Warning: LIGHTSAIL_SSH_KNOWN_HOSTS not provided. Fallback fingerprint verification required."
-          fi
+          MISSING_SECRETS=""
+
+          check_secret() {
+            if [ -z "$1" ]; then
+              HAS_HOST=false
+              MISSING_SECRETS="$MISSING_SECRETS $2"
+              echo "❌ Missing mandatory secret/variable: $2"
+            else
+              echo "✔ $2 is provisioned."
+            fi
+          }
+
+          check_secret "${{ secrets.LIGHTSAIL_SSH_KEY }}" "LIGHTSAIL_SSH_KEY"
+          check_secret "${{ secrets.LIGHTSAIL_HOST }}" "LIGHTSAIL_HOST"
+          check_secret "${{ secrets.LIGHTSAIL_SSH_KNOWN_HOSTS }}" "LIGHTSAIL_SSH_KNOWN_HOSTS"
+          check_secret "${{ secrets.POSTGRES_DB }}" "POSTGRES_DB"
+          check_secret "${{ secrets.POSTGRES_USER }}" "POSTGRES_USER"
+          check_secret "${{ secrets.POSTGRES_PASSWORD }}" "POSTGRES_PASSWORD"
+          check_secret "${{ secrets.JWT_SECRET }}" "JWT_SECRET"
+          check_secret "${{ vars.DOMAIN }}" "DOMAIN (variable)"
 
           if [ "$HAS_HOST" = "true" ]; then
             echo "has_host=true" >> $GITHUB_OUTPUT
-            echo "✔ Production Lightsail host credentials detected."
+            echo "✔ All production prerequisites, secrets, and known_hosts fingerprints verified."
           else
             echo "has_host=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Production host credentials are not provisioned in GitHub Secrets."
-            echo "Deployment step running in BLOCKED / SIMULATION mode."
+            echo "⚠️ Production deployment is BLOCKED due to missing required secrets:$MISSING_SECRETS"
+            echo "Deployment step safely running in BLOCKED / SIMULATION mode (Zero remote calls)."
           fi
 
       - name: Validate Production Compose Descriptors
@@ -256,7 +289,7 @@ jobs:
           docker compose -f docker-compose.prod.yml config -q
           echo "✔ Compose configuration syntax is valid (zero secrets dumped)."
 
-      - name: Hardened Remote Deployment Execution
+      - name: Hardened Remote Deployment Execution (FIX-07, FIX-08, FIX-09)
         if: steps.check-prereqs.outputs.has_host == 'true'
         id: remote-deploy
         shell: bash
@@ -265,26 +298,33 @@ jobs:
           HOST: ${{ secrets.LIGHTSAIL_HOST }}
           SSH_USER: ${{ secrets.LIGHTSAIL_USER || 'ubuntu' }}
           KNOWN_HOSTS: ${{ secrets.LIGHTSAIL_SSH_KNOWN_HOSTS }}
+          PG_DB: ${{ secrets.POSTGRES_DB }}
+          PG_USER: ${{ secrets.POSTGRES_USER }}
+          PG_PASS: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SEC: ${{ secrets.JWT_SECRET }}
           API_IMAGE_REF: ${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}
           WEB_IMAGE_REF: ${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}
           DOMAIN: ${{ vars.DOMAIN || 'brewlite.vn' }}
         run: |
           set -eo pipefail
 
-          # Setup SSH with explicit known_hosts pinning
+          # FIX-07: Setup SSH strictly using trusted LIGHTSAIL_SSH_KNOWN_HOSTS (No unverified keyscan)
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
 
-          if [ -n "$KNOWN_HOSTS" ]; then
-            echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
-            echo "✔ Host fingerprint verified from trusted LIGHTSAIL_SSH_KNOWN_HOSTS secret."
-          else
-            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
-            echo "⚠️ Host key captured via keyscan (pinning recommended)."
+          if [ -z "$KNOWN_HOSTS" ]; then
+            echo "❌ FATAL: LIGHTSAIL_SSH_KNOWN_HOSTS is empty or not provided. Refusing SSH without verified fingerprint."
+            exit 1
           fi
 
+          echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+          echo "✔ Host fingerprint verified from trusted LIGHTSAIL_SSH_KNOWN_HOSTS."
+
+          SSH_CMD="ssh -o StrictHostKeyChecking=yes -o BatchMode=yes"
+          SCP_CMD="scp -o StrictHostKeyChecking=yes -o BatchMode=yes"
+
           echo "1. Checking remote prerequisites (Docker, Compose, Node.js)..."
-          ssh "$SSH_USER@$HOST" "bash -s" << 'EOF'
+          $SSH_CMD "$SSH_USER@$HOST" "bash -s" << 'EOF'
             set -eo pipefail
             docker --version > /dev/null 2>&1 || { echo "❌ Docker Engine not found on host!"; exit 1; }
             docker compose version > /dev/null 2>&1 || { echo "❌ Docker Compose not found on host!"; exit 1; }
@@ -292,35 +332,82 @@ jobs:
             mkdir -p /home/$USER/app && chmod 700 /home/$USER/app
           EOF
 
-          echo "2. Syncing deployment files to host..."
-          scp -r docker-compose.prod.yml Caddyfile scripts "$SSH_USER@$HOST:/home/$SSH_USER/app/"
-
-          echo "3. Executing deployment pipeline on remote host..."
-          ssh "$SSH_USER@$HOST" "bash -s" << EOF
+          echo "2. Provisioning environment secrets securely to host (FIX-08: 0600 permissions, zero CLI args)..."
+          $SSH_CMD "$SSH_USER@$HOST" "bash -s" << EOF
             set -eo pipefail
-            cd /home/$SSH_USER/app
+            cat << 'ENVEOF' > /home/$SSH_USER/app/.env
+          POSTGRES_DB=$PG_DB
+          POSTGRES_USER=$PG_USER
+          POSTGRES_PASSWORD=$PG_PASS
+          JWT_SECRET=$JWT_SEC
+          DOMAIN=$DOMAIN
+          API_IMAGE_REF=$API_IMAGE_REF
+          WEB_IMAGE_REF=$WEB_IMAGE_REF
+          ENVEOF
+            chmod 600 /home/$SSH_USER/app/.env
+          EOF
 
-            # A. Record current running state before updating
-            node scripts/deployment-state.mjs || true
+          echo "3. Syncing deployment descriptors to host..."
+          $SCP_CMD -r docker-compose.prod.yml Caddyfile scripts "$SSH_USER@$HOST:/home/$SSH_USER/app/"
 
-            # B. Fail-closed pre-deployment backup
+          echo "4. Executing transactional deployment pipeline on remote host (FIX-08, FIX-09)..."
+          $SSH_CMD "$SSH_USER@$HOST" "bash -s" << 'EOF'
+            set -eo pipefail
+            cd /home/$USER/app
+
+            # A. Record current deployment state (FIX-09: never ignore errors with || true)
+            node scripts/deployment-state.mjs
+
+            # B. FIX-08: Ensure PostgreSQL container is running & ready before backup/migration
+            docker compose -f docker-compose.prod.yml up -d db
+
+            echo "Waiting for database to report ready..."
+            DB_READY=false
+            for i in {1..30}; do
+              if docker exec brewlite-prod-db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+                DB_READY=true
+                echo "✔ Database is responsive."
+                break
+              fi
+              sleep 1
+            done
+
+            if [ "$DB_READY" != "true" ]; then
+              echo "❌ Database failed to become ready within timeout!"
+              node scripts/rollback.mjs
+              exit 1
+            fi
+
+            # C. Fail-closed pre-deployment backup (FIX-01, FIX-08, FIX-12)
             node scripts/backup-db.mjs
 
-            # C. Pull target images from GHCR
-            API_IMAGE_REF="$API_IMAGE_REF" WEB_IMAGE_REF="$WEB_IMAGE_REF" docker compose -f docker-compose.prod.yml pull
+            # D. Pull target images from GHCR (with rollback on failure)
+            if ! docker compose -f docker-compose.prod.yml pull; then
+              echo "❌ Image pull failed! Triggering safe rollback..."
+              node scripts/rollback.mjs
+              exit 1
+            fi
 
-            # D. Safe schema migration
-            API_IMAGE_REF="$API_IMAGE_REF" docker compose -f docker-compose.prod.yml run --rm --no-deps api node dist/prepare-database.js migrate
+            # E. Safe schema migration (with rollback on failure)
+            if ! docker compose -f docker-compose.prod.yml run --rm --no-deps api node dist/prepare-database.js migrate; then
+              echo "❌ Schema migration failed! Triggering safe rollback..."
+              node scripts/rollback.mjs
+              exit 1
+            fi
 
-            # E. Rolling container update
-            API_IMAGE_REF="$API_IMAGE_REF" WEB_IMAGE_REF="$WEB_IMAGE_REF" docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # F. Rolling container update (with rollback on failure)
+            if ! docker compose -f docker-compose.prod.yml up -d --remove-orphans; then
+              echo "❌ Container update failed! Triggering safe rollback..."
+              node scripts/rollback.mjs
+              exit 1
+            fi
 
-            # F. Production Smoke Test
-            TARGET_ENV=production TARGET_URL="https://$DOMAIN" node scripts/smoke-test.mjs || {
+            # G. Production Smoke Test (with rollback on failure)
+            if ! TARGET_ENV=production TARGET_URL="https://$DOMAIN" node scripts/smoke-test.mjs; then
               echo "❌ Smoke test failed! Triggering automatic safe rollback..."
               node scripts/rollback.mjs
               exit 1
-            }
+            fi
           EOF
           echo "deployed_real=true" >> $GITHUB_OUTPUT
 

@@ -1,5 +1,5 @@
 /**
- * BrewLite Deployment State Management Helper (Task 5.3 - FIX-02)
+ * BrewLite Deployment State Management Helper (Task 5.3 - FIX-02, FIX-08, FIX-09)
  * Durably records and retrieves currently running / previous known-good
  * container image references and digests before updates.
  */
@@ -33,6 +33,7 @@ export function saveDeploymentState(state, filePath = DEFAULT_STATE_FILE) {
 
 /**
  * Inspects currently running containers and saves their image references to state file.
+ * Distinguishes between an initial bootstrap (no running app) and an upgrade (FIX-08, FIX-09).
  */
 export function captureRunningImages(options = {}) {
   const apiContainer = options.apiContainer || process.env.API_CONTAINER || 'brewlite-prod-api';
@@ -60,6 +61,7 @@ export function captureRunningImages(options = {}) {
 
   if (currentApiImage && currentWebImage) {
     const state = {
+      isBootstrap: false,
       previousApiImage: currentApiImage,
       previousWebImage: currentWebImage,
       recordedAt: new Date().toISOString(),
@@ -69,12 +71,28 @@ export function captureRunningImages(options = {}) {
     console.log(`  - API: ${currentApiImage}`);
     console.log(`  - Web: ${currentWebImage}`);
     return state;
+  } else {
+    // FIX-09: Initial bootstrap state — no prior running application
+    const state = {
+      isBootstrap: true,
+      previousApiImage: null,
+      previousWebImage: null,
+      recordedAt: new Date().toISOString(),
+    };
+    saveDeploymentState(state, stateFile);
+    console.log(`ℹ️ No prior running containers found. Recorded initial bootstrap state in ${path.basename(stateFile)}.`);
+    return state;
   }
-
-  return null;
 }
 
 if (process.argv[1] && process.argv[1].endsWith('deployment-state.mjs')) {
-  captureRunningImages();
+  try {
+    captureRunningImages();
+    process.exit(0);
+  } catch (err) {
+    console.error('❌ Failed to capture deployment state:', err.message);
+    process.exit(1);
+  }
 }
+
 

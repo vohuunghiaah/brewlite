@@ -167,7 +167,48 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
 
 ---
 
-## 8. Kết quả kiểm thử tự động toàn diện
+## 8. Cổng an toàn sản xuất cuối cùng (Final Production Safety Gate FIX-07 – FIX-12)
+
+### FIX-07: Xác thực SSH Host Fingerprint (`.github/workflows/deploy.yml`)
+- Bắt buộc có secret `LIGHTSAIL_SSH_KNOWN_HOSTS` trước khi cho phép kết nối SSH production.
+- Loại bỏ hoàn toàn fallback tự động `ssh-keyscan`. Thiếu host fingerprint được ghim tin cậy sẽ lập tức CHẶN deployment (`BLOCKED`).
+- Thiết lập nghiêm ngặt `-o StrictHostKeyChecking=yes -o BatchMode=yes`, tuyệt đối không chấp nhận `StrictHostKeyChecking=no`.
+
+### FIX-08: Production Bootstrap & Quản lý Secrets an toàn
+- Phân biệt rõ ràng giữa lần triển khai đầu tiên (Bootstrap) và cập nhật ứng dụng đang chạy (Upgrade).
+- Khởi động container PostgreSQL và xác nhận trạng thái responsive trước khi tiến hành backup hoặc migration.
+- Cấm dùng cờ `--fresh` để vượt qua kiểm tra cơ sở dữ liệu nếu chưa chứng minh database thật sự mới (0 bảng).
+- Cấp phát secret lên máy chủ thông qua SSH stdin tạo tệp `.env` với quyền `0600`, hoàn toàn không để lộ secret trong repository, CLI argument hay GitHub Actions logs.
+- Kiểm tra toàn bộ biến bắt buộc (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `DOMAIN`, `LIGHTSAIL_HOST`, `LIGHTSAIL_SSH_KEY`, `LIGHTSAIL_SSH_KNOWN_HOSTS`).
+
+### FIX-09: Triển khai Giao dịch & Rollback An toàn
+- Tự động ghi nhận deployment state trước khi cập nhật (`scripts/deployment-state.mjs`). Không bao giờ bỏ qua lỗi bằng `|| true`.
+- Nếu triển khai bootstrap thất bại, script rollback kích hoạt quy trình thu dọn riêng: dừng các container lỗi để tránh zombie process, giữ nguyên database cho điều tra, và thoát với exit code 1.
+- Bao phủ lỗi ở tất cả các giai đoạn: pull image, schema migration, container update và smoke test đều kích hoạt rollback an toàn.
+- Xác nhận trạng thái healthy thực sự của cả 2 container `api` và `web` qua Docker Healthcheck (không phán đoán qua `docker compose ps`), xuất log chẩn đoán nếu timeout.
+
+### FIX-10: Phân tách Staging và Production Approval
+- Chọn `dry-run`: chạy cô lập trên runner, 0 kết nối ra bên ngoài.
+- Chọn `staging`: job `deploy-staging` báo cáo rõ ràng trạng thái `BLOCKED / NOT CONFIGURED`, tránh ngộ nhận staging thành công giả.
+- Chọn `production`: yêu cầu phê duyệt thủ công (Approval Gate) và đủ secrets.
+- Khóa toàn cục `concurrency: group: cd-deployment-production, cancel-in-progress: false` ngăn chặn tuyệt đối tình trạng 2 tiến trình deploy cùng cập nhật một môi trường.
+
+### FIX-11: Kiểm thử quy trình Rollback thực tế bằng Docker Compose cô lập
+- Nâng cấp `scripts/test-deployment-scripts.mjs`: kiểm thử trực tiếp `scripts/rollback.mjs` trên một Docker Compose project cô lập riêng (`brewlite-test-rollback-sim`).
+- Ghi dữ liệu vào PostgreSQL trên volume riêng (`sim_pg_vol_*`), gây lỗi container v2, kích hoạt rollback và chứng minh:
+  1. Image được khôi phục chính xác về v1 và đạt trạng thái healthy.
+  2. Toàn bộ dữ liệu PostgreSQL được bảo toàn 100% trên named volume.
+- Dọn dẹp chỉ áp dụng cục bộ cho Docker project của phép thử. Nếu Docker không khả dụng, kiểm thử ghi nhận `SKIPPED`, không tính `PASS`.
+
+### FIX-12: Backup Streaming và Kiểm tra tính toàn vẹn bộ nhớ
+- Duy trì cơ chế streaming `pg_dump` trực tiếp ra tệp.
+- Hàm `readHeaderSample(filePath, 1024)` sử dụng `openSync` và `readSync` để chỉ đọc 1024 bytes đầu file, tuyệt đối không dùng `readFileSync()` nạp toàn bộ file dump hàng chục GB vào RAM.
+- Đã kiểm chứng thực nghiệm: đọc tệp dump dung lượng lớn không làm tăng heap memory Node.js.
+- Xử lý triệt để lỗi stream/process, tự động xóa tệp dump hỏng/dở dang và thoát mã lỗi 1 khi backup thất bại.
+
+---
+
+## 9. Kết quả kiểm thử tự động toàn diện
 
 1. **Linter & Code Format:**
    - `npm --prefix apps/api run lint`: PASS (0 lỗi).
@@ -179,11 +220,11 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
    - 13 bước luồng MVP: PASS 100%.
    - 11 bài kiểm thử bảo mật & ngoại lệ (CORS preflight, IDOR, Idempotency, OCC refund): PASS 100%.
 4. **Kiểm thử công cụ triển khai (`scripts/test-deployment-scripts.mjs`):**
-   - 16 bài kiểm thử toàn diện (Static Invariants, Real Execution & Docker Simulation): PASS 100%.
+   - **23 bài kiểm thử toàn diện** (8 Static, 11 Execution, 4 Simulation): **PASS 100%**.
 
 ---
 
-## 9. Danh mục tài liệu bàn giao
+## 10. Danh mục tài liệu bàn giao
 
 1. [`docs/task-5-3-completion-report.md`](task-5-3-completion-report.md): Báo cáo nghiệm thu kỹ thuật Task 5.3 (Hardened).
 2. [`docs/deployment/deployment-guide.md`](deployment/deployment-guide.md): Hướng dẫn chi tiết triển khai production trên AWS Lightsail.
@@ -195,14 +236,14 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
 8. [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml): Quy trình Continuous Delivery & Deployment.
 9. [`scripts/deployment-state.mjs`](../../scripts/deployment-state.mjs): Mô-đun quản lý và ghi nhận trạng thái deployment state.
 10. [`scripts/smoke-test.mjs`](../../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret (Fail-closed & TLS).
-11. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed.
+11. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed và streaming memory safe.
 12. [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn và xác định.
-13. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện các công cụ triển khai.
+13. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện 23 ca cho các công cụ triển khai.
 
 ---
 
-## 10. Kết luận
+## 11. Kết luận
 
-Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2 cùng toàn bộ 6 yêu cầu kiểm toán độc lập nghiêm ngặt nhất. Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã hoàn thiện ở mức chất lượng cao nhất.
+Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2 cùng toàn bộ 12 yêu cầu kiểm toán độc lập nghiêm ngặt (FIX-01 đến FIX-12). Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã hoàn thiện ở mức chất lượng cao nhất.
 
 **Trạng thái đề xuất:** **READY FOR MANUAL MERGE** (Chờ người dùng review và merge thủ công vào `main`).

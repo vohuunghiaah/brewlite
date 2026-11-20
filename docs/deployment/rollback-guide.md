@@ -57,10 +57,11 @@ node scripts/rollback.mjs
 ```
 
 Script sẽ:
-- Xác minh cả API và Web image targets đều hợp lệ, từ chối thẻ cấm (`latest`, `stable`, chuỗi rỗng).
+- Phân biệt trường hợp **Bootstrap lần đầu** (`isBootstrap: true`): nếu triển khai lần đầu thất bại, script chủ động dừng các container bị lỗi (`api`, `web`), bảo toàn dữ liệu và thoát với mã lỗi 1 để đánh dấu release FAILED.
+- Đối với trường hợp nâng cấp (**Upgrade**): xác minh cả API và Web image targets đều hợp lệ, từ chối thẻ cấm (`latest`, `stable`, chuỗi rỗng).
 - Giữ nguyên container PostgreSQL và dữ liệu trên named volume `postgres_data`.
 - Khởi động lại container `api` và `web` trỏ về image chỉ định qua `API_IMAGE_REF` và `WEB_IMAGE_REF`.
-- Kiểm tra lặp lại probe trạng thái Docker Healthcheck cho cả 2 container cho đến khi báo healthy (hoặc timeout báo lỗi).
+- Kiểm tra lặp lại probe trạng thái Docker Healthcheck cho cả 2 container cho đến khi báo healthy (hoặc timeout xuất log chẩn đoán và báo lỗi).
 
 ### Bước 4: Chạy lại Smoke Test xác nhận khôi phục thành công
 ```bash

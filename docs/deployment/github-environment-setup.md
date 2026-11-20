@@ -33,7 +33,7 @@ Truy cập `Settings -> Secrets and variables -> Actions`:
 | `LIGHTSAIL_HOST` | Có (Production) | Địa chỉ IPv4 hoặc DNS công khai của máy chủ AWS Lightsail |
 | `LIGHTSAIL_USER` | Có (Production) | Tên người dùng SSH trên máy chủ (mặc định: `ubuntu`) |
 | `LIGHTSAIL_SSH_KEY` | Có (Production) | Khóa SSH Private Key tương ứng để đăng nhập vào máy chủ Lightsail (OpenSSH PEM/Ed25519) |
-| `LIGHTSAIL_SSH_KNOWN_HOSTS` | Khuyến nghị (Production) | Host key fingerprint được ghim (`ssh-keyscan -H <IP>`) để chống tấn công Man-In-The-Middle (MITM) |
+| `LIGHTSAIL_SSH_KNOWN_HOSTS` | Có (Production - Bắt buộc) | Host key fingerprint được ghim trước (chống tấn công Man-In-The-Middle MITM; cấm keyscan tự động) |
 | `POSTGRES_USER` | Có | Tên tài khoản quản trị PostgreSQL (ví dụ: `brewlite_admin`) |
 | `POSTGRES_PASSWORD` | Có | Mật khẩu cơ sở dữ liệu độ phức tạp cao (tối thiểu 32 ký tự ngẫu nhiên) |
 | `POSTGRES_DB` | Có | Tên cơ sở dữ liệu production (mặc định: `brewlite`) |
