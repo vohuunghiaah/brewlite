@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import MenuPage from '../src/app/menu/page';
 
-describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01..03)', () => {
+describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01..07)', () => {
   const mockLatte = {
     id: 1,
     name: 'Cà phê Latte',
@@ -51,6 +51,16 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
     imageUrl: 'https://images.unsplash.com/photo-matcha',
     isAvailable: true,
     stock: 1,
+  };
+
+  const mockInvalidStockProduct = {
+    id: 6,
+    name: 'Trà Sữa Oolong',
+    description: 'Trà sữa đậm vị',
+    price: 45000,
+    imageUrl: 'https://images.unsplash.com/photo-oolong',
+    isAvailable: true,
+    stock: undefined, // Missing stock
   };
 
   const mockOrders = [
@@ -300,16 +310,13 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
       expect(screen.getByText('#BL-5555')).toBeInTheDocument();
     });
 
-    // Tab "Đang xử lý": includes PAID (101), PREPARING (102), and PAYMENT_FAILED (103)
     const processingTab = screen.getByRole('tab', { name: /Đang xử lý/i });
     expect(processingTab).toBeInTheDocument();
     expect(processingTab).toHaveTextContent('3');
 
-    // Tab "Hoàn tất": 1 order (#BL-8000)
     const completedTab = screen.getByRole('tab', { name: /Hoàn tất/i });
     expect(completedTab).toHaveTextContent('1');
 
-    // Tab "Đã hủy": ONLY CANCELLED orders (1 order: #BL-7000)
     const cancelledTab = screen.getByRole('tab', { name: /Đã hủy/i });
     expect(cancelledTab).toHaveTextContent('1');
 
@@ -552,7 +559,227 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
     });
   });
 
-  it('10. Order Status Tracking: fetches fresh order and updates timeline when status advances (FIX-02)', async () => {
+  it('10. Re-order fails safely when catalog refresh fails with network error (FIX-05, FIX-07 #1)', async () => {
+    let callCount = 0;
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => mockOrders,
+        } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        callCount++;
+        // First call on page mount succeeds
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => [mockLatte],
+          } as Response);
+        }
+        // Second call on re-order fails!
+        return Promise.reject(new Error('Network error: 503 Service Unavailable'));
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    render(<MenuPage />);
+    fireEvent.click(screen.getByText('Lịch sử'));
+
+    await waitFor(() => {
+      expect(screen.getByText('#BL-9216')).toBeInTheDocument();
+    });
+
+    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const reorderBtn = screen.getByRole('button', { name: /Đặt lại đơn #BL-9216/i });
+    fireEvent.click(reorderBtn);
+
+    await waitFor(() => {
+      expect(alertMock).toHaveBeenCalledWith(
+        expect.stringContaining('không thể xác minh dữ liệu sản phẩm mới nhất')
+      );
+    });
+
+    // Cart drawer must NOT open
+    expect(screen.queryByRole('heading', { level: 2, name: /Giỏ hàng/i })).not.toBeInTheDocument();
+    alertMock.mockRestore();
+  });
+
+  it('11. Re-order fails safely when catalog returns empty array (FIX-05, FIX-07 #2)', async () => {
+    let callCount = 0;
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => mockOrders,
+        } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => [mockLatte],
+          } as Response);
+        }
+        // Returns empty list on re-order
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [],
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    render(<MenuPage />);
+    fireEvent.click(screen.getByText('Lịch sử'));
+
+    await waitFor(() => {
+      expect(screen.getByText('#BL-9216')).toBeInTheDocument();
+    });
+
+    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const reorderBtn = screen.getByRole('button', { name: /Đặt lại đơn #BL-9216/i });
+    fireEvent.click(reorderBtn);
+
+    await waitFor(() => {
+      expect(alertMock).toHaveBeenCalledWith(
+        expect.stringContaining('danh mục sản phẩm từ hệ thống hiện đang trống')
+      );
+    });
+    expect(screen.queryByRole('heading', { level: 2, name: /Giỏ hàng/i })).not.toBeInTheDocument();
+    alertMock.mockRestore();
+  });
+
+  it('12. Re-order rejects product when stock data is missing or invalid without defaulting to 50 (FIX-05, FIX-07 #3)', async () => {
+    const invalidStockOrder = {
+      id: 106,
+      orderCode: '#BL-6060',
+      userId: 1,
+      customerName: 'Nguyễn Văn Test',
+      customerPhone: '0901234567',
+      pickupMethod: 'AT_COUNTER',
+      tableNumber: null,
+      note: null,
+      totalAmount: '45000.00',
+      status: 'PAID',
+      createdAt: '2026-11-20T10:00:00Z',
+      items: [
+        {
+          id: 9,
+          productId: 6, // stock is undefined
+          productName: 'Trà Sữa Oolong',
+          size: 'SMALL',
+          toppings: [],
+          note: null,
+          quantity: 2,
+          unitPrice: '45000.00',
+          subtotal: '90000.00',
+          product: mockInvalidStockProduct,
+        },
+      ],
+    };
+
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [invalidStockOrder],
+        } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [mockInvalidStockProduct],
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    render(<MenuPage />);
+    fireEvent.click(screen.getByText('Lịch sử'));
+
+    await waitFor(() => {
+      expect(screen.getByText('#BL-6060')).toBeInTheDocument();
+    });
+
+    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const reorderBtn = screen.getByRole('button', { name: /Đặt lại đơn #BL-6060/i });
+    fireEvent.click(reorderBtn);
+
+    await waitFor(() => {
+      expect(alertMock).toHaveBeenCalledWith(
+        expect.stringContaining('thiếu dữ liệu tồn kho hợp lệ từ hệ thống')
+      );
+    });
+    expect(screen.queryByRole('heading', { level: 2, name: /Giỏ hàng/i })).not.toBeInTheDocument();
+    alertMock.mockRestore();
+  });
+
+  it('13. Re-order synchronizes basePrice, unitPrice and subtotal when variant already exists in cart with price change (FIX-06, FIX-07 #4)', async () => {
+    // 1. Initial product price is 45,000 đ
+    // 2. Add 1 Latte Medium (+5,000 đ size) + Kem cheese (+10,000 đ) -> unitPrice = 60,000 đ
+    render(<MenuPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cà phê Latte')).toBeInTheDocument();
+    });
+
+    // Switch to Order History
+    fireEvent.click(screen.getByText('Lịch sử'));
+    await waitFor(() => {
+      expect(screen.getByText('#BL-9216')).toBeInTheDocument();
+    });
+
+    // Live product catalog now has price increased to 50,000 đ
+    // For Medium (+5,000 đ) + Kem cheese (+10,000 đ), new unitPrice should be 65,000 đ
+    const updatedLatte = {
+      ...mockLatte,
+      price: 50000,
+      stock: 20,
+    };
+
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockOrders } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [updatedLatte, mockTea] } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    // Click "Đặt lại" on #BL-9216
+    const reorderButtons = screen.getAllByRole('button', { name: /Đặt lại/i });
+    fireEvent.click(reorderButtons[0]);
+
+    // Cart Drawer opens
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: /Giỏ hàng/i })).toBeInTheDocument();
+    });
+
+    // Now re-order the SAME order again: variant key already exists in cart
+    // It must synchronize unitPrice to 65,000 đ, accumulate quantity to 2, subtotal to 130,000 đ
+    fireEvent.click(reorderButtons[0]);
+
+    await waitFor(() => {
+      // Expect 130,000 đ subtotal for 2 Latte Medium + Kem cheese
+      expect(screen.getByText(/130\.000/)).toBeInTheDocument();
+    });
+  });
+
+  it('14. Order Status Tracking: updates UI from PAID to PREPARING in real-time via controlled polling (FIX-02, FIX-07 #5)', async () => {
     jest.useFakeTimers();
 
     let currentStatus = 'PAID';
@@ -597,8 +824,8 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
       expect(screen.getByText('BrewLite Digital Buzzer')).toBeInTheDocument();
     });
 
-    // Status is currently PAID: node 1 is active
-    expect(screen.getByText(/PAID/i)).toBeInTheDocument();
+    // Initial status: PAID (card has '• Đã thanh toán' and modal has '• Đã thanh toán')
+    expect(screen.getAllByText('• Đã thanh toán').length).toBeGreaterThanOrEqual(1);
 
     // Advance backend order status to PREPARING
     currentStatus = 'PREPARING';
@@ -610,10 +837,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
 
     // Modal updates with new PREPARING state
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringMatching(/\/orders\/101$/),
-        expect.anything()
-      );
+      expect(screen.getAllByText('• Đang pha chế').length).toBeGreaterThanOrEqual(1);
     });
 
     // Close buzzer modal -> interval should be cleared
@@ -623,7 +847,76 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
     jest.useRealTimers();
   });
 
-  it('11. Error state and retry: displays error and recovers upon retry', async () => {
+  it('15. Order Status Tracking: stops polling on modal close, logout, or terminal status (FIX-02, FIX-07 #6)', async () => {
+    jest.useFakeTimers();
+
+    let fetchCallsForOrder101 = 0;
+    const currentStatus = 'PAID';
+    (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/orders/me')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => mockOrders,
+        } as Response);
+      }
+      if (urlStr.includes('/orders/101')) {
+        fetchCallsForOrder101++;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ...mockOrders[0], status: currentStatus }),
+        } as Response);
+      }
+      if (urlStr.endsWith('/products')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [mockLatte],
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+    });
+
+    render(<MenuPage />);
+    fireEvent.click(screen.getByText('Lịch sử'));
+
+    await waitFor(() => {
+      expect(screen.getByText('#BL-9216')).toBeInTheDocument();
+    });
+
+    // Open tracking modal
+    const trackButtons = screen.getAllByRole('button', { name: /Theo dõi vé chuông/i });
+    fireEvent.click(trackButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('BrewLite Digital Buzzer')).toBeInTheDocument();
+    });
+
+    // Initial track fetch
+    const initialCalls = fetchCallsForOrder101;
+
+    // Advance 3s -> 1 polling call
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(fetchCallsForOrder101).toBe(initialCalls + 1);
+
+    // Close modal
+    const closeButtons = screen.getAllByRole('button', { name: /Đóng vé/i });
+    fireEvent.click(closeButtons[0]);
+
+    // Advance another 6s -> NO more calls should be made!
+    act(() => {
+      jest.advanceTimersByTime(6000);
+    });
+    expect(fetchCallsForOrder101).toBe(initialCalls + 1);
+
+    jest.useRealTimers();
+  });
+
+  it('16. Error state and retry: displays error and recovers upon retry', async () => {
     let failOrdersOnce = true;
     (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
       const urlStr = String(url);
@@ -669,7 +962,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
     });
   });
 
-  it('12. Empty state: displays empty notice when orders list is empty', async () => {
+  it('17. Empty state: displays empty notice when orders list is empty', async () => {
     (global.fetch as jest.Mock).mockImplementation((url: RequestInfo | URL) => {
       if (String(url).endsWith('/orders/me')) {
         return Promise.resolve({

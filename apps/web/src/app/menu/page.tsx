@@ -857,20 +857,29 @@ export default function MenuPage() {
     return cancelledOrders;
   }, [historyTab, processingOrders, completedOrders, cancelledOrders]);
 
-  // Safe Re-order với kiểm tra tồn kho từ API và số lượng hiện có trong giỏ (FIX-01)
+  // Safe Re-order với kiểm tra tồn kho từ API và số lượng hiện có trong giỏ (FIX-01, FIX-05, FIX-06)
   async function handleReorder(order: OrderHistoryItem) {
     if (!order.items || order.items.length === 0) return;
 
-    // 1. Luôn fetch danh sách sản phẩm mới nhất từ API để lấy stock và price hiện tại
-    let freshCatalog = products;
+    // 1. Luôn fetch danh sách sản phẩm mới nhất từ API để lấy stock và price hiện tại (FIX-05)
+    // Không fallback sang cache cũ nếu API thất bại hoặc trả về danh sách rỗng
+    let freshCatalog: Product[];
     try {
       const fetched = await fetchProducts(API_URL);
-      if (Array.isArray(fetched) && fetched.length > 0) {
-        freshCatalog = fetched;
-        setProducts(fetched);
+      if (!Array.isArray(fetched) || fetched.length === 0) {
+        const errorMsg = "Không thể đặt lại đơn hàng do danh mục sản phẩm từ hệ thống hiện đang trống hoặc chưa sẵn sàng.";
+        setReorderNotice(errorMsg);
+        alert(errorMsg);
+        return;
       }
+      freshCatalog = fetched;
+      setProducts(fetched);
     } catch (err) {
-      console.warn("Could not refresh products catalog before re-order, using current state", err);
+      console.error("Lỗi làm mới danh mục sản phẩm khi đặt lại đơn hàng:", err);
+      const errorMsg = "Không thể đặt lại đơn hàng do không thể xác minh dữ liệu sản phẩm mới nhất từ hệ thống. Vui lòng thử lại sau.";
+      setReorderNotice(errorMsg);
+      alert(errorMsg);
+      return;
     }
 
     let addedCount = 0;
@@ -898,9 +907,14 @@ export default function MenuPage() {
         continue;
       }
 
-      // 3. Kiểm tra tồn kho hiện tại (stock)
-      const currentStock = typeof liveProduct.stock === "number" ? liveProduct.stock : 50;
-      if (currentStock <= 0) {
+      // 3. Kiểm tra tồn kho hợp lệ (FIX-05: không mặc định stock = 50 nếu thiếu hoặc sai dữ liệu)
+      if (typeof liveProduct.stock !== "number" || isNaN(liveProduct.stock) || liveProduct.stock < 0) {
+        warnings.push(`Món "${liveProduct.name}" thiếu dữ liệu tồn kho hợp lệ từ hệ thống`);
+        continue;
+      }
+
+      const currentStock = liveProduct.stock;
+      if (currentStock === 0) {
         warnings.push(`Món "${liveProduct.name}" đã hết hàng (tồn kho: 0)`);
         continue;
       }
@@ -924,7 +938,7 @@ export default function MenuPage() {
         );
       }
 
-      // 5. Thêm món vào giỏ hàng với giá tính theo dữ liệu sản phẩm hiện tại từ API (không dùng giá cũ)
+      // 5. Thêm món vào giỏ hàng với giá tính theo dữ liệu sản phẩm hiện tại từ API (FIX-06: đồng bộ giá mới)
       addItemToCart(
         liveProduct,
         item.size,
@@ -1121,8 +1135,10 @@ export default function MenuPage() {
         const updatedQty = existing.quantity + quantity;
         next[existingIndex] = {
           ...existing,
+          basePrice: Number(product.price),
+          unitPrice,
           quantity: updatedQty,
-          subtotal: existing.unitPrice * updatedQty,
+          subtotal: unitPrice * updatedQty,
         };
         return next;
       } else {
@@ -2980,6 +2996,11 @@ export default function MenuPage() {
               <h2 id="buzzer-modal-title" className={ui.buzzerCode}>
                 {buzzerTicket.orderCode}
               </h2>
+              <div style={{ marginTop: "4px", marginBottom: "8px" }}>
+                <span className={`${ui.statusBadge} ${getOrderStatusBadge(buzzerTicket.status).className}`}>
+                  {getOrderStatusBadge(buzzerTicket.status).label}
+                </span>
+              </div>
               <p className={ui.buzzerPickupInfo}>
                 {buzzerTicket.pickupMethod === "AT_TABLE"
                   ? `🍽️ Giao tận bàn: ${buzzerTicket.tableNumber || "Chưa ghi số bàn"}`
