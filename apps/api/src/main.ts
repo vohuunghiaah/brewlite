@@ -22,6 +22,8 @@ async function bootstrap() {
     allowedHeaders: [
       'Content-Type',
       'Authorization',
+      'Idempotency-Key',
+      'idempotency-key',
     ],
     credentials: false,
   });
