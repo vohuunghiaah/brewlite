@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:safety": "node test-env-safety.mjs",
     "test:mvp": "node e2e-mvp-acceptance.mjs",
     "test:security": "node e2e-security-exceptions.mjs"
   },

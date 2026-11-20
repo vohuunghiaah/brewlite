@@ -1,52 +1,13 @@
-import { execSync } from 'child_process';
 import * as crypto from 'crypto';
+import {
+  getEffectiveDbConfig,
+  verifyLiveDatabase,
+  queryDb,
+} from './env-safety.mjs';
 
 // ================= CẤU HÌNH MÔI TRƯỜNG & PORTABLE DB =================
-const API_URL = process.env.API_URL || 'http://localhost:3001';
-const DB_CONTAINER = process.env.DB_CONTAINER || 'brewlite-db';
-const DB_USER = process.env.DB_USER || 'brewlite';
-const DB_NAME = process.env.DB_NAME || 'brewlite';
-
-// ================= BẢO VỆ AN TOÀN MÔI TRƯỜNG (SECTION B) =================
-function assertSafeTestEnvironment() {
-  const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-  const dbName = (process.env.DB_NAME || DB_NAME).toLowerCase();
-
-  if (nodeEnv === 'production' || nodeEnv === 'prod') {
-    throw new Error('AN TOÀN HỆ THỐNG: Tuyệt đối không chạy script kiểm thử bảo mật trên môi trường PRODUCTION (NODE_ENV=production)!');
-  }
-
-  if (dbName.includes('prod') || dbName.includes('production')) {
-    throw new Error(`AN TOÀN HỆ THỐNG: Tên database "${dbName}" có thể là môi trường PRODUCTION! Hủy thực thi script.`);
-  }
-
-  const isSafeDevTestDb = dbName === 'brewlite' || dbName === 'brewlite_test' || dbName.includes('test') || dbName.includes('dev');
-  const allowFlag = process.env.ALLOW_TEST_SCRIPTS === 'true';
-
-  if (!isSafeDevTestDb && !allowFlag) {
-    throw new Error(
-      `AN TOÀN HỆ THỐNG: Chưa xác nhận database "${dbName}" là môi trường thử nghiệm an toàn. Vui lòng đặt ALLOW_TEST_SCRIPTS=true nếu đây là môi trường test.`
-    );
-  }
-}
-
-// ================= TRUY VẤN POSTGRESQL AN TOÀN =================
-function queryDb(sql) {
-  const singleLine = sql.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
-  let cmd;
-  if (process.env.DB_DIRECT_PSQL === 'true' || process.env.RUN_PG_TESTS === 'true') {
-    const host = process.env.POSTGRES_HOST || 'localhost';
-    const port = process.env.POSTGRES_PORT || '5432';
-    const user = process.env.POSTGRES_USER || DB_USER;
-    const db = process.env.POSTGRES_DB || DB_NAME;
-    const pwd = process.env.POSTGRES_PASSWORD || 'brewlite_dev_password';
-    cmd = `PGPASSWORD="${pwd}" psql -h ${host} -p ${port} -U ${user} -d ${db} -t -A -c "${singleLine}"`;
-  } else {
-    cmd = `docker exec ${DB_CONTAINER} psql -U ${DB_USER} -d ${DB_NAME} -t -A -c "${singleLine}"`;
-  }
-  const result = execSync(cmd, { encoding: 'utf8' }).trim();
-  return result;
-}
+const config = getEffectiveDbConfig();
+const API_URL = config.apiUrl;
 
 async function apiRequest(path, options = {}) {
   const url = `${API_URL}${path}`;
@@ -63,12 +24,13 @@ async function apiRequest(path, options = {}) {
 
 // ================= TIẾN TRÌNH KIỂM THỬ BẢO MẬT & NGOẠI LỆ =================
 async function runSecurityAndExceptionsTests() {
-  assertSafeTestEnvironment();
+  // Xác minh môi trường an toàn và đối chiếu database thực tế qua SELECT current_database() trước mọi thao tác (DEF-02)
+  const liveDb = verifyLiveDatabase();
 
   console.log('======================================================================');
   console.log('🛡️ BẮT ĐẦU KIỂM THỬ BẢO MẬT VÀ NGOẠI LỆ (SECTION 3)');
   console.log(`🔌 Backend API: ${API_URL}`);
-  console.log(`🗄️ Database: ${DB_NAME} (Container: ${DB_CONTAINER})`);
+  console.log(`🗄️ Database thực tế: ${liveDb} (Chế độ: ${config.isDirectPsql ? 'Direct PSQL' : 'Docker ' + config.container})`);
   console.log('======================================================================\n');
 
   const results = [];
