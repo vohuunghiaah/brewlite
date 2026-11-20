@@ -267,6 +267,7 @@ jobs:
           INPUT_PG_PASS: ${{ secrets.POSTGRES_PASSWORD }}
           INPUT_JWT_SEC: ${{ secrets.JWT_SECRET }}
           INPUT_DOMAIN: ${{ vars.DOMAIN }}
+          INPUT_CADDY_HOSTS: ${{ vars.CADDY_HOSTS }}
           INPUT_APPROVAL_CONF: ${{ vars.PRODUCTION_APPROVAL_CONFIGURED }}
         run: |
           set -eo pipefail
@@ -294,6 +295,33 @@ jobs:
           check_var "$INPUT_PG_PASS" "POSTGRES_PASSWORD"
           check_var "$INPUT_JWT_SEC" "JWT_SECRET"
           check_var "$INPUT_DOMAIN" "DOMAIN (variable)"
+          check_var "$INPUT_CADDY_HOSTS" "CADDY_HOSTS (variable)"
+
+          # FIX-5.4.1: Enforce that DOMAIN is a single hostname, not a comma list or URL
+          if [ -n "$INPUT_DOMAIN" ]; then
+            if [[ "$INPUT_DOMAIN" =~ [,\ ] ]] || [[ "$INPUT_DOMAIN" =~ ^https?:// ]]; then
+              HAS_HOST=false
+              MISSING_SECRETS="$MISSING_SECRETS DOMAIN_FORMAT_INVALID"
+              echo "❌ DOMAIN must be a single hostname without commas, whitespace, or scheme (e.g. 'brewlite.54-255-241-1.sslip.io'). Use CADDY_HOSTS for multiple hostnames."
+            fi
+          fi
+
+          # FIX-01: Validate CADDY_HOSTS is provided, valid, and contains primary DOMAIN
+          if [ -n "$INPUT_CADDY_HOSTS" ]; then
+            if [[ "$INPUT_CADDY_HOSTS" =~ https?:// ]]; then
+              HAS_HOST=false
+              MISSING_SECRETS="$MISSING_SECRETS CADDY_HOSTS_INVALID_SCHEME"
+              echo "❌ CADDY_HOSTS must not contain 'http://' or 'https://'. Provide hostnames separated by commas or spaces."
+            fi
+
+            if [ -n "$INPUT_DOMAIN" ]; then
+              if ! echo "$INPUT_CADDY_HOSTS" | grep -qw "$INPUT_DOMAIN"; then
+                HAS_HOST=false
+                MISSING_SECRETS="$MISSING_SECRETS CADDY_HOSTS_MISSING_PRIMARY_DOMAIN"
+                echo "❌ CADDY_HOSTS ('$INPUT_CADDY_HOSTS') must contain primary DOMAIN ('$INPUT_DOMAIN')."
+              fi
+            fi
+          fi
 
           # FIX-14 & FIX-16: Verification of explicit approval gate configuration
           if [ "$INPUT_APPROVAL_CONF" != "true" ]; then
@@ -336,7 +364,8 @@ jobs:
           JWT_SEC: ${{ secrets.JWT_SECRET }}
           API_IMAGE_REF: ${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}
           WEB_IMAGE_REF: ${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}
-          DOMAIN: ${{ vars.DOMAIN || 'brewlite.vn' }}
+          DOMAIN: ${{ vars.DOMAIN }}
+          CADDY_HOSTS: ${{ vars.CADDY_HOSTS }}
         run: |
           set -eo pipefail
 
@@ -373,6 +402,7 @@ jobs:
                 POSTGRES_PASSWORD: process.env.PG_PASS,
                 JWT_SECRET: process.env.JWT_SEC,
                 DOMAIN: process.env.DOMAIN,
+                CADDY_HOSTS: process.env.CADDY_HOSTS,
                 API_IMAGE_REF: process.env.API_IMAGE_REF,
                 WEB_IMAGE_REF: process.env.WEB_IMAGE_REF,
                 NODE_ENV: "production"
@@ -410,7 +440,7 @@ jobs:
             fi
 
             # Validate mandatory production variables exist in .env
-            node scripts/safe-env.mjs validate .env DOMAIN POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET
+            node scripts/safe-env.mjs validate .env DOMAIN CADDY_HOSTS POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET
 
             # Safely extract variables needed for container readiness check and smoke test
             DOMAIN=$(node scripts/safe-env.mjs get .env DOMAIN)

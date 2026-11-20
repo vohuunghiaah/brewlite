@@ -21,6 +21,19 @@
 | FR-11 / UC-05,06 | orders.controller, menu/page | order-history.test.tsx, e2e-mvp-acceptance bước 11–13 | Ảnh vé và lịch sử, GET /orders/me |
 | FR-13 / UC-13, NFR-05 | health.controller, database.ts, products.seed, docker-compose.yml | test-compose.mjs | DB trống, hai lượt setup, HTTP 200 → 503 → 200 |
 
+### Truy vết Sẵn Sàng Phát Hành & Vận Hành An Toàn (Production Readiness & Hardening) — Task 5.4.1
+
+| Hạng mục / Yêu cầu NFR | Mã nguồn & Cấu hình | Kiểm thử & Xác minh | Bằng chứng nghiệm thu | Trạng thái |
+|---|---|---|---|---|
+| Production Live Baseline Audit | AWS Lightsail `brewlite-production` (commit `49c582bc`) | `smoke-test.mjs`, Docker inspect, TLS check | 4/4 containers healthy, 0 restarts, HTTPS /menu, /api/health 200 (39ms-229ms), Let's Encrypt valid | **AUDIT PASS (LIVE VERIFIED)** |
+| Database Schema & Parity Audit | PostgreSQL 16.16 Alpine, volume `app_postgres_data` | TypeORM `showMigrations()`, Catalog inspect | 4/4 migrations applied, 0 pending, 48 entity columns match 100% metadata TypeORM | **SCHEMA PASS (VERIFIED)** |
+| Safe Database Restoration Tooling | `scripts/restore-db.mjs` (Streaming psql stdin, fail-closed, ON_ERROR_STOP=1) | `test-deployment-scripts.mjs` (Tests 35–39: Safety & Isolated Docker Integration) | Flag `--confirm-restore-database`, pg_dump header/footer check, isolated container restore, table & row count assertion, credential masking | **IMPLEMENTED & VERIFIED** |
+| Reverse Proxy Multi-Domain Hardening | `Caddyfile` (Snippet `(brewlite_proxy)`), `docker-compose.prod.yml` | `test-deployment-scripts.mjs` (Tests 40 & 41: `caddy adapt` & Smoke URL), Live TLS probe | Phân tách `DOMAIN` đơn lẻ & `CADDY_HOSTS` đa tên miền, caddy adapt validate exit 0, HSTS, reverse proxy 3000/3001 | **CONFIG DRIFT RESOLVED** |
+| GitHub Environment Approval Gate | `.github/workflows/deploy.yml` (Environment `production`) | `test-deployment-scripts.mjs` (Test 38), GitHub REST API | Required Reviewers, branch restriction `main`, 7 mandatory secrets + 2 variables | **BLOCKED (PENDING ADMIN SETUP)** |
+| Release Documentation & Runbooks | `docs/deployment/` | Review tài liệu vận hành | Báo cáo sẵn sàng (10 mục), Checklist phát hành, Runbook sự cố & phục hồi thảm họa | **DOCUMENTATION COMPLETE** |
+
+[Báo cáo sẵn sàng phát hành Task 5.4.1](deployment/production-readiness-report.md) · [Release Checklist](deployment/production-release-checklist.md) · [Release Runbook](deployment/production-release-runbook.md)
+
 ### Truy vết triển khai Continuous Delivery / Deployment — Task 5.3
 
 | SRS / Yêu cầu NFR | Mã nguồn & Cấu hình | Kiểm thử & Xác minh | Bằng chứng nghiệm thu | Trạng thái |

@@ -12,6 +12,7 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      CADDY_HOSTS: ${CADDY_HOSTS:-${DOMAIN:-localhost}}
       ACME_EMAIL: ${ACME_EMAIL:-admin@brewlite.vn}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

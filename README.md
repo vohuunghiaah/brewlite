@@ -10,17 +10,22 @@
 
 ---
 
-## Triển khai và Giao hàng liên tục (Task 5.3 - CD / Production Deployment)
+## Triển khai và Giao hàng liên tục (Task 5.3 & Task 5.4 - CD / Production Readiness)
 
 Hệ thống hỗ trợ quy trình CI/CD hoàn chỉnh theo [ADR-007](docs/architecture/adr/adr/007-aws-lightsail-deployment.md):
 - **Docker Compose Production:** [`docker-compose.prod.yml`](docker-compose.prod.yml) (Caddy Reverse Proxy 80/443, Next.js Standalone, NestJS API, PostgreSQL 16 internal network, memory limits 1.62GB / 2GB RAM VM).
-- **Reverse Proxy & HTTPS:** [`Caddyfile`](Caddyfile) tự động cấp TLS, proxy `/api/*` tới NestJS và UI tới Next.js.
+- **Reverse Proxy & HTTPS:** [`Caddyfile`](Caddyfile) tự động cấp TLS, proxy `/api/*` tới NestJS và UI tới Next.js (hỗ trợ đa tên miền qua snippet `(brewlite_proxy)`).
 - **Workflow CI/CD:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (Quality Gate -> GHCR Publish -> Environment `production` Approval Gate -> Safe Deployment & Smoke Test -> Rollback).
-- **Kịch bản vận hành:**
+- **Kịch bản vận hành & Phục hồi thảm họa:**
   - Sao lưu cơ sở dữ liệu: `node scripts/backup-db.mjs`
+  - Phục hồi cơ sở dữ liệu an toàn: `node scripts/restore-db.mjs --confirm-restore-database --container <container> --db <db> --backup-file <path>`
   - Kiểm thử khói (Smoke Test): `node scripts/smoke-test.mjs`
   - Khôi phục phiên bản (Rollback): `node scripts/rollback.mjs` (bảo toàn volume `postgres_data`)
-- **Tài liệu bàn giao:**
+- **Tài liệu bàn giao & Vận hành Production (Task 5.4.1):**
+  - [Báo cáo Sẵn sàng Phát hành (Production Readiness Report)](docs/deployment/production-readiness-report.md)
+  - [Danh sách Kiểm tra Phát hành (Production Release Checklist)](docs/deployment/production-release-checklist.md)
+  - [Sổ tay Vận hành & Khắc phục Sự cố (Production Release Runbook)](docs/deployment/production-release-runbook.md)
+  - [Báo cáo nghiệm thu Production hiện tại](docs/deployment/production-verification-report.md)
   - [Báo cáo hoàn thành Task 5.3](docs/task-5-3-completion-report.md)
   - [Hướng dẫn triển khai Production](docs/deployment/deployment-guide.md)
   - [Hướng dẫn cấu hình Secrets & Environments](docs/deployment/github-environment-setup.md)
