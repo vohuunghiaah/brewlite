@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -8,8 +8,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { queryDb, verifyLiveDatabase } from './env-safety.mjs';
 
+import { newTestProject, prepareTestCompose } from './isolated-test-compose.mjs';
+
 const root = fileURLToPath(new URL('../', import.meta.url));
-const project = 'brewlite-test-' + randomUUID().slice(0, 12);
+const project = newTestProject();
 const temp = mkdtempSync(path.join(tmpdir(), project));
 const evidence = path.join(root, 'test-results', project);
 mkdirSync(evidence, { recursive: true });
@@ -37,9 +39,8 @@ const env = {
 function run(file, args) {
   execFileSync(file, args, { cwd: root, env, stdio: 'inherit', timeout: 600000 });
 }
-function compose(...args) {
-  run('docker', ['compose', '-f', 'docker-compose.yml', '-f', 'compose.test.yml', '--env-file', envFile, '-p', project, ...args]);
-}
+const { compose, cleanup } = prepareTestCompose(project,
+  ['-f', 'docker-compose.yml', '-f', 'compose.test.yml', '--env-file', envFile], { cwd: root, env });
 function script(name) {
   run(process.execPath, ['scripts/' + name]);
 }
@@ -114,8 +115,7 @@ try {
   throw error;
 } finally {
   try {
-    // Preserve database volumes when shutting down the isolated acceptance project.
-    compose('down', '--rmi', 'local');
+    cleanup('--rmi', 'local');
   } finally {
     rmSync(envFile, { force: true });
     rmdirSync(temp);
