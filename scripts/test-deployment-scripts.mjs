@@ -377,13 +377,14 @@ services:
     volumes:
       - ${simVolume}:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U brewlite -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U brewlite -d postgres"]
       interval: 1s
       timeout: 2s
       retries: 15
 
   api:
     image: \${API_IMAGE_REF:-${tagV1}}
+    pull_policy: never
     container_name: ${projectName}-api
     command: ["sh", "-c", "if [ \\"\$FAIL_HEALTH\\" = \\"1\\" ]; then exit 1; else sleep 3600; fi"]
     healthcheck:
@@ -394,6 +395,7 @@ services:
 
   web:
     image: \${WEB_IMAGE_REF:-${tagV1}}
+    pull_policy: never
     container_name: ${projectName}-web
     command: ["sh", "-c", "sleep 3600"]
     healthcheck:
@@ -409,9 +411,21 @@ volumes:
   writeFileSync(composeSimPath, simComposeYaml.trim(), 'utf8');
 
   try {
-    // 1. Tag base image (alpine:latest)
-    spawnSync('docker', ['tag', 'alpine:latest', tagV1], { stdio: 'ignore' });
-    spawnSync('docker', ['tag', 'alpine:latest', tagV2], { stdio: 'ignore' });
+    // 1. Ensure alpine:latest and postgres:16-alpine base images are cached locally
+    const checkAlpine = spawnSync('docker', ['image', 'inspect', 'alpine:latest'], { stdio: 'ignore' });
+    if (checkAlpine.status !== 0) {
+      spawnSync('docker', ['pull', 'alpine:latest'], { stdio: 'ignore' });
+    }
+    const checkPg = spawnSync('docker', ['image', 'inspect', 'postgres:16-alpine'], { stdio: 'ignore' });
+    if (checkPg.status !== 0) {
+      spawnSync('docker', ['pull', 'postgres:16-alpine'], { stdio: 'ignore' });
+    }
+
+    const tag1 = spawnSync('docker', ['tag', 'alpine:latest', tagV1], { stdio: 'ignore' });
+    const tag2 = spawnSync('docker', ['tag', 'alpine:latest', tagV2], { stdio: 'ignore' });
+    if (tag1.status !== 0 || tag2.status !== 0) {
+      return { skipped: true, reason: 'Failed to tag alpine:latest for simulation' };
+    }
 
     // 2. Initial deployment (v1)
     const envV1 = {
@@ -430,7 +444,7 @@ volumes:
     // Wait for DB to be healthy
     let dbReady = false;
     for (let i = 0; i < 20; i++) {
-      const inspect = spawnSync('docker', ['exec', `${projectName}-db`, 'pg_isready', '-U', 'brewlite', '-d', 'postgres'], { stdio: 'ignore' });
+      const inspect = spawnSync('docker', ['exec', `${projectName}-db`, 'pg_isready', '-h', '127.0.0.1', '-U', 'brewlite', '-d', 'postgres'], { stdio: 'ignore' });
       if (inspect.status === 0) {
         dbReady = true;
         break;
@@ -446,6 +460,8 @@ volumes:
       'PGPASSWORD=sim_secret_password',
       `${projectName}-db`,
       'psql',
+      '-h',
+      '127.0.0.1',
       '-U',
       'brewlite',
       '-d',
@@ -509,6 +525,8 @@ volumes:
       'PGPASSWORD=sim_secret_password',
       `${projectName}-db`,
       'psql',
+      '-h',
+      '127.0.0.1',
       '-U',
       'brewlite',
       '-d',
