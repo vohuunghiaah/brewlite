@@ -80,9 +80,11 @@ export async function verifyFulfillment({ browser, page, api, web, order, produc
     }
     await verifyStep('READY', 'Đồ uống đã sẵn sàng — Vui lòng đến quầy nhận món.');
     await advanceOnScreen('Đánh dấu sẵn sàng'); // replay from the stale staff card
-    await advanceOnScreen('Xác nhận đã giao món');
-    await verifyStep('COMPLETED', 'Hoàn tất — Cảm ơn bạn đã lựa chọn BrewLite.');
+    // The staff queue must have rendered READY before an independent admin fulfills it.
+    await card.getByRole('button', { name: 'Xác nhận đã giao món' }).waitFor();
     assert.equal((await patch('COMPLETED', admin.accessToken)).status(), 200);
+    await verifyStep('COMPLETED', 'Hoàn tất — Cảm ơn bạn đã lựa chọn BrewLite.');
+    await advanceOnScreen('Xác nhận đã giao món');
     await card.waitFor({ state: 'detached' });
     assert.equal((await patch('PREPARING', staff.accessToken)).status(), 409);
     assert.equal(financialSnapshot(), before);
