@@ -14,6 +14,11 @@ const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const products_module_1 = require("./products/products.module");
 const orders_module_1 = require("./orders/orders.module");
+const auth_module_1 = require("./auth/auth.module");
+const payments_module_1 = require("./payments/payments.module");
+const _1731974400000_AddCustomizationAndNoteToOrderItems_1 = require("./migrations/1731974400000-AddCustomizationAndNoteToOrderItems");
+const _1732060800000_add_account_authentication_1 = require("./migrations/1732060800000-add-account-authentication");
+const _1732147200000_add_payments_and_stock_occ_1 = require("./migrations/1732147200000-add-payments-and-stock-occ");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -35,14 +40,22 @@ exports.AppModule = AppModule = __decorate([
                     password: config.get('DATABASE_PASSWORD'),
                     database: config.get('DATABASE_NAME'),
                     autoLoadEntities: true,
-                    synchronize: true,
-                    logging: true,
+                    synchronize: config.get('NODE_ENV') !== 'production',
+                    migrationsRun: config.get('NODE_ENV') === 'production',
+                    migrations: [
+                        _1731974400000_AddCustomizationAndNoteToOrderItems_1.AddCustomizationAndNoteToOrderItems1731974400000,
+                        _1732060800000_add_account_authentication_1.AddAccountAuthentication1732060800000,
+                        _1732147200000_add_payments_and_stock_occ_1.AddPaymentsAndStockOcc1732147200000,
+                    ],
+                    logging: false,
                     retryAttempts: 5,
                     retryDelay: 3000,
                 }),
             }),
             products_module_1.ProductsModule,
+            auth_module_1.AuthModule,
             orders_module_1.OrdersModule,
+            payments_module_1.PaymentsModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

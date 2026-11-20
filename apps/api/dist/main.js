@@ -7,6 +7,7 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     app.enableCors({
         origin: [
+            process.env.FRONTEND_URL ?? 'http://localhost:3000',
             'https://scaling-dollop-gxr9xjw7xg7gcvg5g-3000.app.github.dev',
         ],
         methods: [
@@ -20,6 +21,8 @@ async function bootstrap() {
         allowedHeaders: [
             'Content-Type',
             'Authorization',
+            'Idempotency-Key',
+            'idempotency-key',
         ],
         credentials: false,
     });

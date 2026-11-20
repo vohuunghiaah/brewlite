@@ -28,6 +28,12 @@ export class OrdersController {
     return this.ordersService.findAll(user.id);
   }
 
+  // GET /orders/me (SRS §2 FR-11, UC-06 - must precede :id to avoid ParseIntPipe capturing 'me')
+  @Get('me')
+  findMyOrders(@CurrentUser() user: AuthenticatedUser) {
+    return this.ordersService.findAll(user.id);
+  }
+
   // GET /orders/:id
   @Get(':id')
   findOne(
