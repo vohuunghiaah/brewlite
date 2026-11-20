@@ -1,10 +1,10 @@
 # BrewLite — Báo Cáo Sẵn Sàng Phát Hành Production (Task 5.4.1)
 
-**PRODUCTION READINESS & HARDENING AUDIT REPORT**
+**PRODUCTION READINESS & HARDENING AUDIT REPORT (UPDATED FIX-5.4.1)**
 
 - **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
 - **Mã nhiệm vụ:** Task 5.4.1 — Production Readiness, Hardening & Security Audit
-- **Thời điểm nghiệm thu:** 20/11/2026, 20:45:00 UTC+7 (13:45:00 UTC)
+- **Thời điểm nghiệm thu cập nhật:** 20/11/2026, 22:10:00 UTC+7 (15:10:00 UTC)
 - **Môi trường mục tiêu:** AWS Lightsail `brewlite-production` (Singapore, `ap-southeast-1a`)
 - **Địa chỉ phục vụ:** [https://brewlite.54-255-241-1.sslip.io](https://brewlite.54-255-241-1.sslip.io) & [https://swe-brewlite.54-255-241-1.sslip.io](https://swe-brewlite.54-255-241-1.sslip.io)
 - **Quyết định nghiệm thu:** **READINESS AUDIT & TOOLING: PASS | CD LIVE DEPLOYMENT: BLOCKED / PENDING APPROVAL GATE**
@@ -13,17 +13,27 @@
 
 ## A. Executive Summary (Tóm Tắt Quản Trị)
 
-Bản báo cáo này đánh giá độc lập toàn diện trạng thái sẵn sàng phát hành của hệ thống BrewLite đang vận hành trên nền tảng AWS Lightsail. Hệ thống ứng dụng (Web, API, Cơ sở dữ liệu PostgreSQL 16 và Reverse Proxy Caddy) đang chạy ổn định, phục vụ dữ liệu thực tế và đạt 100% các chỉ số kiểm thử khói (Smoke Test) qua HTTPS công khai.
+Bản báo cáo này đánh giá độc lập toàn diện trạng thái sẵn sàng phát hành của hệ thống BrewLite đang vận hành trên nền tảng AWS Lightsail. Hệ thống ứng dụng (Web Next.js, Backend NestJS API, Cơ sở dữ liệu PostgreSQL 16 và Reverse Proxy Caddy) đang chạy ổn định, phục vụ dữ liệu thực tế và đạt 100% các chỉ số kiểm thử khói (Smoke Test) qua HTTPS công khai.
 
-Tuy nhiên, **quy trình triển khai tự động Continuous Delivery (CD) qua GitHub Actions hiện đang ở trạng thái BỊ CHẶN (BLOCKED)** do thiếu thiết lập môi trường bảo vệ (`production` environment), thiếu Required Reviewers và chưa có các secrets/variables cấp quyền truy cập máy chủ trên GitHub Repository. 
+Tuy nhiên, **quy trình triển khai tự động Continuous Delivery (CD) qua GitHub Actions hiện đang ở trạng thái BỊ CHẶN (BLOCKED)** do thiếu thiết lập môi trường bảo vệ (`production` environment), thiếu Required Reviewers và chưa có các secrets/variables cấp quyền truy cập máy chủ trên GitHub Repository.
 
-### Tóm tắt các phát hiện và hành động khắc phục:
-1. **Mã nguồn và Container hiện tại:** Commit đang chạy trên máy chủ là `49c582bc` (merge PR #35). Image digest trên máy chủ khớp 100% với digest công bố trên GitHub Packages (GHCR). 4/4 container đều `healthy`, 0 lần khởi động lại (RestartCount = 0).
-2. **Cơ sở dữ liệu & Migration:** 4/4 migration TypeORM đã được áp dụng đầy đủ. Schema PostgreSQL khớp 100% (48/48 cột dữ liệu) với metadata thực thể backend.
-3. **Sao lưu & Phục hồi:** Bản sao lưu `db-backup-2026-11-20T12-56-05-888Z.sql` (16.876 byte) tồn tại và nguyên vẹn trên host. Đã xây dựng và kiểm thử thành công công cụ phục hồi an toàn [`scripts/restore-db.mjs`](../../scripts/restore-db.mjs) với cờ bảo vệ bắt buộc `--confirm-restore-database`. Cảnh báo rủi ro: Bản sao lưu chưa được nhân bản ra ngoài máy chủ (S3/R2).
-4. **Cấu hình Caddy (Config Drift):** Khắc phục triệt để nguy cơ ghi đè cấu hình đa tên miền (`brewlite...` và `swe-brewlite...`) bằng cách tái cấu trúc [`Caddyfile`](../../Caddyfile) sử dụng snippet tái sử dụng `(brewlite_proxy)`.
-5. **Rủi ro Mạng (Dynamic Public IP):** Máy chủ hiện dùng IPv4 động (`54.255.241.1`). Việc khởi động lại máy chủ có thể làm đổi IP, gây đứt gãy DNS và chứng chỉ TLS. Đã lập kế hoạch chuyển sang AWS Lightsail Static IP ($0 chi phí phụ trội khi gắn với máy chủ).
-6. **Cổng kiểm duyệt CI/CD:** Thiết lập chi tiết ma trận 11 bước preflight và hướng dẫn cấu hình GitHub Environment `production` với Required Reviewers nhằm tuân thủ tuyệt đối quy định an toàn phát hành của đề bài.
+### Tóm tắt các phát hiện và hành động khắc phục trong phiên FIX-5.4.1:
+1. **An toàn Phục hồi Dữ liệu (`scripts/restore-db.mjs`):**
+   - Loại bỏ hoàn toàn các giá trị ngầm định hướng về production (`brewlite-prod-db`, `brewlite`). Bắt buộc chỉ định rõ `--container` và `--db`.
+   - Cơ chế bảo vệ sản xuất kép: Mặc định từ chối mọi thao tác hướng vào container/database production. Chỉ cho phép thực thi khi có đủ 4 cờ xác nhận thảm họa (`--disaster-recovery-production`, `--confirm-restore-database`, `--acknowledge-destructive-overwrite`, `--confirm-target-db <exact-db-name>`).
+   - Tích hợp cờ `ON_ERROR_STOP=1` cho `psql`: dừng ngay lập tức khi gặp bất kỳ câu lệnh SQL lỗi nào.
+   - Kiểm tra toàn vẹn hai đầu: Kiểm tra cả header (`PostgreSQL database dump`) và footer kết thúc (`-- PostgreSQL database dump complete`) để chống nạp tệp backup bị đứt đoạn.
+   - Kiểm tra đọc lại dữ liệu thực tế: Xác minh đầy đủ 5 bảng schema, đếm bản ghi `products` $> 0$, `migrations` $\ge 1$ và đọc mẫu dữ liệu.
+   - **Đã kiểm chứng bằng Integration Test thực tế trên Docker:** Khởi tạo container PostgreSQL 16 cô lập, nạp dump, xác minh dữ liệu đọc lại và dọn dẹp sạch sẽ (44/44 tests PASS).
+2. **Chuẩn Hóa Đa Tên Miền Caddy & Phân Tách URL:**
+   - Phân biệt rõ ràng giữa **Tên miền chính (`DOMAIN`)** (dùng cho Smoke Test, Environment URL, CORS `FRONTEND_URL`) và **Danh sách Hostname (`CADDY_HOSTS`)** (dùng cho Caddy reverse proxy).
+   - Tuyệt đối không truyền chuỗi danh sách chứa dấu phẩy vào `TARGET_URL` hay `FRONTEND_URL`. Hàm `resolveSmokeTestTargetUrl` được bổ sung kiểm tra nghiêm ngặt chỉ chấp nhận 1 URL HTTPS hợp lệ.
+   - Cấu hình `Caddyfile` được kiểm chứng cú pháp bằng lệnh thực tế `caddy adapt --validate` thông qua container `caddy:2-alpine`, đạt kết quả PASS 100% với 0 lỗi.
+3. **Chuẩn Hóa Runbook Chuyển Đổi IP Tĩnh:**
+   - Thay thế hàm giả định bằng công cụ có thật và đã được kiểm thử: `safe-env.mjs set` và `updateEnvFile`, đảm bảo sao lưu trước khi sửa, bảo toàn secrets và quyền `0600`.
+   - Bổ sung bước bắt buộc tái tạo container Caddy: `docker compose -f docker-compose.prod.yml up -d --force-recreate caddy`.
+   - Sửa quy trình SSH: Tuyệt đối không tin tưởng `ssh-keyscan` mù quáng. Bắt buộc đối chiếu vân tay máy chủ có thẩm quyền từ Lightsail Browser Terminal trước khi nạp `known_hosts`.
+   - Loại bỏ cam kết downtime dưới 60 giây thiếu căn cứ, thay bằng đánh giá thực tế từ 2 đến 10 phút.
 
 ---
 
@@ -41,7 +51,7 @@ Tuy nhiên, **quy trình triển khai tự động Continuous Delivery (CD) qua 
 
 ### 2. Phiên bản Mã nguồn & Container Digest
 - **Git HEAD trên máy chủ:** `49c582bc3c126621020b83363e2a51c5c0c3a6a5` (PR #35 merge commit).
-- **Trạng thái nhánh `main` hiện tại:** Commit `ad4c0186c4f11eaf3e23b5cbe87eecdfa83bf8f6` (PR #36 merge commit). Hai commit này hoàn toàn không có sự khác biệt về mã nguồn ứng dụng hay logic backend/frontend (PR #36 chỉ bổ sung tài liệu báo cáo nghiệm thu `production-verification-report.md`).
+- **Trạng thái nhánh `main` hiện tại:** Commit `ad4c0186c4f11eaf3e23b5cbe87eecdfa83bf8f6` (PR #36 merge commit). Hai commit này hoàn toàn không có sự khác biệt về mã nguồn ứng dụng hay logic backend/frontend.
 - **Image Digest xác thực độc lập:**
 
 | Dịch vụ Container | Tên Image & Tag | Image Digest (GHCR & Host Match) | Trạng thái Container | RestartCount |
@@ -101,13 +111,12 @@ gh variable list
 - **Wait Timer:** 0 phút (hoặc 2 phút để cho phép hủy khẩn cấp).
 
 #### b. Danh mục GitHub Secrets (Phạm vi Environment `production`)
-Các bí mật phải được mã hóa và lưu tại `Settings -> Environments -> production -> Environment secrets`:
 
 | Tên Secret | Mục đích & Ý nghĩa | Định dạng / Ràng buộc an toàn |
 |---|---|---|
 | `LIGHTSAIL_SSH_KEY` | Private key OpenSSH để kết nối vào máy chủ | Khóa RSA/ED25519 (bắt đầu bằng `-----BEGIN OPENSSH PRIVATE KEY-----`) |
 | `LIGHTSAIL_HOST` | Địa chỉ IP hoặc FQDN của máy chủ Lightsail | `54.255.241.1` (hoặc Static IP sau khi gắn) |
-| `LIGHTSAIL_SSH_KNOWN_HOSTS` | Dấu vân tay máy chủ đã xác minh (Host Fingerprint) | Không dùng fallback `ssh-keyscan`. Phải chứa dòng định danh tin cậy để chống tấn công Man-In-The-Middle (MITM) |
+| `LIGHTSAIL_SSH_KNOWN_HOSTS` | Dấu vân tay máy chủ đã đối chiếu có thẩm quyền | Bắt buộc đối chiếu với `ssh-keygen -l` từ Lightsail Browser SSH. Không dùng keyscan mù quáng |
 | `POSTGRES_DB` | Tên cơ sở dữ liệu production | Khớp với database đang chạy: `brewlite` |
 | `POSTGRES_USER` | Tài khoản quản trị cơ sở dữ liệu | Khớp với user đang chạy: `brewlite` |
 | `POSTGRES_PASSWORD` | Mật khẩu truy cập cơ sở dữ liệu PostgreSQL | Chuỗi mật khẩu an toàn cao, không rò rỉ |
@@ -117,22 +126,9 @@ Các bí mật phải được mã hóa và lưu tại `Settings -> Environments
 
 | Tên Variable | Giá trị khuyến nghị | Mục đích |
 |---|---|---|
-| `DOMAIN` | `brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io` | Danh sách tên miền công khai cung cấp cho Caddy Reverse Proxy |
-| `FRONTEND_URL` | `https://brewlite.54-255-241-1.sslip.io` | URL gốc định danh frontend cho CORS & Callback |
+| `DOMAIN` | `brewlite.54-255-241-1.sslip.io` | **Tên miền chính duy nhất** (không chứa dấu phẩy, dùng cho Smoke Test & FRONTEND_URL) |
+| `CADDY_HOSTS` | `brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io` | Danh sách đầy đủ các hostname phục vụ qua Caddy Reverse Proxy |
 | `PRODUCTION_APPROVAL_CONFIGURED` | `true` | Cờ xác nhận quản trị viên đã kiểm tra ranh giới an toàn |
-
-### 3. Lệnh CLI hỗ trợ Quản trị viên thiết lập nhanh:
-```bash
-# 1. Tạo environment production (yêu cầu quyền admin repo)
-gh api --method PUT repos/vohuunghiaah/brewlite/environments/production
-
-# 2. Thiết lập biến môi trường
-gh variable set DOMAIN --env production --body "brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io"
-gh variable set PRODUCTION_APPROVAL_CONFIGURED --env production --body "true"
-
-# 3. Kiểm tra lại trạng thái
-gh api repos/vohuunghiaah/brewlite/environments/production
-```
 
 ---
 
@@ -145,123 +141,85 @@ gh api repos/vohuunghiaah/brewlite/environments/production
   - Web Digest: `sha256:012e59df46716ab52125d49bb86e7ef50479f8e659f798c9a55d7b439b7d5288`
 
 ### 2. Khả năng Tương thích của Công cụ Quay Lui
-- Hệ thống sử dụng hai script chuẩn hóa:
-  - [`scripts/deployment-state.mjs`](../../scripts/deployment-state.mjs): Lưu lại tag và digest của container trước mỗi lần triển khai vào tệp `/home/ubuntu/app/.deployment-state.json`.
-  - [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Tự động nạp trạng thái từ tệp `.deployment-state.json` (hoặc biến môi trường `ROLLBACK_API_IMAGE`/`ROLLBACK_WEB_IMAGE`), cập nhật tệp Compose và thực hiện kéo lại container phiên bản trước.
+- [`scripts/deployment-state.mjs`](../../scripts/deployment-state.mjs): Lưu lại tag và digest của container trước mỗi lần triển khai vào tệp `/home/ubuntu/app/.deployment-state.json`.
+- [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Tự động nạp trạng thái từ tệp `.deployment-state.json`, cập nhật tệp Compose và thực hiện kéo lại container phiên bản trước.
 - **Bảo toàn Dữ liệu Volume:** Thao tác rollback tuyệt đối không sử dụng cờ `-v` hoặc `docker volume rm`. Volume dữ liệu `app_postgres_data` được giữ nguyên vẹn 100%.
-- **Kiểm thử mô phỏng cô lập:** Đã được kiểm chứng trong bộ kiểm thử `scripts/test-deployment-scripts.mjs` (Test 33), giả lập thành công kịch bản rollback khẩn cấp khi container mới không vượt qua bài kiểm tra sức khỏe mà không làm mất bản ghi cơ sở dữ liệu.
-
-### 3. Tệp Mẫu Trạng Thái Triển Khai (`.deployment-state.json`) trên Máy Chủ:
-```json
-{
-  "api": "ghcr.io/vohuunghiaah/brewlite-api:49c582bc3c126621020b83363e2a51c5c0c3a6a5",
-  "web": "ghcr.io/vohuunghiaah/brewlite-web:49c582bc3c126621020b83363e2a51c5c0c3a6a5",
-  "timestamp": "2026-11-20T12:35:00.000Z",
-  "gitHead": "49c582bc3c126621020b83363e2a51c5c0c3a6a5"
-}
-```
+- **Kiểm thử mô phỏng thực tế (FIX-11 Simulation):** Đã kiểm chứng trong bộ kiểm thử `scripts/test-deployment-scripts.mjs` (Test 28) với Docker Engine thực tế, khẳng định rollback thành công và giữ nguyên vẹn dữ liệu trong volume.
 
 ---
 
 ## E. Backup & Restore Readiness (Sẵn Sàng Sao Lưu & Phục Hồi Thảm Họa)
 
-### 1. Ma Trận Đánh Giá 4 Cấp Độ Sao Lưu (4-Level Evaluation Matrix)
+### 1. Ma Trận Đánh Giá 4 Cấp Độ Sao Lưu & Phục Hồi
 
 | Cấp độ Đánh giá | Tiêu chí kỹ thuật | Bằng chứng thực tế | Đánh giá |
 |---|---|---|:---:|
 | **Level 1: File Exists** | Có tệp backup tồn tại trên ổ cứng, dung lượng $> 0$ byte | Tệp `/home/ubuntu/app/backups/db-backup-2026-11-20T12-56-05-888Z.sql` có dung lượng **16.876 byte** (16.5 KB), quyền sở hữu `root:0600` | **PASS** |
-| **Level 2: Integrity Verified** | Header chứa chữ ký hợp lệ `PostgreSQL database dump`, footer chứa đánh dấu `-- PostgreSQL database dump complete`, cấu trúc bảng đầy đủ | Kiểm tra 1.024 byte đầu và cuối tệp xác nhận cấu trúc chuẩn `pg_dump 16.6`, chứa đủ lệnh tạo 8 bảng và nạp dữ liệu cho 4 món đồ uống | **PASS** |
-| **Level 3: Restore Test Passed** | Khôi phục thành công vào cơ sở dữ liệu cô lập, xác minh đọc lại được dữ liệu và kiểm thử khói pass | **Không thực thi trên production trực tiếp** (nguyên tắc cấm ghi dữ liệu phá hủy); **Đã PASS trong môi trường mô phỏng cô lập** với bộ test tự động [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs) (Test 35 & 36) | **SIMULATION PASS**<br>*(PROD NOT TESTED)* |
+| **Level 2: Integrity Verified** | Header chứa chữ ký hợp lệ `PostgreSQL database dump`, footer chứa đánh dấu `-- PostgreSQL database dump complete`, cấu trúc bảng đầy đủ | Kiểm tra cả đầu tệp (1KB) và đuôi tệp (2KB) xác nhận cấu trúc chuẩn `pg_dump 16.6`, chứa đủ lệnh tạo 8 bảng và dòng kết thúc hoàn chỉnh | **PASS** |
+| **Level 3a: Restore Safety Tests** | Script phục hồi từ chối chạy khi thiếu cờ xác nhận, thiếu container/db, hoặc nhắm vào production | 4 unit tests an toàn trong `scripts/test-deployment-scripts.mjs` (Tests 35, 36, 37, 38) PASS 100% | **SAFETY PASS** |
+| **Level 3b: Isolated Restore Integration Test** | Khôi phục thành công vào container PostgreSQL cô lập, xác minh schema, số lượng bản ghi và đọc lại dữ liệu thực tế | Integration test (Test 39) khởi chạy container `postgres:16-alpine` độc lập, stream nạp dữ liệu thành công, khẳng định 5 bảng, count `products` $> 0$, count `migrations` $\ge 1$, đọc đúng tên sản phẩm mẫu, và xác minh `ON_ERROR_STOP=1` chặn lỗi SQL | **PASS (ISOLATED DOCKER VERIFIED)** |
+| **Level 3c: Production Database Restore** | Khôi phục trực tiếp lên cơ sở dữ liệu AWS Lightsail đang hoạt động | **TUYỆT ĐỐI KHÔNG THỰC HIỆN** (Tuân thủ nguyên tắc bảo vệ dữ liệu sản xuất; tách thành Runbook SOP-03 với 4 cờ xác nhận) | **NOT TESTED / FORBIDDEN ON LIVE** |
 | **Level 4: Disaster Recovery Ready** | Bản sao lưu được tự động hóa (cron) và đẩy định kỳ ra ngoài máy chủ (Off-Host Storage như AWS S3 / Cloudflare R2) | Toàn bộ backup hiện chỉ nằm trên ổ cứng cục bộ của một máy chủ duy nhất. Chưa có cron job định kỳ và chưa có cơ chế đồng bộ lên S3/R2 | **FAIL / BLOCKED** |
-
-### 2. Công cụ Phục Hồi Cơ Sở Dữ Liệu An Toàn ([`scripts/restore-db.mjs`](../../scripts/restore-db.mjs))
-Trong khuôn khổ Task 5.4.1, script phục hồi mới đã được phát triển với các cơ chế phòng vệ nghiêm ngặt nhất:
-1. **Khóa an toàn bắt buộc:** Yêu cầu cờ `--confirm-restore-database`. Nếu thiếu cờ này, script lập tức hủy thao tác với exit code 1 (`SAFETY ABORT`) để bảo vệ dữ liệu sản xuất.
-2. **Kiểm tra chữ ký số dump:** Hàm `validateBackupFile()` đọc mẫu 1KB đầu của tệp backup để xác nhận tiêu đề `-- PostgreSQL database dump`. Tệp hỏng hoặc trống rỗng sẽ bị từ chối ngay lập tức trước khi chạm vào cơ sở dữ liệu.
-3. **Cơ chế Streaming không tràn RAM:** Dữ liệu backup được stream trực tiếp từ đĩa vào tiến trình `psql` qua Node.js stream, không tải toàn bộ nội dung tệp vào bộ nhớ đệm JavaScript heap.
-4. **Kiểm tra trạng thái sau phục hồi:** Tự động đếm số lượng bảng trong schema `public`. Nếu số bảng $< 4$, script báo lỗi và trả exit code 1.
-5. **Mặt nạ bảo mật (Credential Masking):** Toàn bộ chuỗi kết nối, mật khẩu và token đều được ẩn (`***`) trên log đầu ra.
-
-### 3. Khuyến nghị Chính sách Lưu trữ & Phục hồi Thảm họa (Disaster Recovery Policy)
-- **Chính sách xoay vòng (Retention Policy):** Giữ lại tối đa 7 bản sao lưu hàng ngày trên đĩa cục bộ. Bổ sung cron job dọn dẹp các tệp cũ quá 7 ngày:
-  ```bash
-  0 3 * * * find /home/ubuntu/app/backups -name "db-backup-*.sql" -mtime +7 -delete
-  ```
-- **Lưu trữ ngoài máy chủ (Off-Host S3 Replication):** Thiết lập một S3 bucket riêng biệt tại Singapore (`s3://brewlite-production-backups-ap-southeast-1/`) và phân quyền IAM role chỉ cho phép `s3:PutObject`. Sau khi `backup-db.mjs` hoàn tất, tự động đồng bộ tệp lên S3 để chống rủi ro hỏng ổ cứng VM.
 
 ---
 
 ## F. Configuration Drift & Networking (Đồng Bộ Cấu Hình & Mạng)
 
-### 1. Phân Tích Hiện Tượng Lệch Cấu Hình Caddyfile (Config Drift)
-- **Hiện trạng trên máy chủ:** Quản trị viên đã cấu hình thủ công Caddy để phục vụ song song hai tên miền:
-  - Tên miền chính: `brewlite.54-255-241-1.sslip.io`
-  - Tên miền phụ (Alias): `swe-brewlite.54-255-241-1.sslip.io`
-- **Hiện trạng trong Git trước Task 5.4.1:** Tệp `Caddyfile` chỉ khai báo khối địa chỉ duy nhất `{$DOMAIN:localhost} {`.
-- **Rủi ro phát hiện:** Nếu pipeline CD tự động sao chép tệp `Caddyfile` từ Git lên máy chủ với biến môi trường đơn lẻ `DOMAIN=brewlite.54-255-241-1.sslip.io`, tên miền phụ `swe-brewlite...` sẽ bị xóa sổ, gây lỗi kết nối 404/502 cho những người dùng truy cập qua liên kết môn học SWE. Ngược lại, nếu không truyền `DOMAIN`, Caddy sẽ fallback về `brewlite.vn` (tên miền chưa trỏ DNS về IP của máy chủ), làm sập cả hai liên kết HTTPS.
-- **Giải pháp chuẩn hóa (Đã hoàn thiện):**
-  Tái cấu trúc [`Caddyfile`](../../Caddyfile) bằng cách đóng gói toàn bộ logic reverse proxy, nén encode và bảo mật header vào snippet `(brewlite_proxy)`:
-  ```caddyfile
-  (brewlite_proxy) {
-      encode gzip zstd
-      header {
-          Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-          X-Content-Type-Options "nosniff"
-          X-Frame-Options "DENY"
-          Referrer-Policy "strict-origin-when-cross-origin"
-      }
-      handle /api/* {
-          reverse_proxy api:3001
-      }
-      handle {
-          reverse_proxy web:3000
-      }
-  }
-
-  {$DOMAIN:localhost} {
-      import brewlite_proxy
-  }
+### 1. Phân Tách Rõ Ràng Tên Miền Chính và Danh Sách Hostname Caddy
+- **`DOMAIN` (Tên miền chính duy nhất):** `brewlite.54-255-241-1.sslip.io`
+  - Sử dụng cho: GitHub Environment URL, Smoke Test target URL (`https://$DOMAIN`), backend CORS `FRONTEND_URL`.
+  - Nghiêm cấm: Truyền chuỗi danh sách có dấu phẩy hoặc khoảng trắng vào `DOMAIN`.
+- **`CADDY_HOSTS` (Danh sách Hostname Caddy):** `brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io`
+  - Sử dụng cho: Caddy Reverse Proxy, tự động cấp phát 2 chứng chỉ Let's Encrypt riêng biệt.
+  - Cấu hình trong `Caddyfile`:
+    ```caddyfile
+    {$CADDY_HOSTS:localhost} {
+        import brewlite_proxy
+    }
+    ```
+  - Cấu hình trong `docker-compose.prod.yml`:
+    ```yaml
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      CADDY_HOSTS: ${CADDY_HOSTS:-${DOMAIN:-localhost}}
+    ```
+- **Kiểm chứng thực tế cú pháp Caddy (Real Caddy Validation):**
+  Lệnh kiểm chứng bằng Docker container:
+  ```bash
+  docker run --rm \
+    -e CADDY_HOSTS="brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io" \
+    -v "${PWD}/Caddyfile:/etc/caddy/Caddyfile:ro" \
+    caddy:2-alpine caddy adapt --validate --config /etc/caddy/Caddyfile
   ```
-  Nhờ snippet này, biến môi trường `DOMAIN` có thể nhận danh sách phân tách bằng dấu phẩy:
-  `DOMAIN="brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io"`. Caddy sẽ tự động sinh hai khối server độc lập nhưng chia sẻ 100% cấu hình và cấp hai chứng chỉ Let's Encrypt riêng biệt.
+  Kết quả: **Exit code 0 (PASS)**, phân tích thành công 2 routes cho 2 hostname với đầy đủ TLS policies và security headers.
 
 ### 2. Kế Hoạch Chuyển Đổi Địa Chỉ IP Tĩnh (Lightsail Static IP Transition)
-- **Rủi ro hiện tại:** Máy chủ đang sử dụng **Dynamic Public IPv4** (`54.255.241.1`). Khi tắt máy chủ để bảo trì (`stop/start`) hoặc nâng cấp gói phần cứng, AWS Lightsail sẽ thu hồi IP này và gán một IP mới ngẫu nhiên. Khi đó, toàn bộ tên miền dạng `*.54-255-241-1.sslip.io` sẽ ngừng hoạt động ngay lập tức, chứng chỉ TLS bị vô hiệu hóa.
-- **Chi phí tham chiếu AWS Lightsail:**
-  - Gói 2GB RAM / 1 IPv4 hiện tại: **12 USD/tháng**.
-  - **Static IP gắn với máy chủ: 0.00 USD (Hoàn toàn MIỄN PHÍ khi được gắn vào instance đang chạy).**
-  - Static IP không gắn (để trống quá 1 giờ): 0.005 USD/giờ.
-- **Kế hoạch chuyển đổi từng bước (Zero-Risk Static IP Plan):**
-  1. *Bước 1:* Phê duyệt gắn Static IP từ Quản trị viên hệ thống.
-  2. *Bước 2:* Trên AWS Lightsail Console (hoặc AWS CLI), tạo một Static IP mới tại region `ap-southeast-1` mang tên `brewlite-static-ip`.
-  3. *Bước 3:* Thực hiện thao tác **Attach to brewlite-production**. (Thao tác này mất khoảng 15-30 giây).
-  4. *Bước 4:* Ghi nhận IP tĩnh mới (ví dụ: `54.x.y.z`).
-  5. *Bước 5:* Cập nhật biến môi trường trên máy chủ (`.env`) và GitHub Variables:
-     - `DOMAIN="brewlite.54-x-y-z.sslip.io, swe-brewlite.54-x-y-z.sslip.io"`
-     - `FRONTEND_URL="https://brewlite.54-x-y-z.sslip.io"`
-     - `LIGHTSAIL_HOST="54.x.y.z"`
-  6. *Bước 6:* Khởi động lại Caddy (`docker compose -f docker-compose.prod.yml restart caddy`). Caddy sẽ tự động gửi yêu cầu ACME tới Let's Encrypt và nhận chứng chỉ TLS mới trong vòng 10 giây.
-  7. *Bước 7:* Chạy lại kiểm thử khói `smoke-test.mjs` với URL mới để xác nhận nghiệm thu.
+- **Rủi ro hiện tại:** Máy chủ đang sử dụng Dynamic Public IPv4 (`54.255.241.1`). Khi stop/start máy chủ, IP sẽ thay đổi, làm tê liệt DNS và chứng chỉ TLS.
+- **Chi phí tham chiếu AWS Lightsail:** Static IP gắn vào máy chủ đang chạy: **0.00 USD/tháng (HOÀN TOÀN MIỄN PHÍ)**.
+- **Đánh giá downtime thực tế:** Downtime ước tính từ **2 đến 10 phút** do phụ thuộc vào thời gian cập nhật định tuyến mạng của AWS và bắt tay ACME của Let's Encrypt. Cần có kế hoạch cửa sổ bảo trì (Maintenance Window).
+- **Quy trình chuyển đổi an toàn (Runbook SOP-04):**
+  1. Sao lưu cấu hình: `cp .env .env.bak.$(date +%s) && chmod 600 .env.bak.*`.
+  2. Cập nhật bằng công cụ an toàn: `node scripts/safe-env.mjs set .env DOMAIN ...` và `set .env CADDY_HOSTS ...`.
+  3. Tái tạo Caddy: `docker compose -f docker-compose.prod.yml up -d --force-recreate caddy`.
+  4. Đối chiếu dấu vân tay có thẩm quyền từ Lightsail Browser SSH trước khi cập nhật `known_hosts`.
 
 ---
 
 ## G. CI/CD Production Preflight Matrix (Ma Trận 11 Bước Preflight)
 
-Bảng đối chiếu toàn bộ 11 giai đoạn của pipeline phát hành tự động quy định trong [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml):
-
 | STT | Giai đoạn Pipeline | Kỳ vọng Kỹ thuật | Hiện trạng Kiểm toán Thực tế | Trạng thái Chặn | Hành động Khắc phục / Mở khóa |
 |:---:|---|---|---|:---:|---|
 | **1** | **Dispatch Trigger & Branch Filter** | Kích hoạt thủ công `workflow_dispatch` trên nhánh `refs/heads/main`, input `target_env: production` và chuỗi `confirm_production: DEPLOY_PRODUCTION` | Logic workflow đã được định nghĩa chặt chẽ với điều kiện `if: github.ref == 'refs/heads/main' && inputs.confirm_production == 'DEPLOY_PRODUCTION'` | **READY (PASS)** | Sẵn sàng; chỉ kích hoạt khi có lệnh phát hành chính thức |
-| **2** | **Quality Gates Execution** | 100% tests (Unit, Integration, Component, Lint, Build, Deployment Tooling Suite, Compose E2E) phải PASS | Run `44736526961` và bộ test cục bộ đạt 38/38 tests PASS, 0 failure | **READY (PASS)** | Duy trì tỷ lệ xanh 100% trước khi bấm phát hành |
+| **2** | **Quality Gates Execution** | 100% tests (Unit, Integration, Component, Lint, Build, Deployment Tooling Suite, Compose E2E) phải PASS | Bộ test cục bộ và CI đạt **44/44 tests PASS, 0 failure** | **READY (PASS)** | Duy trì tỷ lệ xanh 100% trước khi bấm phát hành |
 | **3** | **Build & Publish Docker Images** | Đóng gói multi-stage Docker image, tag bằng Git SHA đầy đủ, push lên GHCR thành công | Image cho cả commit `49c582bc` và `ad4c0186` đã có sẵn trên GHCR, digest khớp tuyệt đối | **READY (PASS)** | Tự động sinh image mới theo từng commit merge vào `main` |
 | **4** | **GitHub Environment Approval Gate** | Tồn tại environment `production` với Required Reviewers; dừng chờ quản trị viên phê duyệt qua UI | API trả về 0 environments. Chưa có phê duyệt nào được cấu hình | **BLOCKED** | **Hành động bắt buộc:** Tạo environment `production` và gán reviewers trong GitHub Settings |
-| **5** | **Preflight Secrets & Variables Verification** | Runner kiểm tra đủ 7 secrets và 2 variables bắt buộc; nếu thiếu sẽ fail an toàn với mã lỗi rõ ràng | API trả về 0 secrets, 0 variables tại repository. Step sẽ dừng ở chế độ an toàn | **BLOCKED** | **Hành động bắt buộc:** Cấu hình đầy đủ SSH, DB, JWT secrets và biến `DOMAIN` |
-| **6** | **Strict Host Fingerprint Verification** | SSH sử dụng `known_hosts` tin cậy từ secret, cấm `StrictHostKeyChecking=no` và cấm fallback keyscan | Logic đã hoàn thiện trong script workflow (FIX-07) | **READY / WAITING SECRETS** | Sẽ PASS ngay khi secret `LIGHTSAIL_SSH_KNOWN_HOSTS` được cung cấp |
-| **7** | **Atomic Descriptor & Env Transfer** | Mã hóa base64 qua `safe-env.mjs`, giải mã tại máy chủ với quyền `0600`, đồng bộ Compose và Caddyfile | Script `safe-env.mjs` và Caddyfile snippet `(brewlite_proxy)` đã kiểm thử thành công 100% | **READY (PASS)** | Đảm bảo chuyển giao cấu hình an toàn, không lộ secret trên console log |
-| **8** | **Database Readiness & Fail-Closed Backup** | Kiểm tra container `brewlite-prod-db` healthy, thực hiện backup trước khi cập nhật; dừng nếu backup lỗi | Container DB đang healthy. Script `backup-db.mjs` đạt chuẩn fail-closed | **READY (PASS)** | Đảm bảo luôn có bản sao lưu trước mọi thao tác cập nhật schema |
+| **5** | **Preflight Secrets & Variables Verification** | Runner kiểm tra đủ 7 secrets và các variables bắt buộc; xác thực DOMAIN là 1 hostname duy nhất | API trả về 0 secrets, 0 variables tại repository. Step sẽ dừng ở chế độ an toàn | **BLOCKED** | **Hành động bắt buộc:** Cấu hình đầy đủ SSH, DB, JWT secrets và biến `DOMAIN`, `CADDY_HOSTS` |
+| **6** | **Strict Host Fingerprint Verification** | SSH sử dụng `known_hosts` tin cậy từ secret, cấm `StrictHostKeyChecking=no` và cấm fallback keyscan mù quáng | Logic đã hoàn thiện trong script workflow (FIX-07 & FIX-5.4.1) | **READY / WAITING SECRETS** | Sẽ PASS ngay khi secret `LIGHTSAIL_SSH_KNOWN_HOSTS` được cung cấp sau khi đối chiếu vân tay |
+| **7** | **Atomic Descriptor & Env Transfer** | Mã hóa base64 qua `safe-env.mjs`, giải mã tại máy chủ với quyền `0600`, đồng bộ Compose và Caddyfile | Script `safe-env.mjs` (hỗ trợ `updateEnvFile`, CLI `set`) và Caddyfile đã kiểm thử thành công 100% | **READY (PASS)** | Đảm bảo chuyển giao cấu hình an toàn, không lộ secret trên console log |
+| **8** | **Database Readiness & Fail-Closed Backup** | Kiểm tra container `brewlite-prod-db` healthy, thực hiện backup trước khi cập nhật; dừng nếu backup lỗi | Container DB đang healthy. Script `backup-db.mjs` kiểm tra cả header và completion footer | **READY (PASS)** | Đảm bảo luôn có bản sao lưu trước mọi thao tác cập nhật schema |
 | **9** | **Container Image Pull from GHCR** | Kéo cặp image mới về máy chủ; nếu lỗi mạng/registry sẽ tự động rollback | Đã kiểm tra quyền pull GHCR của máy chủ Lightsail hoạt động tốt | **READY (PASS)** | Tự động kích hoạt rollback nếu pull image thất bại |
 | **10** | **Database Schema Migration Execution** | Chạy `prepare-database.js migrate` với TypeORM; áp dụng các migration mới; rollback nếu lỗi | Hiện tại 4/4 migration đã áp dụng. Các migration kế tiếp phải tuân thủ Forward-Only | **READY (PASS)** | Tự động rollback nếu migration trả về exit code khác 0 |
-| **11** | **Container Rolling Update & Smoke Test** | `docker compose up -d`, kiểm tra 4 container healthy và chạy `smoke-test.mjs` qua HTTPS công khai | Smoke test thực tế đã đạt 4/4 tiêu chí; cơ chế auto-rollback sẵn sàng kích hoạt nếu HTTP != 200 | **READY (PASS)** | Hoàn tất chu trình phát hành có kiểm soát |
+| **11** | **Container Rolling Update & Smoke Test** | `docker compose up -d`, kiểm tra 4 container healthy và chạy `smoke-test.mjs` qua HTTPS công khai | Smoke test nhận đúng 1 URL HTTPS hợp lệ; cơ chế auto-rollback sẵn sàng kích hoạt nếu HTTP != 200 | **READY (PASS)** | Hoàn tất chu trình phát hành có kiểm soát |
 
 ---
 
@@ -272,14 +230,14 @@ Bảng đối chiếu toàn bộ 11 giai đoạn của pipeline phát hành tự
 | Rủi ro Kỹ thuật | Mức độ | Khả năng xảy ra | Biện pháp Phòng ngừa & Khắc phục |
 |---|:---:|:---:|---|
 | **R-01: Thiếu Cổng Phê Duyệt GitHub** | **HIGH** | Đang tồn tại | Nếu không có Required Reviewers, bất kỳ ai có quyền push vào `main` đều có thể kích hoạt workflow deploy mà không qua kiểm soát. **Khắc phục:** Bắt buộc tạo GitHub Environment `production` trước khi merge release. |
-| **R-02: Thay đổi Địa chỉ IPv4 Động** | **HIGH** | Trung bình (khi reboot VM) | Mất kết nối toàn bộ hệ thống do DNS sslip.io trỏ về IP cũ. **Khắc phục:** Thực hiện chuyển đổi sang AWS Lightsail Static IP theo Runbook SOP-04. |
-| **R-03: Ghi đè Cấu hình Đa Tên Miền Caddy** | **HIGH** | Đã được triệt tiêu | Caddyfile cũ sẽ xóa hostname phụ `swe-brewlite...`. **Khắc phục:** Đã hoàn thiện snippet `(brewlite_proxy)` trong Task 5.4.1. |
+| **R-02: Thay đổi Địa chỉ IPv4 Động** | **HIGH** | Trung bình (khi reboot VM) | Mất kết nối toàn bộ hệ thống do DNS sslip.io trỏ về IP cũ. **Khắc phục:** Thực hiện chuyển đổi sang AWS Lightsail Static IP theo Runbook SOP-04 (dự kiến downtime 2-10 phút). |
+| **R-03: Ghi đè Cấu hình Đa Tên Miền Caddy** | **HIGH** | Đã triệt tiêu | Phân tách `DOMAIN` (đơn lẻ) và `CADDY_HOSTS` (đa tên miền), kiểm chứng bằng `caddy adapt --validate`. |
 | **R-04: Mất Dữ Liệu Do Ổ Cứng Hỏng (Single Disk)** | **MEDIUM** | Thấp | Toàn bộ bản sao lưu chỉ nằm trên ổ cứng duy nhất của máy chủ VM. **Khắc phục:** Thiết lập bản sao ngoài máy chủ (S3/R2 replication) theo khuyến nghị tại Mục E. |
-| **R-05: Lỗi Khởi Động Lại Tràn Bộ Nhớ (OOM)** | **LOW** | Thấp | Cả 4 container đều đã được giới hạn RAM trong `docker-compose.prod.yml` (Tổng giới hạn 1.62 GB / 2.0 GB RAM của máy chủ). |
+| **R-05: Khôi phục Nhầm Đè Lên Database Production** | **HIGH** | Đã triệt tiêu | `restore-db.mjs` mặc định từ chối đích production; yêu cầu 4 cờ xác nhận thảm họa riêng biệt. |
 
 ### 2. Danh Sách Ký Duyệt Nghiệm Thu Bắt Buộc (Sign-Off Matrix)
 
-- [ ] **Repository Administrator:** Xác nhận đã tạo GitHub Environment `production`, cấu hình Required Reviewers và nạp đủ 7 secrets/2 variables an toàn.
+- [ ] **Repository Administrator:** Xác nhận đã tạo GitHub Environment `production`, cấu hình Required Reviewers và nạp đủ 7 secrets/variables an toàn.
 - [ ] **Cloud DevOps Engineer:** Xác nhận đã kiểm tra cấu hình mạng AWS Lightsail, phương án Static IP và quyền truy cập SSH qua khóa bảo mật.
 - [ ] **Lead QA Acceptance Engineer:** Xác nhận toàn bộ kết quả kiểm thử khói, tính toàn vẹn dữ liệu và các kịch bản rollback đã được kiểm chứng độc lập.
 
@@ -291,7 +249,7 @@ Dựa trên các bằng chứng khách quan, đối chiếu độc lập và k�
 
 1. **Về Năng lực Phần mềm & Trạng thái Vận hành Thực tế:**
    - Phiên bản ứng dụng đang chạy trên AWS Lightsail hoạt động ổn định, phục vụ đúng dữ liệu nghiệp vụ, vượt qua 100% các tiêu chí kiểm thử khói và tính toàn vẹn cơ sở dữ liệu.
-   - Các công cụ bảo vệ phát hành (Script khôi phục database [`scripts/restore-db.mjs`](../../scripts/restore-db.mjs), Snippet đa tên miền [`Caddyfile`](../../Caddyfile), Kiểm thử mở rộng [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs)) đã hoàn thành xuất sắc.
+   - Các công cụ bảo vệ phát hành (Script khôi phục database [`scripts/restore-db.mjs`](../../scripts/restore-db.mjs) với fail-closed và `ON_ERROR_STOP=1`, Tiện ích cấu hình [`scripts/safe-env.mjs`](../../scripts/safe-env.mjs), Cấu hình đa tên miền [`Caddyfile`](../../Caddyfile) kiểm chứng bằng `caddy adapt`, Bộ kiểm thử mở rộng [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs) với **44 tests PASS**) đã hoàn thành xuất sắc.
    - **KẾT LUẬN HẠNG MỤC AUDIT & TOOLING:** **PASS (ĐẠT CHUẨN SẴN SÀNG)**
 
 2. **Về Khả năng Kích hoạt Tự Động Hóa Phát hành (CD Pipeline):**

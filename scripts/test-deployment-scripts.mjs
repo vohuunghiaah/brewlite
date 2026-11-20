@@ -26,16 +26,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { saveDeploymentState, loadDeploymentState, captureRunningImages } from './deployment-state.mjs';
 import { readHeaderSample } from './backup-db.mjs';
-import { validateBackupFile } from './restore-db.mjs';
+import { validateBackupFile, isProductionTarget } from './restore-db.mjs';
 import {
   serializeEnv,
   parseEnv,
   readEnvFile,
+  updateEnvFile,
   validateKey,
   validateValue,
   escapeEnvValue,
   maskSecret as safeMaskSecret,
 } from './safe-env.mjs';
+import { resolveSmokeTestTargetUrl } from './smoke-test.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -1110,7 +1112,7 @@ runTest('EXECUTION', 'FIX-16 Requirement 6: safeMaskSecret masks credentials and
 // SECTION 5: TASK 5.4.1 PRODUCTION READINESS & RESTORE VERIFICATION
 // =====================================================================
 
-runTest('EXECUTION', 'TASK 5.4.1 Phase D: Restore script aborts safely without --confirm-restore-database', () => {
+runTest('EXECUTION', 'TASK 5.4.1 Phase D (Safety): Restore script aborts safely without --confirm-restore-database', () => {
   const res = spawnSync(process.execPath, [
     path.join(root, 'scripts/restore-db.mjs'),
     '--backup-file', 'dummy-backup.sql'
@@ -1123,7 +1125,42 @@ runTest('EXECUTION', 'TASK 5.4.1 Phase D: Restore script aborts safely without -
   );
 });
 
-runTest('EXECUTION', 'TASK 5.4.1 Phase D: Restore script validates header and fails-closed on corrupted backup', () => {
+runTest('EXECUTION', 'TASK 5.4.1 Phase D (Safety): Restore script requires explicit target container and database (rejects missing params)', () => {
+  const res = spawnSync(process.execPath, [
+    path.join(root, 'scripts/restore-db.mjs'),
+    '--confirm-restore-database',
+    '--backup-file', 'dummy-backup.sql'
+  ], { encoding: 'utf8' });
+
+  assert.equal(res.status, 1, 'Must exit with code 1 when target container/db is missing');
+  assert.ok(
+    res.stderr.includes('FAIL-CLOSED') && res.stderr.includes('Target container and database must be explicitly specified'),
+    'Stderr must report missing target container and database'
+  );
+});
+
+runTest('EXECUTION', 'TASK 5.4.1 Phase D (Safety): Restore script rejects targeting production environments in standard mode', () => {
+  assert.equal(isProductionTarget('brewlite-prod-db', 'brewlite'), true);
+  assert.equal(isProductionTarget('brewlite-prod-db', 'isolated_db'), true);
+  assert.equal(isProductionTarget('test-container', 'brewlite'), true);
+  assert.equal(isProductionTarget('test-container', 'test_db'), false);
+
+  const res = spawnSync(process.execPath, [
+    path.join(root, 'scripts/restore-db.mjs'),
+    '--confirm-restore-database',
+    '--container', 'brewlite-prod-db',
+    '--db', 'brewlite',
+    '--backup-file', 'dummy-backup.sql'
+  ], { encoding: 'utf8' });
+
+  assert.equal(res.status, 1, 'Must exit with code 1 when attempting to restore into production container without disaster recovery flags');
+  assert.ok(
+    res.stderr.includes('CRITICAL SAFETY GATE') && res.stderr.includes('production environment patterns'),
+    'Stderr must indicate critical safety gate rejection'
+  );
+});
+
+runTest('EXECUTION', 'TASK 5.4.1 Phase D (Safety): Restore script validates both dump header AND footer, failing-closed on truncated backup', () => {
   const tempDir = path.join(tmpdir(), 'restore-test-' + Date.now());
   mkdirSync(tempDir, { recursive: true });
 
@@ -1142,34 +1179,261 @@ runTest('EXECUTION', 'TASK 5.4.1 Phase D: Restore script validates header and fa
       /valid PostgreSQL dump header/
     );
 
-    // 3. Valid dump header
+    // 3. File with header but missing footer (truncated dump)
+    const truncatedFile = path.join(tempDir, 'truncated.sql');
+    writeFileSync(truncatedFile, '--\n-- PostgreSQL database dump\nCREATE TABLE test;\n', 'utf8');
+    assert.throws(
+      () => validateBackupFile(truncatedFile),
+      /incomplete or truncated/
+    );
+
+    // 4. Valid dump with header and completion footer
     const validFile = path.join(tempDir, 'valid.sql');
-    writeFileSync(validFile, '--\n-- PostgreSQL database dump\n-- Dumped by pg_dump version 16.6\nCREATE TABLE test;\n', 'utf8');
+    writeFileSync(validFile, '--\n-- PostgreSQL database dump\n-- Dumped by pg_dump version 16.6\nCREATE TABLE test;\n--\n-- PostgreSQL database dump complete\n--\n', 'utf8');
     const { valid, size } = validateBackupFile(validFile);
     assert.equal(valid, true);
     assert.ok(size > 0);
-
-    // 4. CLI fails-closed on corrupted file even with confirmation
-    const res = spawnSync(process.execPath, [
-      path.join(root, 'scripts/restore-db.mjs'),
-      '--confirm-restore-database',
-      '--backup-file', corruptFile
-    ], { encoding: 'utf8' });
-    assert.equal(res.status, 1);
-    assert.ok(res.stderr.includes('FAIL-CLOSED') && res.stderr.includes('valid PostgreSQL dump header'));
   } finally {
     try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }
 });
 
-runTest('STATIC', 'TASK 5.4.1 Phase E: Caddyfile supports reusable proxy snippet and multi-domain hostnames', () => {
-  const caddyfile = readFileSync(path.join(root, 'Caddyfile'), 'utf8');
-  assert.ok(caddyfile.includes('(brewlite_proxy)'), 'Caddyfile must define reusable proxy snippet');
-  assert.ok(caddyfile.includes('import brewlite_proxy'), 'Site block must import brewlite_proxy');
-  assert.ok(caddyfile.includes('{$DOMAIN:localhost}'), 'Site block must dynamically evaluate {$DOMAIN:localhost}');
-  assert.ok(caddyfile.includes('Strict-Transport-Security'), 'Proxy snippet enforces HSTS');
-  assert.ok(caddyfile.includes('reverse_proxy api:3001'), 'Proxies API traffic to port 3001');
-  assert.ok(caddyfile.includes('reverse_proxy web:3000'), 'Proxies web traffic to port 3000');
+runTest('SIMULATION', 'TASK 5.4.1 Phase D (Integration): Isolated PostgreSQL container restore verifies schema, row counts, and data read-back', () => {
+  let dockerAvailable = false;
+  try {
+    const check = spawnSync('docker', ['info'], { stdio: 'ignore' });
+    dockerAvailable = check.status === 0;
+  } catch {}
+
+  if (!dockerAvailable) {
+    return { skipped: true, reason: 'Docker daemon not running in current environment' };
+  }
+
+  const containerName = `brewlite-test-restore-iso-${Date.now()}`;
+  const testDb = 'iso_restore_target';
+  const tempDir = path.join(tmpdir(), 'pg-restore-iso-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+
+  try {
+    // 1. Start isolated PostgreSQL container
+    const runRes = spawnSync('docker', [
+      'run', '-d',
+      '--name', containerName,
+      '-e', 'POSTGRES_USER=brewlite',
+      '-e', 'POSTGRES_PASSWORD=test_restore_pass',
+      '-e', `POSTGRES_DB=${testDb}`,
+      '-e', 'POSTGRES_HOST_AUTH_METHOD=trust',
+      'postgres:16-alpine'
+    ], { encoding: 'utf8' });
+    assert.equal(runRes.status, 0, 'Docker run for isolated container must succeed');
+
+    // 2. Wait for postgres container to be responsive
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      const probe = spawnSync('docker', ['exec', containerName, 'pg_isready', '-U', 'brewlite', '-d', testDb], { stdio: 'ignore' });
+      if (probe.status === 0) {
+        ready = true;
+        break;
+      }
+      spawnSync(process.execPath, ['-e', 'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)']);
+    }
+    assert.equal(ready, true, 'Isolated database container must become ready');
+
+    // 3. Create a valid test backup file with full schema and sample data
+    const backupSql = `--
+-- PostgreSQL database dump
+-- Dumped by pg_dump version 16.6
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+
+CREATE TABLE public.products (
+    id integer NOT NULL,
+    name character varying(255) NOT NULL,
+    price numeric(10,2) NOT NULL
+);
+
+CREATE TABLE public.orders (
+    id uuid NOT NULL,
+    total_amount numeric(10,2) NOT NULL
+);
+
+CREATE TABLE public.order_items (
+    id uuid NOT NULL,
+    product_id integer NOT NULL
+);
+
+CREATE TABLE public.users (
+    id uuid NOT NULL,
+    email character varying(255) NOT NULL
+);
+
+CREATE TABLE public.migrations (
+    id integer NOT NULL,
+    timestamp bigint NOT NULL,
+    name character varying NOT NULL
+);
+
+INSERT INTO public.products (id, name, price) VALUES (1, 'Cà Phê Muối', 35000.00);
+INSERT INTO public.migrations (id, timestamp, name) VALUES (1, 1731888000000, 'InitCatalog1731888000000');
+
+--
+-- PostgreSQL database dump complete
+--
+`;
+    const backupFile = path.join(tempDir, 'valid-backup.sql');
+    writeFileSync(backupFile, backupSql, 'utf8');
+
+    // 4. Run restore-db.mjs against isolated container
+    const restoreRes = spawnSync(process.execPath, [
+      path.join(root, 'scripts/restore-db.mjs'),
+      '--confirm-restore-database',
+      '--container', containerName,
+      '--db', testDb,
+      '--user', 'brewlite',
+      '--backup-file', backupFile
+    ], { encoding: 'utf8' });
+
+    assert.equal(restoreRes.status, 0, `Restore script must exit with 0. Output: ${restoreRes.stderr}\n${restoreRes.stdout}`);
+    assert.ok(restoreRes.stdout.includes('Database restoration verified successfully'), 'Must output success confirmation');
+    assert.ok(restoreRes.stdout.includes('Cà Phê Muối'), 'Must verify sample product read-back');
+
+    // 5. Test ON_ERROR_STOP=1 by attempting to restore corrupted SQL (syntax error)
+    const badSql = `--
+-- PostgreSQL database dump
+THIS IS AN INVALID SQL SYNTAX ERROR THAT MUST HALT PSQL;
+--
+-- PostgreSQL database dump complete
+--
+`;
+    const badBackupFile = path.join(tempDir, 'bad-syntax.sql');
+    writeFileSync(badBackupFile, badSql, 'utf8');
+
+    const badRestoreRes = spawnSync(process.execPath, [
+      path.join(root, 'scripts/restore-db.mjs'),
+      '--confirm-restore-database',
+      '--container', containerName,
+      '--db', testDb,
+      '--user', 'brewlite',
+      '--backup-file', badBackupFile
+    ], { encoding: 'utf8' });
+
+    assert.equal(badRestoreRes.status, 1, 'Restore must fail (exit code 1) when SQL syntax error occurs due to ON_ERROR_STOP=1');
+  } finally {
+    spawnSync('docker', ['rm', '-f', containerName], { stdio: 'ignore' });
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('SIMULATION', 'TASK 5.4.1 Phase E (Caddy): Real Caddy adapt validates proxy snippet and multi-domain hostnames without errors', () => {
+  let dockerAvailable = false;
+  try {
+    const check = spawnSync('docker', ['info'], { stdio: 'ignore' });
+    dockerAvailable = check.status === 0;
+  } catch {}
+
+  if (!dockerAvailable) {
+    return { skipped: true, reason: 'Docker daemon not running in current environment' };
+  }
+
+  const caddyfilePath = path.join(root, 'Caddyfile');
+
+  // Test 1: Validate with CADDY_HOSTS multi-domain
+  const resMulti = spawnSync('docker', [
+    'run', '--rm',
+    '-e', 'CADDY_HOSTS=brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io',
+    '-e', 'DOMAIN=brewlite.54-255-241-1.sslip.io',
+    '-v', `${caddyfilePath}:/etc/caddy/Caddyfile:ro`,
+    'caddy:2-alpine', 'caddy', 'adapt', '--validate', '--config', '/etc/caddy/Caddyfile'
+  ], { encoding: 'utf8' });
+
+  assert.equal(resMulti.status, 0, `Caddy adapt must succeed for multi-domain CADDY_HOSTS: ${resMulti.stderr}`);
+  assert.ok(resMulti.stdout.includes('brewlite.54-255-241-1.sslip.io'), 'Adapted JSON must include primary host');
+  assert.ok(resMulti.stdout.includes('swe-brewlite.54-255-241-1.sslip.io'), 'Adapted JSON must include alias host');
+
+  // Test 2: Validate with default fallback (empty CADDY_HOSTS, fallback to localhost)
+  const resDefault = spawnSync('docker', [
+    'run', '--rm',
+    '-v', `${caddyfilePath}:/etc/caddy/Caddyfile:ro`,
+    'caddy:2-alpine', 'caddy', 'adapt', '--validate', '--config', '/etc/caddy/Caddyfile'
+  ], { encoding: 'utf8' });
+
+  assert.equal(resDefault.status, 0, `Caddy adapt must succeed with default configuration: ${resDefault.stderr}`);
+});
+
+runTest('EXECUTION', 'TASK 5.4.1 Phase E (Smoke Test): resolveSmokeTestTargetUrl strictly enforces single valid HTTPS URL in production', () => {
+  // 1. Single valid production HTTPS URL passes
+  const singleUrl = resolveSmokeTestTargetUrl('production', {
+    TARGET_URL: 'https://brewlite.54-255-241-1.sslip.io'
+  });
+  assert.equal(singleUrl, 'https://brewlite.54-255-241-1.sslip.io');
+
+  // 2. Comma-separated list in TARGET_URL is rejected
+  assert.throws(
+    () => resolveSmokeTestTargetUrl('production', {
+      TARGET_URL: 'https://brewlite.54-255-241-1.sslip.io, https://swe-brewlite.54-255-241-1.sslip.io'
+    }),
+    /TARGET_URL must be a single valid URL, not a list of hostnames/
+  );
+
+  // 3. Fallback from fileEnv.DOMAIN extracts only the primary domain if multiple domains exist in .env
+  const fallbackUrl = resolveSmokeTestTargetUrl('production', {}, {
+    DOMAIN: 'brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io'
+  });
+  assert.equal(fallbackUrl, 'https://brewlite.54-255-241-1.sslip.io');
+
+  // 4. Insecure HTTP in production is rejected
+  assert.throws(
+    () => resolveSmokeTestTargetUrl('production', { TARGET_URL: 'http://brewlite.54-255-241-1.sslip.io' }),
+    /Production smoke test requires HTTPS\/TLS endpoint/
+  );
+
+  // 5. Localhost in production is rejected
+  assert.throws(
+    () => resolveSmokeTestTargetUrl('production', { TARGET_URL: 'https://localhost' }),
+    /Production smoke test cannot use localhost/
+  );
+
+  // 6. Non-production defaults to localhost
+  const devUrl = resolveSmokeTestTargetUrl('development', {});
+  assert.equal(devUrl, 'http://localhost');
+});
+
+runTest('EXECUTION', 'TASK 5.4.1 Phase F: updateEnvFile atomically updates specified keys with 0600 mode while preserving existing secrets', () => {
+  const tempDir = path.join(tmpdir(), 'safe-env-update-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const envFile = path.join(tempDir, '.env');
+    writeFileSync(envFile, 'POSTGRES_PASSWORD="super_secret_pw"\nDOMAIN="brewlite.vn"\n', 'utf8');
+
+    // Update DOMAIN and add CADDY_HOSTS
+    const updated = updateEnvFile(envFile, {
+      DOMAIN: 'brewlite.54-255-241-1.sslip.io',
+      CADDY_HOSTS: 'brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io'
+    });
+
+    assert.equal(updated.POSTGRES_PASSWORD, 'super_secret_pw', 'Existing password must be preserved');
+    assert.equal(updated.DOMAIN, 'brewlite.54-255-241-1.sslip.io', 'DOMAIN must be updated');
+    assert.equal(updated.CADDY_HOSTS, 'brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io', 'CADDY_HOSTS must be added');
+
+    const readBack = readEnvFile(envFile);
+    assert.equal(readBack.POSTGRES_PASSWORD, 'super_secret_pw');
+    assert.equal(readBack.DOMAIN, 'brewlite.54-255-241-1.sslip.io');
+
+    // CLI test: node safe-env.mjs set <file> <key> <val>
+    const cliRes = spawnSync(process.execPath, [
+      path.join(root, 'scripts/safe-env.mjs'),
+      'set', envFile, 'FRONTEND_URL', 'https://brewlite.54-255-241-1.sslip.io'
+    ], { encoding: 'utf8' });
+
+    assert.equal(cliRes.status, 0);
+    const readAfterCli = readEnvFile(envFile);
+    assert.equal(readAfterCli.FRONTEND_URL, 'https://brewlite.54-255-241-1.sslip.io');
+    assert.equal(readAfterCli.POSTGRES_PASSWORD, 'super_secret_pw');
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
 });
 
 runTest('EXECUTION', 'TASK 5.4.1 Phase B: GitHub Environment preflight verification accurately reports missing configuration', () => {

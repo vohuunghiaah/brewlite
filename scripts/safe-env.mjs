@@ -1,14 +1,15 @@
 /**
- * Safe Environment Serialization & Parsing Utility for BrewLite Deployment (FIX-16)
+ * Safe Environment Serialization & Parsing Utility for BrewLite Deployment (FIX-16 & FIX-5.4.1)
  *
  * Implements safe, injection-proof serialization and parsing for .env files compatible with:
  * 1. Docker Compose v2 specification (proper double-quoted escaping: \", \\, \$, \n, \r, \t)
  * 2. Node.js deployment & rollback automation scripts
  * 3. Remote Bash execution WITHOUT ever using hazardous "source .env" or ". ./.env"
+ * 4. Atomic file update with 0600 permissions preserving existing secrets
  */
 
-import { readFileSync, existsSync } from 'fs';
-import path from 'path';
+import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
+import path from 'node:path';
 
 /**
  * Mask sensitive values in error logs to prevent credential leakage.
@@ -152,6 +153,34 @@ export function readEnvFile(filePath) {
   return parseEnv(content);
 }
 
+/**
+ * Update or set keys in a .env file on disk safely without losing existing keys or leaking secrets.
+ * Writes atomically with 0600 mode.
+ */
+export function updateEnvFile(filePath, updates) {
+  if (!updates || typeof updates !== 'object') {
+    throw new Error('updateEnvFile requires an object of key-value updates.');
+  }
+  const resolved = path.resolve(filePath);
+  const existing = existsSync(resolved) ? readEnvFile(resolved) : {};
+  const merged = { ...existing };
+
+  for (const [key, val] of Object.entries(updates)) {
+    const validKey = validateKey(key);
+    const validVal = validateValue(validKey, val);
+    merged[validKey] = validVal;
+  }
+
+  const content = serializeEnv(merged);
+  const tmpPath = `${resolved}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+  
+  writeFileSync(tmpPath, content, { encoding: 'utf8', mode: 0o600 });
+  renameSync(tmpPath, resolved);
+  return merged;
+}
+
+export const updateEnv = updateEnvFile;
+
 // CLI Execution Handler
 if (process.argv[1] && process.argv[1].endsWith('safe-env.mjs')) {
   const args = process.argv.slice(2);
@@ -170,6 +199,17 @@ if (process.argv[1] && process.argv[1].endsWith('safe-env.mjs')) {
       if (val !== undefined && val !== null) {
         process.stdout.write(String(val));
       }
+      process.exit(0);
+    } else if (command === 'set') {
+      const filePath = args[1];
+      const key = args[2];
+      const val = args[3];
+      if (!filePath || !key || val === undefined) {
+        console.error('Usage: node scripts/safe-env.mjs set <filePath> <key> <val>');
+        process.exit(1);
+      }
+      updateEnvFile(filePath, { [key]: val });
+      console.log(`✔ Updated key "${key}" in ${filePath}`);
       process.exit(0);
     } else if (command === 'validate') {
       const filePath = args[1];
@@ -193,7 +233,7 @@ if (process.argv[1] && process.argv[1].endsWith('safe-env.mjs')) {
       process.exit(0);
     } else {
       console.error(`Unknown command: ${command}`);
-      console.error('Available commands: get, validate');
+      console.error('Available commands: get, set, validate');
       process.exit(1);
     }
   } catch (err) {

@@ -1,6 +1,6 @@
 # BrewLite — Sổ Tay Vận Hành & Khắc Phục Sự Cố Phát Hành (Release Runbook)
 
-**Tài liệu:** Production Release & Disaster Recovery Runbook (Task 5.4.1)  
+**Tài liệu:** Production Release & Disaster Recovery Runbook (Task 5.4.1 - FIX-5.4.1)  
 **Mục đích:** Quy trình thao tác chuẩn (Standard Operating Procedures - SOP) cho đội ngũ Kỹ sư Vận hành (SRE / DevOps) và Kỹ sư Hệ thống trong các tình huống phát hành thông thường, xử lý sự cố khẩn cấp và phục hồi thảm họa dữ liệu trên AWS Lightsail.
 
 ---
@@ -36,18 +36,27 @@ Quy trình phát hành bản nâng cấp mã nguồn định kỳ qua GitHub Act
 ## SOP-02: Khắc Phục Các Sự Cố Triển Khai Phổ Biến (Troubleshooting Common Incidents)
 
 ### Sự Cố 1: Lỗi Xác Thực Dấu Vân Tay Host SSH (`Host key verification failed`)
-- **Triệu chứng:** Pipeline báo lỗi tại bước kết nối SSH: `Host key verification failed. Fatal: Could not read from remote repository.`
+- **Triệu chứng:** Pipeline báo lỗi tại bước kết nối SSH: `Host key verification failed. Fatal: Could not read from remote host.`
 - **Nguyên nhân:** Khóa công khai của máy chủ Lightsail bị thay đổi hoặc secret `LIGHTSAIL_SSH_KNOWN_HOSTS` trên GitHub chưa được cập nhật chính xác.
-- **Biện pháp xử lý chuẩn:**
-  1. Tuyệt đối **KHÔNG** thêm cờ `-o StrictHostKeyChecking=no`.
-  2. Kết nối an toàn vào máy chủ thông qua giao diện Lightsail Browser SSH Console.
-  3. Lấy dấu vân tay thực tế của máy chủ:
+- **Biện pháp xử lý chuẩn (Đối chiếu vân tay có thẩm quyền — Không tin tưởng keyscan mù quáng):**
+  1. Tuyệt đối **KHÔNG** thêm cờ `-o StrictHostKeyChecking=no` và **KHÔNG** chạy `ssh-keyscan` rồi ghi trực tiếp vào `known_hosts` mà không đối chiếu.
+  2. Đăng nhập an toàn vào AWS Lightsail Console và mở **Lightsail Browser SSH Terminal** (kênh xác thực nội bộ của AWS).
+  3. Lấy khóa công khai và vân tay thẩm quyền (Authoritative Fingerprint) trực tiếp từ hệ thống tệp của máy chủ:
      ```bash
+     cat /etc/ssh/ssh_host_ed25519_key.pub
      ssh-keygen -l -f /etc/ssh/ssh_host_ed25519_key.pub
-     ssh-keyscan -H 54.255.241.1
      ```
-  4. Cập nhật nội dung này vào secret `LIGHTSAIL_SSH_KNOWN_HOSTS` trong GitHub Environment `production`.
-  5. Chạy lại workflow.
+     *(Ghi lại chuỗi SHA256 vân tay máy chủ, ví dụ: `SHA256:abcd1234...`)*
+  4. Từ máy trạm hoặc môi trường quản trị, quét khóa qua mạng:
+     ```bash
+     ssh-keyscan -t ed25519 -H 54.255.241.1 > /tmp/scanned_host_key
+     ssh-keygen -l -f /tmp/scanned_host_key
+     ```
+  5. So sánh hai chuỗi vân tay: **Chỉ khi vân tay quét được khớp chính xác 100% từng ký tự với vân tay máy chủ tại Bước 3**, mới được phép cập nhật vào secret `LIGHTSAIL_SSH_KNOWN_HOSTS` trong GitHub Environment `production`:
+     ```bash
+     gh secret set LIGHTSAIL_SSH_KNOWN_HOSTS --env production < /tmp/scanned_host_key
+     ```
+  6. Xóa tệp tạm: `rm -f /tmp/scanned_host_key`.
 
 ### Sự Cố 2: Lỗi Migration Cơ Sở Dữ Liệu (`Database Migration Failed`)
 - **Triệu chứng:** Pipeline dừng tại bước `prepare-database.js migrate` với mã lỗi khác 0 và tự động kích hoạt rollback.
@@ -98,44 +107,58 @@ Quy trình phát hành bản nâng cấp mã nguồn định kỳ qua GitHub Act
 
 Quy trình này áp dụng khi cơ sở dữ liệu production bị lỗi nghiêm trọng, mất mát dữ liệu hoặc cần phục hồi về trạng thái của bản sao lưu trước đó.
 
-### Bước 1: Đánh Giá Tình Huống & Tạm Dừng Lưu Lượng Ghi (Freeze Writes)
-1. Xác định mức độ ảnh hưởng và tệp sao lưu gần nhất cần khôi phục trong thư mục `/home/ubuntu/app/backups/`.
-2. Tạm dừng nhận đơn hàng mới bằng cách ngắt lưu lượng web hoặc đưa website vào chế độ bảo trì:
+### Phân Định Ranh Giới An Toàn (Safety Boundaries)
+- **Chế độ Mặc định (Isolated/Test):** Script `scripts/restore-db.mjs` mặc định **TỪ CHỐI** mọi đích có tên container hoặc tên database chứa từ khóa production (`brewlite-prod-db`, `brewlite`).
+- **Chế độ Thảm họa Production (Disaster Recovery):** Chỉ được phép thực thi thủ công khi có sự phê duyệt của Release Manager, yêu cầu đồng thời 4 tham số an toàn nghiêm ngặt.
+
+### Bước 1: Đánh Giá Tình Huống & Đóng Băng Lưu Lượng Ghi (Freeze Writes)
+1. Xác định sự cố và lựa chọn tệp sao lưu nguyên vẹn trong thư mục `/home/ubuntu/app/backups/`.
+2. Dừng ngay lưu lượng người dùng bằng cách tạm dừng các container ứng dụng:
    ```bash
    cd /home/ubuntu/app
    docker compose -f docker-compose.prod.yml stop web api
    ```
 
-### Bước 2: Kiểm Tra Tính Toàn Vẹn Của Bản Sao Lưu (Integrity Verification)
-1. Liệt kê các bản sao lưu hiện có và kiểm tra kích thước tệp:
+### Bước 2: Kiểm Tra Tính Toàn Vẹn Cả Đầu Và Đuôi Bản Sao Lưu (Integrity Verification)
+1. Kiểm tra kích thước và sự tồn tại của tệp:
    ```bash
    ls -la /home/ubuntu/app/backups/
    ```
-2. Xác minh header của tệp sao lưu bằng công cụ kiểm tra tự động:
+2. Xác minh chữ ký dump bắt đầu và chữ ký kết thúc hoàn chỉnh:
    ```bash
    head -n 10 /home/ubuntu/app/backups/db-backup-2026-11-20T12-56-05-888Z.sql
-   tail -n 5 /home/ubuntu/app/backups/db-backup-2026-11-20T12-56-05-888Z.sql
+   tail -n 10 /home/ubuntu/app/backups/db-backup-2026-11-20T12-56-05-888Z.sql
    ```
-   *Yêu cầu bắt buộc:* Dòng đầu phải chứa `-- PostgreSQL database dump` và dòng cuối phải chứa `-- PostgreSQL database dump complete`.
+   *Yêu cầu bắt buộc:* Dòng đầu phải chứa `-- PostgreSQL database dump` và các dòng cuối phải chứa `-- PostgreSQL database dump complete`.
 
-### Bước 3: Thực Thi Khôi Phục An Toàn Với `restore-db.mjs`
-Sử dụng script phục hồi chính thức được trang bị cơ chế bảo vệ Fail-Closed:
+### Bước 3: Thực Thi Phục Hồi Thảm Họa Có Kiểm Soát Với `restore-db.mjs`
+Chạy lệnh phục hồi thảm họa với đầy đủ 4 cờ xác nhận an toàn:
 ```bash
 cd /home/ubuntu/app
 
-# Thực thi khôi phục cơ sở dữ liệu với cờ xác nhận bắt buộc
 node scripts/restore-db.mjs \
+  --disaster-recovery-production \
   --confirm-restore-database \
-  --backup-file "/home/ubuntu/app/backups/db-backup-2026-11-20T12-56-05-888Z.sql" \
+  --acknowledge-destructive-overwrite \
+  --confirm-target-db "brewlite" \
   --container "brewlite-prod-db" \
   --db "brewlite" \
-  --user "brewlite"
+  --user "brewlite" \
+  --backup-file "/home/ubuntu/app/backups/db-backup-2026-11-20T12-56-05-888Z.sql"
 ```
 
-*Lưu ý bảo mật:* Nếu thiếu cờ `--confirm-restore-database`, script sẽ lập tức dừng thực thi để ngăn chặn việc xóa nhầm dữ liệu đang hoạt động.
+*Cơ chế bảo vệ nâng cao tích hợp trong `restore-db.mjs`:*
+- `psql` được truyền `-v ON_ERROR_STOP=1`. Nếu có bất kỳ lỗi SQL nào xảy ra trong quá trình nạp dữ liệu, tiến trình sẽ dừng ngay lập tức và trả exit code 1.
+- Dữ liệu được stream trực tiếp từ đĩa vào stdin của tiến trình psql (zero buffer memory leak).
+- Tất cả mật khẩu kết nối đều được che giấu (`maskSecret`).
 
-### Bước 4: Kiểm Tra Toàn Vẹn Dữ Liệu Sau Phục Hồi
-Sau khi script hoàn thành, thực hiện truy vấn đối soát nhanh:
+### Bước 4: Kiểm Tra Toàn Vẹn & Đọc Lại Dữ Liệu Sau Phục Hồi
+Script `restore-db.mjs` tự động xác minh:
+1. Đầy đủ các bảng cốt lõi: `products`, `orders`, `order_items`, `users`, `migrations`.
+2. Đọc lại số lượng bản ghi: khẳng định `products` $> 0$ và `migrations` $\ge 1$.
+3. Đọc mẫu bản ghi thực tế từ bảng `products`.
+
+Kiểm tra thủ công bổ sung:
 ```bash
 docker exec -it brewlite-prod-db psql -U brewlite -d brewlite -c "
   SELECT 'products' as table_name, count(*) FROM products
@@ -145,10 +168,9 @@ docker exec -it brewlite-prod-db psql -U brewlite -d brewlite -c "
   SELECT 'migrations', count(*) FROM migrations;
 "
 ```
-Xác nhận bảng `products` có đủ 4 món cơ bản và bảng `migrations` có đủ 4 bản ghi.
 
 ### Bước 5: Khởi Động Lại Hệ Thống & Kiểm Thử Khói
-1. Bật lại toàn bộ dịch vụ:
+1. Khởi động lại toàn bộ dịch vụ:
    ```bash
    docker compose -f docker-compose.prod.yml up -d
    ```
@@ -164,9 +186,9 @@ Xác nhận bảng `products` có đủ 4 món cơ bản và bảng `migrations`
 
 Quy trình này hướng dẫn chi tiết các bước chuyển đổi từ IPv4 động sang IPv4 tĩnh trên AWS Lightsail để triệt tiêu vĩnh viễn rủi ro mất kết nối khi khởi động lại máy chủ.
 
-### Chi Phí Tham Chiếu AWS Lightsail
-- **Static IP gắn vào instance đang chạy:** **0.00 USD / tháng (HOÀN TOÀN MIỄN PHÍ).**
-- Static IP tạo nhưng không gắn vào máy chủ nào (sau 1 giờ): 0.005 USD / giờ.
+### Chi Phí & Dự Báo Downtime Tham Chiếu
+- **Chi phí AWS Lightsail:** Static IP gắn vào instance đang chạy là **0.00 USD / tháng (HOÀN TOÀN MIỄN PHÍ)**.
+- **Thời gian downtime dự kiến:** Quá trình chuyển đổi IP tĩnh dẫn đến việc gián đoạn kết nối mạng tạm thời do độ trễ cập nhật định tuyến mạng của AWS và thời gian hoàn tất bắt tay cấp chứng chỉ TLS mới từ Let's Encrypt (ước tính thực tế kéo dài từ **2 đến 10 phút**). Cần thông báo lịch bảo trì (Maintenance Window) trước khi thực hiện.
 
 ### Các Bước Thực Hiện Chuyển Đổi
 
@@ -180,45 +202,65 @@ Quy trình này hướng dẫn chi tiết các bước chuyển đổi từ IPv4
 7. Ghi nhận địa chỉ IP mới được cấp (giả định: `54.x.y.z`).
 
 #### Bước 2: Cập Nhật Cấu Hình Tên Miền & Caddy
-1. SSH vào máy chủ Lightsail (sử dụng IP mới hoặc thông qua Lightsail Browser Console).
+1. SSH an toàn vào máy chủ Lightsail (hoặc qua Lightsail Browser Terminal).
 2. Di chuyển vào thư mục ứng dụng:
    ```bash
    cd /home/ubuntu/app
    ```
-3. Cập nhật biến `DOMAIN` trong tệp `.env`:
+3. **Sao lưu cấu hình hiện tại trước khi thay đổi (Bắt buộc):**
    ```bash
-   # Cập nhật cả tên miền chính và tên miền phụ sang IP mới
-   node -e '
-     import("./scripts/safe-env.mjs").then(({ updateEnv }) => {
-       updateEnv(".env", {
-         DOMAIN: "brewlite.54-x-y-z.sslip.io, swe-brewlite.54-x-y-z.sslip.io",
-         FRONTEND_URL: "https://brewlite.54-x-y-z.sslip.io"
-       });
-     });
-   '
+   cp .env .env.bak.$(date +%s)
+   chmod 600 .env.bak.*
    ```
-4. Khởi động lại container Caddy để cấp phát lại chứng chỉ TLS cho IP mới:
+4. **Cập nhật cấu hình bằng tiện ích an toàn `safe-env.mjs` (Đã được kiểm thử và xác minh):**
    ```bash
-   docker compose -f docker-compose.prod.yml restart caddy
+   # Cập nhật tên miền chính (DOMAIN là 1 FQDN duy nhất)
+   node scripts/safe-env.mjs set .env DOMAIN "brewlite.54-x-y-z.sslip.io"
+
+   # Cập nhật danh sách tất cả các hostname phục vụ qua Caddy
+   node scripts/safe-env.mjs set .env CADDY_HOSTS "brewlite.54-x-y-z.sslip.io, swe-brewlite.54-x-y-z.sslip.io"
+
+   # Cập nhật URL Frontend cho CORS backend
+   node scripts/safe-env.mjs set .env FRONTEND_URL "https://brewlite.54-x-y-z.sslip.io"
+   ```
+5. Xác minh tệp cấu hình và phân quyền:
+   ```bash
+   node scripts/safe-env.mjs validate .env DOMAIN CADDY_HOSTS FRONTEND_URL
+   chmod 600 .env
+   ```
+6. **Tái tạo container Caddy để nạp các biến môi trường mới từ `.env` (Lưu ý: lệnh restart thông thường không nạp biến mới):**
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
    ```
 
 #### Bước 3: Cập Nhật Cấu Hình Trên GitHub Repository
 1. Cập nhật GitHub Variables cho Environment `production`:
    ```bash
-   gh variable set DOMAIN --env production --body "brewlite.54-x-y-z.sslip.io, swe-brewlite.54-x-y-z.sslip.io"
+   gh variable set DOMAIN --env production --body "brewlite.54-x-y-z.sslip.io"
+   gh variable set CADDY_HOSTS --env production --body "brewlite.54-x-y-z.sslip.io, swe-brewlite.54-x-y-z.sslip.io"
    ```
 2. Cập nhật GitHub Secrets cho Environment `production`:
    ```bash
    gh secret set LIGHTSAIL_HOST --env production --body "54.x.y.z"
    ```
-3. Lấy lại dấu vân tay host cho IP mới và cập nhật secret `LIGHTSAIL_SSH_KNOWN_HOSTS`:
-   ```bash
-   ssh-keyscan -H 54.x.y.z > /tmp/known_hosts.new
-   gh secret set LIGHTSAIL_SSH_KNOWN_HOSTS --env production < /tmp/known_hosts.new
-   ```
+3. **Đối chiếu dấu vân tay máy chủ có thẩm quyền trước khi ghi nhận `known_hosts`:**
+   - Trên máy chủ (qua Lightsail Browser SSH):
+     ```bash
+     ssh-keygen -l -f /etc/ssh/ssh_host_ed25519_key.pub
+     ```
+   - Trên máy quản trị:
+     ```bash
+     ssh-keyscan -t ed25519 -H 54.x.y.z > /tmp/prospective_key
+     ssh-keygen -l -f /tmp/prospective_key
+     ```
+   - **Chỉ khi hai chuỗi vân tay khớp nhau 100%**, mới cập nhật secret:
+     ```bash
+     gh secret set LIGHTSAIL_SSH_KNOWN_HOSTS --env production < /tmp/prospective_key
+     rm -f /tmp/prospective_key
+     ```
 
 #### Bước 4: Kiểm Thử Nghiệm Thu Môi Trường Mới
-Thực hiện smoke test tới địa chỉ IP tĩnh mới:
+Thực hiện smoke test tới địa chỉ IP tĩnh mới qua HTTPS:
 ```bash
 TARGET_ENV=production TARGET_URL="https://brewlite.54-x-y-z.sslip.io" node scripts/smoke-test.mjs
 ```
@@ -228,4 +270,8 @@ Xác nhận chứng chỉ TLS mới được cấp phát thành công và trang 
 Nếu IP tĩnh gặp sự cố định tuyến mạng:
 1. Vào AWS Lightsail Console -> Tab **Networking** -> Chọn `brewlite-prod-static-ip` -> Bấm **Detach**.
 2. Máy chủ sẽ tự động nhận lại một IPv4 công khai.
-3. Cập nhật lại hostname theo IPv4 mới và restart Caddy.
+3. Khôi phục tệp cấu hình từ bản sao lưu:
+   ```bash
+   cp .env.bak.<timestamp> .env
+   docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+   ```

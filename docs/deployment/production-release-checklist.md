@@ -1,6 +1,6 @@
 # BrewLite — Danh Sách Kiểm Tra Phát Hành Production (Release Checklist)
 
-**Tài liệu:** Production Release Checklist (Task 5.4.1)  
+**Tài liệu:** Production Release Checklist (Task 5.4.1 - FIX-5.4.1)  
 **Mục đích:** Bảng kiểm tra tuần tự bắt buộc cho Người phụ trách phát hành (Release Manager), DevOps Engineer và QA Lead trước, trong và sau mỗi lần triển khai mã nguồn lên môi trường Production trên AWS Lightsail.  
 **Nguyên tắc vận hành:** *Thất bại an toàn (Fail-Closed) — Không bỏ qua bất kỳ bước kiểm tra nào — Tự động quay lui (Rollback) khi phát sinh lỗi.*
 
@@ -26,14 +26,15 @@ Tất cả các mục trong giai đoạn này phải đạt trạng thái **PASS
 - [ ] **Giới hạn Nhánh (Deployment Branches):** Đã giới hạn chỉ duy nhất nhánh `main` được phép kích hoạt deployment vào môi trường `production`.
 - [ ] **Đầy đủ 7 Secrets bắt buộc tại Environment:**
   - [ ] `LIGHTSAIL_SSH_KEY` (Private key OpenSSH)
-  - [ ] `LIGHTSAIL_HOST` (IP hoặc hostname máy chủ Lightsail)
-  - [ ] `LIGHTSAIL_SSH_KNOWN_HOSTS` (Host fingerprint xác thực)
+  - [ ] `LIGHTSAIL_HOST` (IP hoặc hostname máy chủ Lightsail: `54.255.241.1`)
+  - [ ] `LIGHTSAIL_SSH_KNOWN_HOSTS` (Host fingerprint đã được đối chiếu có thẩm quyền từ máy chủ, không dùng keyscan mù quáng)
   - [ ] `POSTGRES_DB` (Tên DB: `brewlite`)
   - [ ] `POSTGRES_USER` (Tên user DB: `brewlite`)
   - [ ] `POSTGRES_PASSWORD` (Mật khẩu cơ sở dữ liệu)
   - [ ] `JWT_SECRET` (Khóa ký xác thực JWT)
-- [ ] **Đầy đủ 2 Variables bắt buộc:**
-  - [ ] `DOMAIN` (`brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io`)
+- [ ] **Đầy đủ Variables bắt buộc tại Environment:**
+  - [ ] `DOMAIN` (Tên miền chính duy nhất, ví dụ: `brewlite.54-255-241-1.sslip.io` — không chứa dấu phẩy, khoảng trắng hay giao thức)
+  - [ ] `CADDY_HOSTS` (Danh sách đầy đủ các hostname cho Caddy, ví dụ: `brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io`)
   - [ ] `PRODUCTION_APPROVAL_CONFIGURED` (`true`)
 
 ### D. Kiểm tra Trạng thái Máy Chủ & Cơ sở dữ liệu (Host & Database Preflight)
@@ -42,7 +43,7 @@ Tất cả các mục trong giai đoạn này phải đạt trạng thái **PASS
   - Dung lượng RAM khả dụng $\ge 800\text{ MB}$ (`free -m`).
   - Dung lượng ổ cứng khả dụng $\ge 10\text{ GB}$ (`df -h /`).
 - [ ] **Trạng thái Database:** Container `brewlite-prod-db` đang chạy ở trạng thái `healthy`, `pg_isready` trả về `accepting connections`.
-- [ ] **Bản sao lưu trước đó (Previous Backup):** Có ít nhất 01 tệp sao lưu `.sql` hợp lệ trong thư mục `/home/ubuntu/app/backups/`.
+- [ ] **Bản sao lưu trước đó (Previous Backup):** Có ít nhất 01 tệp sao lưu `.sql` hợp lệ trong thư mục `/home/ubuntu/app/backups/` có cả header và completion footer `-- PostgreSQL database dump complete`.
 - [ ] **Baseline Rollback:** Xác nhận digest của container đang chạy để làm điểm tựa quay lui khẩn cấp.
 
 ---
@@ -68,7 +69,7 @@ Thực hiện các bước theo đúng trình tự kỹ thuật:
 
 ### C. Giám sát Luồng Triển Khai Tự Động (Runner Stream Monitoring)
 Theo dõi log từng bước thực thi trong job `deploy-production`:
-- [ ] **Step 1: Prerequisites Check:** Xác nhận thông báo `✔ All production prerequisites, secrets, and known_hosts fingerprints verified.`
+- [ ] **Step 1: Prerequisites Check:** Xác nhận thông báo `✔ All production prerequisites, secrets, and known_hosts fingerprints verified.` Đảm bảo `DOMAIN` là 1 hostname duy nhất.
 - [ ] **Step 2: Compose Descriptors Validation:** `docker-compose.prod.yml` hợp lệ, không có lỗi phân tích cú pháp.
 - [ ] **Step 3: SSH Connection:** Kết nối thành công tới máy chủ qua `LIGHTSAIL_SSH_KNOWN_HOSTS`.
 - [ ] **Step 4: Environment Synchronization:** Bí mật môi trường được truyền an toàn qua base64 stdin và ghi vào `/home/ubuntu/app/.env` với quyền `0600`.
@@ -76,7 +77,7 @@ Theo dõi log từng bước thực thi trong job `deploy-production`:
 - [ ] **Step 6: Image Pull:** Kéo thành công hai image `brewlite-api` và `brewlite-web` mới từ GHCR.
 - [ ] **Step 7: Database Migration:** Container migration thực thi `dist/prepare-database.js migrate`, áp dụng thành công các migration mới (hoặc báo 0 migration nếu schema đã cập nhật).
 - [ ] **Step 8: Rolling Container Update:** `docker compose -f docker-compose.prod.yml up -d --remove-orphans` khởi chạy thành công các container mới.
-- [ ] **Step 9: Production Smoke Test:** Script `scripts/smoke-test.mjs` thực hiện 4/4 phép thử qua HTTPS công khai và trả về exit code 0.
+- [ ] **Step 9: Production Smoke Test:** Script `scripts/smoke-test.mjs` nhận đúng một URL HTTPS duy nhất (`https://$DOMAIN`), thực hiện 4/4 phép thử qua HTTPS công khai và trả về exit code 0.
 
 ---
 
@@ -116,7 +117,7 @@ Nếu xảy ra bất kỳ điều kiện nào dưới đây, **LẬP TỨC DỪN
 |:---:|---|---|
 | **TR-01** | **Smoke Test thất bại (HTTP != 200)** sau khi khởi chạy container mới | Pipeline tự động kích hoạt `scripts/rollback.mjs`, hoàn trả container về image tag phiên bản trước đã lưu trong `.deployment-state.json`. |
 | **TR-02** | **Migration thất bại (Exit code != 0)** trong quá trình nâng cấp schema | Pipeline dừng ngay lập tức trước khi cập nhật container; dữ liệu được giữ nguyên và rollback image nếu đã pull. |
-| **TR-03** | **Sao lưu cơ sở dữ liệu thất bại** trước khi deploy | Pipeline dừng ngay lập tức (Fail-Closed); tuyệt đối không chạy migration khi chưa có bản backup an toàn. |
+| **TR-03** | **Sao lưu cơ sở dữ liệu thất bại** trước khi deploy | Pipeline dừng ngay lập tức (Fail-Closed); tuyệt đối không chạy migration khi chưa có bản backup an toàn có đủ header và completion footer. |
 | **TR-04** | **Lỗi xác thực Host SSH (`known_hosts` mismatch)** | Pipeline hủy phiên SSH ngay lập tức; không tự động ghi đè fingerprint máy chủ để chống tấn công Man-In-The-Middle. |
 | **TR-05** | **Container rơi vào vòng lặp khởi động lại (CrashLoopBackOff)** | Người phụ trách phát hành SSH vào máy chủ và thực thi thủ công: `node scripts/rollback.mjs`. |
 | **TR-06** | **Chứng chỉ TLS Caddy không cấp được** (Quá giới hạn Rate Limit ACME) | Khôi phục cấu hình tên miền cũ và restart Caddy để phục hồi kết nối. |

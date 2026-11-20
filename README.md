@@ -18,7 +18,7 @@ Hệ thống hỗ trợ quy trình CI/CD hoàn chỉnh theo [ADR-007](docs/archi
 - **Workflow CI/CD:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (Quality Gate -> GHCR Publish -> Environment `production` Approval Gate -> Safe Deployment & Smoke Test -> Rollback).
 - **Kịch bản vận hành & Phục hồi thảm họa:**
   - Sao lưu cơ sở dữ liệu: `node scripts/backup-db.mjs`
-  - Phục hồi cơ sở dữ liệu an toàn: `node scripts/restore-db.mjs --confirm-restore-database --backup-file <path>`
+  - Phục hồi cơ sở dữ liệu an toàn: `node scripts/restore-db.mjs --confirm-restore-database --container <container> --db <db> --backup-file <path>`
   - Kiểm thử khói (Smoke Test): `node scripts/smoke-test.mjs`
   - Khôi phục phiên bản (Rollback): `node scripts/rollback.mjs` (bảo toàn volume `postgres_data`)
 - **Tài liệu bàn giao & Vận hành Production (Task 5.4.1):**

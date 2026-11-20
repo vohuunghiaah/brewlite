@@ -267,6 +267,7 @@ jobs:
           INPUT_PG_PASS: ${{ secrets.POSTGRES_PASSWORD }}
           INPUT_JWT_SEC: ${{ secrets.JWT_SECRET }}
           INPUT_DOMAIN: ${{ vars.DOMAIN }}
+          INPUT_CADDY_HOSTS: ${{ vars.CADDY_HOSTS }}
           INPUT_APPROVAL_CONF: ${{ vars.PRODUCTION_APPROVAL_CONFIGURED }}
         run: |
           set -eo pipefail
@@ -294,6 +295,13 @@ jobs:
           check_var "$INPUT_PG_PASS" "POSTGRES_PASSWORD"
           check_var "$INPUT_JWT_SEC" "JWT_SECRET"
           check_var "$INPUT_DOMAIN" "DOMAIN (variable)"
+
+          # FIX-5.4.1: Enforce that DOMAIN is a single hostname, not a comma list or URL
+          if [[ "$INPUT_DOMAIN" =~ [,\ ] ]] || [[ "$INPUT_DOMAIN" =~ ^https?:// ]]; then
+            HAS_HOST=false
+            MISSING_SECRETS="$MISSING_SECRETS DOMAIN_FORMAT_INVALID"
+            echo "❌ DOMAIN must be a single hostname without commas, whitespace, or scheme (e.g. 'brewlite.54-255-241-1.sslip.io'). Use CADDY_HOSTS for multiple hostnames."
+          fi
 
           # FIX-14 & FIX-16: Verification of explicit approval gate configuration
           if [ "$INPUT_APPROVAL_CONF" != "true" ]; then
@@ -337,6 +345,7 @@ jobs:
           API_IMAGE_REF: ${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}
           WEB_IMAGE_REF: ${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}
           DOMAIN: ${{ vars.DOMAIN || 'brewlite.vn' }}
+          CADDY_HOSTS: ${{ vars.CADDY_HOSTS || vars.DOMAIN || 'brewlite.vn' }}
         run: |
           set -eo pipefail
 
@@ -373,6 +382,7 @@ jobs:
                 POSTGRES_PASSWORD: process.env.PG_PASS,
                 JWT_SECRET: process.env.JWT_SEC,
                 DOMAIN: process.env.DOMAIN,
+                CADDY_HOSTS: process.env.CADDY_HOSTS || process.env.DOMAIN,
                 API_IMAGE_REF: process.env.API_IMAGE_REF,
                 WEB_IMAGE_REF: process.env.WEB_IMAGE_REF,
                 NODE_ENV: "production"

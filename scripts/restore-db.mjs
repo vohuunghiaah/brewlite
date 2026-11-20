@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 /**
- * BrewLite Database Restoration & Disaster Recovery Script (Task 5.4.1)
+ * BrewLite Database Restoration & Disaster Recovery Script (Task 5.4.1 - FIX-5.4.1)
  *
- * STRICT SAFETY RULES:
- * 1. Requires explicit flag --confirm-restore-database to prevent accidental data destruction.
- * 2. Never restores onto production database unless target database matches explicit confirmation.
- * 3. Verifies backup file existence, readability, size, and PostgreSQL dump header before execution.
- * 4. Checks container health and database readiness before starting stream.
- * 5. Streams dump directly into psql stdin with zero memory buffer limits.
- * 6. Validates restored tables and row counts after completion.
- * 7. Masks all sensitive credentials in output logs.
+ * STRICT SAFETY & ISOLATION RULES:
+ * 1. Default mode: ONLY permits restoring into explicitly specified isolated/test databases.
+ * 2. Rejects any operation targeting production environments in standard mode.
+ * 3. Never falls back to production database or container names by default. Both --container and --db are required.
+ * 4. Production Disaster Recovery requires a multi-step manual confirmation gate:
+ *    --disaster-recovery-production
+ *    --confirm-restore-database
+ *    --acknowledge-destructive-overwrite
+ *    --confirm-target-db <exact-db-name>
+ * 5. Full backup integrity verification: validates BOTH header (PostgreSQL database dump) AND tail (PostgreSQL database dump complete).
+ * 6. Executes psql with ON_ERROR_STOP=1 to halt immediately on any SQL statement error.
+ * 7. Streams dump directly into psql stdin with zero heap memory limits.
+ * 8. Comprehensive post-restore verification: validates schema tables, row counts, and sample record read-back.
+ * 9. Masks all sensitive credentials in output logs.
  */
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -19,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
-function maskSecret(text) {
+export function maskSecret(text) {
   if (!text) return '';
   return String(text)
     .replace(/(password|secret|key|token|auth)=([^\s&]+)/gi, '$1=***')
@@ -37,8 +43,23 @@ export function readHeaderSample(filePath, sampleSize = 1024) {
   }
 }
 
+export function readTailSample(filePath, sampleSize = 2048) {
+  const fd = openSync(filePath, 'r');
+  try {
+    const stats = statSync(filePath);
+    const readSize = Math.min(stats.size, sampleSize);
+    const position = Math.max(0, stats.size - readSize);
+    const buffer = Buffer.alloc(readSize);
+    const bytesRead = readSync(fd, buffer, 0, readSize, position);
+    return buffer.toString('utf8', 0, bytesRead);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /**
  * Validate backup file integrity without loading full file into memory.
+ * Checks both the header magic marker and the completion footer.
  */
 export function validateBackupFile(filePath) {
   if (!existsSync(filePath)) {
@@ -48,34 +69,65 @@ export function validateBackupFile(filePath) {
   if (stats.size === 0) {
     throw new Error(`Backup file is empty (0 bytes): ${filePath}`);
   }
+
+  // 1. Validate dump header
   const headerSample = readHeaderSample(filePath, 1024);
   if (!headerSample.includes('PostgreSQL database dump')) {
     throw new Error(`Backup file does not have a valid PostgreSQL dump header: ${filePath}`);
   }
+
+  // 2. Validate dump completion footer (proves backup was not interrupted mid-write)
+  const tailSample = readTailSample(filePath, 2048);
+  if (!tailSample.includes('PostgreSQL database dump complete')) {
+    throw new Error(`Backup file is incomplete or truncated (missing '-- PostgreSQL database dump complete' footer): ${filePath}`);
+  }
+
   return { size: stats.size, valid: true };
+}
+
+/**
+ * Detect whether target container or database represents a production environment.
+ */
+export function isProductionTarget(container, database) {
+  const isProdContainer = /prod/i.test(container || '');
+  const isProdDb = /^(brewlite|brewlite_prod|production)$/i.test(database || '');
+  return isProdContainer || isProdDb;
 }
 
 async function runRestore() {
   const args = process.argv.slice(2);
   const isConfirmed = args.includes('--confirm-restore-database');
-  const targetDbArg = args.find((_, i) => args[i - 1] === '--db') || process.env.POSTGRES_DB || 'brewlite';
-  const container = args.find((_, i) => args[i - 1] === '--container') || process.env.DB_CONTAINER || 'brewlite-prod-db';
-  const user = args.find((_, i) => args[i - 1] === '--user') || process.env.POSTGRES_USER || 'brewlite';
+  const isDisasterRecovery = args.includes('--disaster-recovery-production');
+  const isOverwriteAck = args.includes('--acknowledge-destructive-overwrite');
+
+  const targetDbArg = args.find((_, i) => args[i - 1] === '--db');
+  const container = args.find((_, i) => args[i - 1] === '--container');
+  const user = args.find((_, i) => args[i - 1] === '--user') || 'brewlite';
   const backupFile = args.find((_, i) => args[i - 1] === '--backup-file') || process.env.BACKUP_FILE;
+  const confirmedDbName = args.find((_, i) => args[i - 1] === '--confirm-target-db');
 
   console.log('======================================================================');
   console.log('🔄 BREWLITE DATABASE RESTORATION & DISASTER RECOVERY (STRICT SAFETY)');
-  console.log(`🗄️ Target DB:   ${targetDbArg}`);
-  console.log(`📁 Container:   ${container}`);
+  console.log(`🗄️ Target DB:   ${targetDbArg || 'NOT SPECIFIED (REQUIRED)'}`);
+  console.log(`📁 Container:   ${container || 'NOT SPECIFIED (REQUIRED)'}`);
   console.log(`👤 DB User:     ${user}`);
   console.log(`💾 Backup File:  ${backupFile || 'NOT SPECIFIED'}`);
+  console.log(`🛡️ DR Mode:     ${isDisasterRecovery ? 'PRODUCTION DISASTER RECOVERY' : 'ISOLATED / TEST'}`);
   console.log('======================================================================\n');
 
-  // Safety Gate: Require explicit confirmation
+  // Rule 1: Confirmation flag is mandatory
   if (!isConfirmed) {
     console.error('❌ SAFETY ABORT: Database restoration requires explicit confirmation flag:');
     console.error('   --confirm-restore-database');
     console.error('   Aborting to protect persistent data.');
+    process.exit(1);
+  }
+
+  // Rule 2: Explicit container and database are required (Zero implicit production fallback)
+  if (!container || !targetDbArg) {
+    console.error('❌ FAIL-CLOSED: Target container and database must be explicitly specified.');
+    console.error('   Provide both --container <name> and --db <database_name>.');
+    console.error('   Zero implicit defaults to production environments are permitted.');
     process.exit(1);
   }
 
@@ -84,10 +136,28 @@ async function runRestore() {
     process.exit(1);
   }
 
-  // Step 1: Validate backup file
+  // Rule 3: Protection against accidental production overwrites
+  const targetingProduction = isProductionTarget(container, targetDbArg);
+  if (targetingProduction) {
+    if (!isDisasterRecovery || !isOverwriteAck || confirmedDbName !== targetDbArg) {
+      console.error('❌ CRITICAL SAFETY GATE: Target matches production environment patterns:');
+      console.error(`   Container: "${container}", Database: "${targetDbArg}"`);
+      console.error('   Restoring to production is STRICTLY BLOCKED in standard mode.');
+      console.error('   Production disaster recovery requires ALL of the following:');
+      console.error('   1. --disaster-recovery-production');
+      console.error('   2. --confirm-restore-database');
+      console.error('   3. --acknowledge-destructive-overwrite');
+      console.error(`   4. --confirm-target-db "${targetDbArg}"`);
+      console.error('   Aborting to protect live production data.');
+      process.exit(1);
+    }
+    console.warn('⚠️ WARNING: PRODUCTION DISASTER RECOVERY MODE ACTIVATED WITH EXPLICIT OPERATOR CONFIRMATION.');
+  }
+
+  // Step 1: Validate backup file (header and footer)
   try {
     const { size } = validateBackupFile(backupFile);
-    console.log(`✔ Backup file validated: ${backupFile} (${(size / 1024).toFixed(2)} KB, header verified)`);
+    console.log(`✔ Backup file validated: ${backupFile} (${(size / 1024).toFixed(2)} KB, header & footer verified)`);
   } catch (err) {
     console.error('❌ FAIL-CLOSED: Backup validation failed:', maskSecret(err.message));
     process.exit(1);
@@ -120,11 +190,16 @@ async function runRestore() {
     process.exit(1);
   }
 
-  // Step 4: Stream restore directly via child process stdin
-  console.log(`Restoring database dump into ${container}:${targetDbArg} via streaming stdin...`);
+  // Step 4: Stream restore directly via child process stdin with ON_ERROR_STOP=1
+  console.log(`Restoring database dump into ${container}:${targetDbArg} via streaming stdin (ON_ERROR_STOP=1)...`);
   try {
     await new Promise((resolve, reject) => {
-      const psqlProc = spawn('docker', ['exec', '-i', container, 'psql', '-U', user, '-d', targetDbArg], {
+      // FIX-5.4.1: psql with -v ON_ERROR_STOP=1 halts immediately on any SQL statement error
+      const psqlProc = spawn('docker', [
+        'exec', '-i', container,
+        'psql', '-U', user, '-d', targetDbArg,
+        '-v', 'ON_ERROR_STOP=1'
+      ], {
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
@@ -158,20 +233,70 @@ async function runRestore() {
     process.exit(1);
   }
 
-  // Step 5: Verify table counts after restoration
+  // Step 5: Comprehensive post-restore verification:
+  // Check required tables, count rows, and read back sample data to prevent false PASS
+  console.log('Verifying restored schema and data integrity...');
+
+  // A. Check required schema tables exist
   const tableCheck = spawnSync('docker', [
-    'exec', container, 'psql', '-U', user, '-d', targetDbArg, '-t', '-c',
-    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';"
+    'exec', container, 'psql', '-U', user, '-d', targetDbArg, '-t', '-A', '-c',
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
   ], { encoding: 'utf8' });
 
-  const tableCount = parseInt(tableCheck.stdout.trim(), 10) || 0;
-  console.log(`✔ Restoration completed. Public tables in ${targetDbArg}: ${tableCount}`);
-  if (tableCount < 4) {
-    console.error(`⚠️ WARNING: Expected at least 4 tables, found ${tableCount}. Please verify database state.`);
+  if (tableCheck.status !== 0) {
+    console.error('❌ FAIL-CLOSED: Failed to inspect public tables after restore:', maskSecret(tableCheck.stderr));
     process.exit(1);
   }
 
-  console.log('🎉 Database restoration verified successfully.');
+  const publicTables = tableCheck.stdout.trim().split('\n').map(t => t.trim()).filter(Boolean);
+  console.log(`✔ Found ${publicTables.length} public tables in ${targetDbArg}: ${publicTables.join(', ')}`);
+
+  const requiredTables = ['products', 'orders', 'order_items', 'users', 'migrations'];
+  const missingTables = requiredTables.filter(t => !publicTables.includes(t));
+  if (missingTables.length > 0) {
+    console.error(`❌ VERIFICATION FAILED: Missing essential tables after restore: ${missingTables.join(', ')}`);
+    process.exit(1);
+  }
+
+  // B. Read back actual data rows from restored tables
+  const rowCheck = spawnSync('docker', [
+    'exec', container, 'psql', '-U', user, '-d', targetDbArg, '-t', '-A', '-c',
+    "SELECT 'products=' || count(*) FROM products UNION ALL SELECT 'migrations=' || count(*) FROM migrations;"
+  ], { encoding: 'utf8' });
+
+  if (rowCheck.status !== 0) {
+    console.error('❌ FAIL-CLOSED: Failed to read row counts after restore:', maskSecret(rowCheck.stderr));
+    process.exit(1);
+  }
+
+  const counts = Object.fromEntries(
+    rowCheck.stdout.trim().split('\n').map(line => line.split('='))
+  );
+
+  const productCount = parseInt(counts['products'] || '0', 10);
+  const migrationCount = parseInt(counts['migrations'] || '0', 10);
+  console.log(`✔ Restored row counts: products = ${productCount}, migrations = ${migrationCount}`);
+
+  if (productCount <= 0) {
+    console.error('❌ VERIFICATION FAILED: products table is empty after restore.');
+    process.exit(1);
+  }
+  if (migrationCount <= 0) {
+    console.error('❌ VERIFICATION FAILED: migrations table has 0 applied migrations after restore.');
+    process.exit(1);
+  }
+
+  // C. Sample data read-back verification
+  const sampleCheck = spawnSync('docker', [
+    'exec', container, 'psql', '-U', user, '-d', targetDbArg, '-t', '-A', '-c',
+    "SELECT name || ' (' || price || ')' FROM products ORDER BY id LIMIT 1;"
+  ], { encoding: 'utf8' });
+
+  if (sampleCheck.status === 0 && sampleCheck.stdout.trim()) {
+    console.log(`✔ Sample product read-back verified: "${sampleCheck.stdout.trim()}"`);
+  }
+
+  console.log('🎉 Database restoration verified successfully with real data read-back.');
   process.exit(0);
 }
 

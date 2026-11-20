@@ -1,60 +1,53 @@
 {
-    # Global options
-    email {$ACME_EMAIL:admin@brewlite.vn}
+	# Global options
+	email {$ACME_EMAIL:admin@brewlite.vn}
 }
 
 # Reusable proxy routing snippet (supports multiple domains and aliases)
 (brewlite_proxy) {
-    # Security Headers
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-    }
+	# Security Headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
 
-    # API Health Check alias (both /health and /api/health work)
-    handle /health {
-        reverse_proxy api:3001 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-        }
-    }
+	# API Health Check alias (both /health and /api/health work)
+	handle /health {
+		reverse_proxy api:3001 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
 
-    # API endpoints: strip /api prefix and proxy to NestJS API
-    handle_path /api/* {
-        reverse_proxy api:3001 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-        }
-    }
+	# API endpoints: strip /api prefix and proxy to NestJS API
+	handle_path /api/* {
+		reverse_proxy api:3001 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
 
-    # Next.js Frontend UI: proxy all other requests to Next.js Web
-    handle {
-        reverse_proxy web:3000 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-        }
-    }
+	# Next.js Frontend UI: proxy all other requests to Next.js Web
+	handle {
+		reverse_proxy web:3000 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
 
-    # Gzip / Zstandard compression
-    encode gzip zstd
+	# Gzip / Zstandard compression
+	encode gzip zstd
 
-    # Structured logging with rotation
-    log {
-        output stdout
-        format console
-    }
+	# Structured logging with rotation
+	log {
+		output stdout
+		format console
+	}
 }
 
-# Primary production domain & optional alias hostnames
-# Supports comma-separated list via {$DOMAIN} (e.g., "brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io")
-{$DOMAIN:localhost} {
-    import brewlite_proxy
+# Evaluates CADDY_HOSTS (set by docker-compose to ${CADDY_HOSTS:-${DOMAIN:-localhost}})
+{$CADDY_HOSTS:localhost} {
+	import brewlite_proxy
 }
