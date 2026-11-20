@@ -1,3 +1,4 @@
+import { migrations } from '../database';
 import * as crypto from 'crypto';
 import { DataSource, Repository } from 'typeorm';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
@@ -29,6 +30,10 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
 
   beforeAll(async () => {
     // FIX-08: Kết nối thực sự tới PostgreSQL; nếu không kết nối được thì FAIL trực tiếp
+    const database = process.env.POSTGRES_DB ?? 'brewlite_test';
+    if (!database.endsWith('_test') || /prod|live|master/i.test(database) || process.env.NODE_ENV === 'production') {
+      throw new Error('Payment integration tests require a dedicated *_test database.');
+    }
     dataSource = new DataSource({
       type: 'postgres',
       host: process.env.POSTGRES_HOST || 'localhost',
@@ -38,12 +43,14 @@ describe('PaymentsService - Real PostgreSQL Concurrency, Durability & Recovery T
       database: process.env.POSTGRES_DB || 'brewlite_test',
       entities: [User, Product, Order, OrderItem, Payment],
       synchronize: false,
+      migrations,
     });
 
     await dataSource.initialize();
 
-    // Đồng bộ cấu trúc schema trên database kiểm thử để sẵn sàng cho các test concurrency
-    await dataSource.synchronize();
+    const [live] = await dataSource.query('SELECT current_database() AS name');
+    if (live.name !== database) throw new Error('Unexpected integration database');
+    await dataSource.runMigrations();
 
     paymentRepo = dataSource.getRepository(Payment);
     orderRepo = dataSource.getRepository(Order);

@@ -1,0 +1,7 @@
+# Exercise the files built from the checkout, independently of host caches and .env files.
+services:
+  api:
+    volumes: !reset []
+    command: npm start
+  web:
+    volumes: !reset []

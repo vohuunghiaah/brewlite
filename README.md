@@ -9,6 +9,18 @@
 
 ---
 
+## Kiểm thử tích hợp Task 5.2
+
+Từ thư mục gốc, chạy các lệnh dưới đây với Node 24 và Docker Desktop. Bộ nghiệm thu dựng PostgreSQL riêng, chạy migration/seed hai lượt và kiểm tra luồng Menu → thanh toán → lịch sử trên Chromium.
+
+```powershell
+npm.cmd ci --prefix scripts
+node scripts/node_modules/playwright/cli.js install chromium --only-shell
+node scripts/test-compose.mjs --quality
+```
+
+Xem [hướng dẫn PowerShell, cổng và chẩn đoán](docs/testing/task-5-2.md) và [báo cáo nghiệm thu](docs/task-5-2-completion-report.md).
+
 ## 1. Giới Thiệu Dự Án & Phạm Vi Assignment 2
 
 **BrewLite** là hệ thống phần mềm hỗ trợ đặt đồ uống trực tuyến và quản lý quy trình pha chế cho chuỗi cửa hàng cà phê / đồ uống giải khát, được thực hiện trong khuôn khổ môn học **Công nghệ Phần mềm (Software Engineering)** — Học kỳ 1 Năm học 2026-2027.
@@ -306,7 +318,7 @@ Nhằm đảm bảo tính minh bạch, trung thực học thuật và truy vết
 - **Khắc phục và dọn dẹp sạch sẽ 100%:** Xóa toàn bộ mã kiểm thử âm, xác minh pipeline chạy lại đạt kết quả SUCCESS trọn vẹn, không còn rủi ro tồn dư.
 - **Biên bản kiểm toán và nghiệm thu:** Xây dựng hồ sơ `DOC-CI-01` tại [docs/task-4.4-ci-verification.md](docs/task-4.4-ci-verification.md).
 
-### 3. Chức năng dự kiến thuộc phạm vi Sprint 2 (Chưa có trên `main` và PR #28):
+### 3. Kế hoạch Sprint 2 tại thời điểm PR #28 (mốc lịch sử)
 - Tùy biến kích cỡ (size: Nhỏ, Vừa, Lớn) và chọn topping cho từng món đồ uống (`FR-02`).
 - Module Xác thực (`AuthModule`), đăng nhập, đăng ký và bảo vệ endpoint bằng JWT (`FR-04`).
 - Module Thanh toán (`PaymentsModule`), xử lý ví điện tử / thẻ ngân hàng mô phỏng (`FR-06`).
@@ -317,7 +329,7 @@ Nhằm đảm bảo tính minh bạch, trung thực học thuật và truy vết
 - Giao diện cập nhật tiến độ pha chế Barista Portal (`FR-12`).
 - Endpoint kiểm tra sức khỏe hệ thống `GET /health` (`FR-13`).
 
-### Tóm Tắt Các Khoảng Hở Nghiệp Vụ & Kỹ Thuật (GAP Summary):
+### Khoảng hở tại thời điểm kiểm toán Task 2–3 (mốc lịch sử)
 - **GAP-01 (Hoàn tiền tự động):** Chưa có API `POST /payments/:id/refund` và background worker xử lý hoàn tiền khi giao dịch xảy ra lỗi bất thường; việc xử lý ngoại tuyến đang chờ Product Owner phê duyệt quy trình.
 - **GAP-02 (Lưu trữ Idempotency Key):** Backend có ràng buộc chống trùng lặp nhưng Client Next.js chưa lưu khóa vào `sessionStorage` để tái sử dụng khi người dùng refresh hoặc thanh toán lại.
 - **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa quy tắc nghiệp vụ SRS (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ PO.

@@ -19,6 +19,7 @@ export class ProductsSeedService
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    if (!['development', 'test'].includes(process.env.NODE_ENV ?? 'development')) return;
     try {
       await seedProducts(this.dataSource);
 

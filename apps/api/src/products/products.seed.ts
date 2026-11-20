@@ -5,8 +5,6 @@ import { Product } from './entities/product.entity';
 export async function seedProducts(
   dataSource: DataSource,
 ): Promise<void> {
-  const productRepository = dataSource.getRepository(Product);
-
   const products = [
     {
       name: 'Cà phê Latte',
@@ -42,16 +40,21 @@ export async function seedProducts(
     },
   ];
 
-  for (const item of products) {
-    const existingProduct = await productRepository.findOne({
-      where: { name: item.name },
-    });
+  await dataSource.transaction(async manager => {
+    // Serialize simultaneous bootstraps without imposing uniqueness on catalog names.
+    await manager.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.seed.products'))");
+    const productRepository = manager.getRepository(Product);
+    for (const item of products) {
+      const existingProduct = await productRepository.findOne({
+        where: { name: item.name },
+      });
 
-    if (!existingProduct) {
-      const product = productRepository.create(item);
-      await productRepository.save(product);
+      if (!existingProduct) {
+        const product = productRepository.create(item);
+        await productRepository.save(product);
+      }
     }
-  }
+  });
 
   console.log('Đã kiểm tra và khởi tạo dữ liệu Products Seed!');
 }

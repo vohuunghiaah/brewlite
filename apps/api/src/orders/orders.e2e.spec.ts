@@ -19,6 +19,7 @@ describe('Orders Endpoints (e2e / integration)', () => {
     name: 'Cà phê Latte',
     price: '45000.00',
     isAvailable: true,
+    stock: 10,
   } as Product;
 
   const mockOrderRepository = {
