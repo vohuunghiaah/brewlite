@@ -3,7 +3,8 @@
     email {$ACME_EMAIL:admin@brewlite.vn}
 }
 
-{$DOMAIN:localhost} {
+# Reusable proxy routing snippet (supports multiple domains and aliases)
+(brewlite_proxy) {
     # Security Headers
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -50,4 +51,10 @@
         output stdout
         format console
     }
+}
+
+# Primary production domain & optional alias hostnames
+# Supports comma-separated list via {$DOMAIN} (e.g., "brewlite.54-255-241-1.sslip.io, swe-brewlite.54-255-241-1.sslip.io")
+{$DOMAIN:localhost} {
+    import brewlite_proxy
 }

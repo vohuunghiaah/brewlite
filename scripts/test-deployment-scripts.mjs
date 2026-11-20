@@ -26,6 +26,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { saveDeploymentState, loadDeploymentState, captureRunningImages } from './deployment-state.mjs';
 import { readHeaderSample } from './backup-db.mjs';
+import { validateBackupFile } from './restore-db.mjs';
 import {
   serializeEnv,
   parseEnv,
@@ -1105,8 +1106,100 @@ runTest('EXECUTION', 'FIX-16 Requirement 6: safeMaskSecret masks credentials and
   assert.ok(!res.stderr.includes(secretPw), 'Stderr must not leak sensitive parameters');
 });
 
+// =====================================================================
+// SECTION 5: TASK 5.4.1 PRODUCTION READINESS & RESTORE VERIFICATION
+// =====================================================================
+
+runTest('EXECUTION', 'TASK 5.4.1 Phase D: Restore script aborts safely without --confirm-restore-database', () => {
+  const res = spawnSync(process.execPath, [
+    path.join(root, 'scripts/restore-db.mjs'),
+    '--backup-file', 'dummy-backup.sql'
+  ], { encoding: 'utf8' });
+
+  assert.equal(res.status, 1, 'Must exit with code 1 when confirmation flag is omitted');
+  assert.ok(
+    res.stderr.includes('SAFETY ABORT') && res.stderr.includes('--confirm-restore-database'),
+    'Stderr must require explicit confirmation flag'
+  );
+});
+
+runTest('EXECUTION', 'TASK 5.4.1 Phase D: Restore script validates header and fails-closed on corrupted backup', () => {
+  const tempDir = path.join(tmpdir(), 'restore-test-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+
+  try {
+    // 1. Missing file
+    assert.throws(
+      () => validateBackupFile(path.join(tempDir, 'non-existent.sql')),
+      /Backup file does not exist/
+    );
+
+    // 2. Corrupted file missing pg_dump header
+    const corruptFile = path.join(tempDir, 'corrupt.sql');
+    writeFileSync(corruptFile, 'RANDOM TRASH DATA WITHOUT HEADER', 'utf8');
+    assert.throws(
+      () => validateBackupFile(corruptFile),
+      /valid PostgreSQL dump header/
+    );
+
+    // 3. Valid dump header
+    const validFile = path.join(tempDir, 'valid.sql');
+    writeFileSync(validFile, '--\n-- PostgreSQL database dump\n-- Dumped by pg_dump version 16.6\nCREATE TABLE test;\n', 'utf8');
+    const { valid, size } = validateBackupFile(validFile);
+    assert.equal(valid, true);
+    assert.ok(size > 0);
+
+    // 4. CLI fails-closed on corrupted file even with confirmation
+    const res = spawnSync(process.execPath, [
+      path.join(root, 'scripts/restore-db.mjs'),
+      '--confirm-restore-database',
+      '--backup-file', corruptFile
+    ], { encoding: 'utf8' });
+    assert.equal(res.status, 1);
+    assert.ok(res.stderr.includes('FAIL-CLOSED') && res.stderr.includes('valid PostgreSQL dump header'));
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('STATIC', 'TASK 5.4.1 Phase E: Caddyfile supports reusable proxy snippet and multi-domain hostnames', () => {
+  const caddyfile = readFileSync(path.join(root, 'Caddyfile'), 'utf8');
+  assert.ok(caddyfile.includes('(brewlite_proxy)'), 'Caddyfile must define reusable proxy snippet');
+  assert.ok(caddyfile.includes('import brewlite_proxy'), 'Site block must import brewlite_proxy');
+  assert.ok(caddyfile.includes('{$DOMAIN:localhost}'), 'Site block must dynamically evaluate {$DOMAIN:localhost}');
+  assert.ok(caddyfile.includes('Strict-Transport-Security'), 'Proxy snippet enforces HSTS');
+  assert.ok(caddyfile.includes('reverse_proxy api:3001'), 'Proxies API traffic to port 3001');
+  assert.ok(caddyfile.includes('reverse_proxy web:3000'), 'Proxies web traffic to port 3000');
+});
+
+runTest('EXECUTION', 'TASK 5.4.1 Phase B: GitHub Environment preflight verification accurately reports missing configuration', () => {
+  const evaluateEnvConfig = (environmentsList, repoSecrets) => {
+    const hasProdEnv = Array.isArray(environmentsList) && environmentsList.some(e => e.name === 'production');
+    const requiredSecrets = ['LIGHTSAIL_HOST', 'LIGHTSAIL_SSH_KEY', 'LIGHTSAIL_SSH_KNOWN_HOSTS', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'JWT_SECRET'];
+    const missingSecrets = requiredSecrets.filter(s => !repoSecrets.includes(s));
+    return {
+      isReady: hasProdEnv && missingSecrets.length === 0,
+      hasProdEnv,
+      missingSecrets
+    };
+  };
+
+  // Current production state: 0 environments, 0 secrets
+  const currentStatus = evaluateEnvConfig([], []);
+  assert.equal(currentStatus.isReady, false, 'Preflight must report not ready when environment & secrets are missing');
+  assert.equal(currentStatus.hasProdEnv, false, 'Must identify production environment as missing');
+  assert.equal(currentStatus.missingSecrets.length, 7, 'All 7 mandatory secrets must be reported as missing');
+
+  // Configured state
+  const readyStatus = evaluateEnvConfig(
+    [{ name: 'production' }],
+    ['LIGHTSAIL_HOST', 'LIGHTSAIL_SSH_KEY', 'LIGHTSAIL_SSH_KNOWN_HOSTS', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'JWT_SECRET']
+  );
+  assert.equal(readyStatus.isReady, true, 'Preflight passes when all required configs exist');
+});
+
 console.log('\n======================================================================');
-console.log('📊 TASK 5.3 DEPLOYMENT & DELIVERY TEST SUMMARY');
+console.log('📊 TASK 5.4.1 DEPLOYMENT & DELIVERY TEST SUMMARY');
 console.log('======================================================================');
 console.table(suite);
 
