@@ -1,11 +1,31 @@
 # BrewLite — Hệ Thống Đặt Đồ Uống Trực Tuyến (Online Drink Ordering System)
 
 [![Quality gates](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml)
+[![Continuous Delivery](https://github.com/vohuunghiaah/brewlite/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/vohuunghiaah/brewlite/actions/workflows/deploy.yml)
 [![Node.js Version](https://img.shields.io/badge/Node.js-24.x-brightgreen.svg)](https://nodejs.org/)
 [![NestJS](https://img.shields.io/badge/Backend-NestJS%2012-E0234E.svg)](https://nestjs.com/)
 [![Next.js](https://img.shields.io/badge/Frontend-Next.js%2016-black.svg)](https://nextjs.org/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016-336791.svg)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Container-Docker%20Compose-2496ED.svg)](https://www.docker.com/)
+
+---
+
+## Triển khai và Giao hàng liên tục (Task 5.3 - CD / Production Deployment)
+
+Hệ thống hỗ trợ quy trình CI/CD hoàn chỉnh theo [ADR-007](docs/architecture/adr/adr/007-aws-lightsail-deployment.md):
+- **Docker Compose Production:** [`docker-compose.prod.yml`](docker-compose.prod.yml) (Caddy Reverse Proxy 80/443, Next.js Standalone, NestJS API, PostgreSQL 16 internal network, memory limits 1.62GB / 2GB RAM VM).
+- **Reverse Proxy & HTTPS:** [`Caddyfile`](Caddyfile) tự động cấp TLS, proxy `/api/*` tới NestJS và UI tới Next.js.
+- **Workflow CI/CD:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (Quality Gate -> GHCR Publish -> Environment `production` Approval Gate -> Safe Deployment & Smoke Test -> Rollback).
+- **Kịch bản vận hành:**
+  - Sao lưu cơ sở dữ liệu: `node scripts/backup-db.mjs`
+  - Kiểm thử khói (Smoke Test): `node scripts/smoke-test.mjs`
+  - Khôi phục phiên bản (Rollback): `node scripts/rollback.mjs` (bảo toàn volume `postgres_data`)
+- **Tài liệu bàn giao:**
+  - [Báo cáo hoàn thành Task 5.3](docs/task-5-3-completion-report.md)
+  - [Hướng dẫn triển khai Production](docs/deployment/deployment-guide.md)
+  - [Hướng dẫn cấu hình Secrets & Environments](docs/deployment/github-environment-setup.md)
+  - [Hướng dẫn Rollback & Disaster Recovery](docs/deployment/rollback-guide.md)
+  - [Danh sách điều kiện tiên quyết kích hoạt Production](docs/deployment/production-prerequisites.md)
 
 ---
 

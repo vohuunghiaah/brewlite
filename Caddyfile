@@ -1,0 +1,53 @@
+{
+    # Global options
+    email {$ACME_EMAIL:admin@brewlite.vn}
+}
+
+{$DOMAIN:localhost} {
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # API Health Check alias (both /health and /api/health work)
+    handle /health {
+        reverse_proxy api:3001 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # API endpoints: strip /api prefix and proxy to NestJS API
+    handle_path /api/* {
+        reverse_proxy api:3001 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Next.js Frontend UI: proxy all other requests to Next.js Web
+    handle {
+        reverse_proxy web:3000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Gzip / Zstandard compression
+    encode gzip zstd
+
+    # Structured logging with rotation
+    log {
+        output stdout
+        format console
+    }
+}
