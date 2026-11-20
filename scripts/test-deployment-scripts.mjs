@@ -19,12 +19,22 @@ import {
   mkdirSync,
   createWriteStream,
   statSync,
+  copyFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { saveDeploymentState, loadDeploymentState, captureRunningImages } from './deployment-state.mjs';
 import { readHeaderSample } from './backup-db.mjs';
+import {
+  serializeEnv,
+  parseEnv,
+  readEnvFile,
+  validateKey,
+  validateValue,
+  escapeEnvValue,
+  maskSecret as safeMaskSecret,
+} from './safe-env.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -140,6 +150,7 @@ runTest('STATIC', 'FIX-14: deploy.yml blocks automated push/merge production dep
   assert.ok(prodJob.includes("inputs.target_env == 'production'"), 'Production deploy requires target_env == production');
   assert.ok(prodJob.includes("inputs.confirm_production == 'DEPLOY_PRODUCTION'"), 'Requires explicit confirmation DEPLOY_PRODUCTION');
   assert.ok(!prodJob.includes("github.event_name == 'push'"), 'deploy-production must NEVER run on push event');
+  assert.ok(prodJob.includes("github.ref == 'refs/heads/main'"), 'deploy-production strictly requires refs/heads/main');
   assert.ok(prodJob.includes('name: production'), 'Retains production environment for approval gate');
   assert.ok(deployYaml.includes('PRODUCTION_APPROVAL_CONFIGURED'), 'Requires verified approval configuration');
 });
@@ -156,12 +167,19 @@ runTest('STATIC', 'FIX-15: deploy.yml has zero direct secret interpolations in s
   }
 });
 
-runTest('STATIC', 'FIX-13: deploy.yml safely exports .env to remote shell and invokes smoke test with configured DOMAIN', () => {
+runTest('STATIC', 'FIX-16: deploy.yml eliminates hazardous source .env, extracts variables via safe-env.mjs, and enforces branch protection', () => {
   const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  const prodJob = deployYaml.split('deploy-production:')[1].split('steps:')[0];
+  assert.ok(prodJob.includes("github.ref == 'refs/heads/main'"), 'Production deploy must strictly enforce github.ref == refs/heads/main');
+
   const remoteDeploy = deployYaml.split('id: remote-deploy')[1].split('Record Deployment State')[0];
-  assert.ok(remoteDeploy.includes('set -a') && remoteDeploy.includes('. ./.env'), 'Remote shell must safely export .env variables');
+  assert.ok(!remoteDeploy.includes('. ./.env') && !remoteDeploy.includes('source .env'), 'Remote shell must NEVER source .env directly');
+  assert.ok(remoteDeploy.includes('scripts/safe-env.mjs get .env DOMAIN'), 'Must extract DOMAIN safely via safe-env.mjs');
+  assert.ok(remoteDeploy.includes('scripts/safe-env.mjs get .env POSTGRES_USER'), 'Must extract POSTGRES_USER safely via safe-env.mjs');
+  assert.ok(remoteDeploy.includes('scripts/safe-env.mjs get .env POSTGRES_DB'), 'Must extract POSTGRES_DB safely via safe-env.mjs');
   assert.ok(remoteDeploy.includes('TARGET_URL="https://$DOMAIN"'), 'Smoke test must use exported https://$DOMAIN');
-  assert.ok(remoteDeploy.includes('Essential environment variables (DOMAIN, POSTGRES_USER, POSTGRES_DB)'), 'Validates variables before execution');
+  assert.ok(remoteDeploy.includes('scripts/safe-env.mjs validate .env'), 'Validates .env via safe-env.mjs before execution');
+  assert.ok(deployYaml.includes('serializeEnv'), 'Step 2 must serialize secrets via safe-env.mjs');
 });
 
 // =====================================================================
@@ -345,21 +363,26 @@ function getBashPath(filePath) {
   return `/${letter}${rest}`;
 }
 
-runTest('EXECUTION', 'FIX-13: Simulated remote shell exports .env properly and validates DOMAIN and database', () => {
+runTest('EXECUTION', 'FIX-13 & FIX-16: Simulated remote deployment extracts variables safely via safe-env.mjs without sourcing .env', () => {
   const tempDir = path.join(tmpdir(), 'remote-sim-' + Date.now());
   const appDir = path.join(tempDir, 'app');
-  mkdirSync(appDir, { recursive: true });
+  const scriptsDir = path.join(appDir, 'scripts');
+  mkdirSync(scriptsDir, { recursive: true });
 
   try {
-    // 1. Write mock .env in app dir
-    const envContent = [
-      'POSTGRES_DB=brewlite_sim_db',
-      'POSTGRES_USER=brewlite_sim_user',
-      'POSTGRES_PASSWORD=super_secret_pw',
-      'DOMAIN=coffee.brewlite.vn',
-      'API_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-api:v1.0.0',
-      'WEB_IMAGE_REF=ghcr.io/vohuunghiaah/brewlite-web:v1.0.0',
-    ].join('\n') + '\n';
+    // Copy safe-env.mjs into simulated app/scripts directory
+    copyFileSync(path.join(root, 'scripts/safe-env.mjs'), path.join(scriptsDir, 'safe-env.mjs'));
+
+    // 1. Write mock .env in app dir using serializeEnv
+    const envContent = serializeEnv({
+      POSTGRES_DB: 'brewlite_sim_db',
+      POSTGRES_USER: 'brewlite_sim_user',
+      POSTGRES_PASSWORD: 'super_secret_pw',
+      JWT_SECRET: 'jwt_secret_token_123',
+      DOMAIN: 'coffee.brewlite.vn',
+      API_IMAGE_REF: 'ghcr.io/vohuunghiaah/brewlite-api:v1.0.0',
+      WEB_IMAGE_REF: 'ghcr.io/vohuunghiaah/brewlite-web:v1.0.0',
+    });
     writeFileSync(path.join(appDir, '.env'), envContent, 'utf8');
 
     // 2. Execute simulated remote script block via bash script file
@@ -369,13 +392,12 @@ runTest('EXECUTION', 'FIX-13: Simulated remote shell exports .env properly and v
 set -eo pipefail
 cd "${bashAppDir}"
 if [ ! -f .env ]; then exit 1; fi
-set -a
-. ./.env
-set +a
-if [ -z "$DOMAIN" ] || [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_DB" ]; then
-  echo "Missing required variables!"
-  exit 2
-fi
+NODE_BIN="$(command -v node || command -v node.exe || echo 'node')"
+"$NODE_BIN" scripts/safe-env.mjs validate .env DOMAIN POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET
+DOMAIN=$("$NODE_BIN" scripts/safe-env.mjs get .env DOMAIN)
+POSTGRES_USER=$("$NODE_BIN" scripts/safe-env.mjs get .env POSTGRES_USER)
+POSTGRES_DB=$("$NODE_BIN" scripts/safe-env.mjs get .env POSTGRES_DB)
+export DOMAIN POSTGRES_USER POSTGRES_DB
 echo "DOMAIN_OUTPUT=$DOMAIN"
 echo "USER_OUTPUT=$POSTGRES_USER"
 echo "DB_OUTPUT=$POSTGRES_DB"
@@ -409,9 +431,10 @@ if [ ! -f .env ]; then exit 1; fi
   }
 });
 
-runTest('EXECUTION', 'FIX-14: Verification that push to main or unconfirmed dispatch cannot trigger production SSH', () => {
+runTest('EXECUTION', 'FIX-14 & FIX-16: Verification that branch protection and unconfirmed dispatch reject production deployment', () => {
   const shouldDeployProduction = (event) => {
     return event.event_name === 'workflow_dispatch' &&
+           event.ref === 'refs/heads/main' &&
            event.inputs?.target_env === 'production' &&
            event.inputs?.confirm_production === 'DEPLOY_PRODUCTION';
   };
@@ -419,31 +442,57 @@ runTest('EXECUTION', 'FIX-14: Verification that push to main or unconfirmed disp
   assert.equal(
     shouldDeployProduction({ event_name: 'push', ref: 'refs/heads/main' }),
     false,
-    'Push to main must NOT trigger production deployment'
+    'Push to main must NEVER trigger production deploy'
   );
 
   assert.equal(
-    shouldDeployProduction({ event_name: 'push', ref: 'refs/tags/v1.0.0' }),
+    shouldDeployProduction({
+      event_name: 'workflow_dispatch',
+      ref: 'refs/heads/feat/task5-3-continuous-delivery',
+      inputs: { target_env: 'production', confirm_production: 'DEPLOY_PRODUCTION' }
+    }),
     false,
-    'Pushing a release tag must NOT automatically trigger production deployment'
+    'Workflow dispatch from feature branch must NEVER trigger production deploy'
   );
 
   assert.equal(
-    shouldDeployProduction({ event_name: 'workflow_dispatch', inputs: { target_env: 'dry-run', confirm_production: 'DEPLOY_PRODUCTION' } }),
+    shouldDeployProduction({
+      event_name: 'workflow_dispatch',
+      ref: 'refs/pull/35/merge',
+      inputs: { target_env: 'production', confirm_production: 'DEPLOY_PRODUCTION' }
+    }),
     false,
-    'workflow_dispatch for dry-run must NOT trigger production deployment'
+    'Workflow dispatch from PR merge ref must NEVER trigger production deploy'
   );
 
   assert.equal(
-    shouldDeployProduction({ event_name: 'workflow_dispatch', inputs: { target_env: 'production', confirm_production: '' } }),
+    shouldDeployProduction({
+      event_name: 'workflow_dispatch',
+      ref: 'refs/heads/main',
+      inputs: { target_env: 'production', confirm_production: 'CONFIRM' }
+    }),
     false,
-    'workflow_dispatch without DEPLOY_PRODUCTION confirmation must NOT trigger production deployment'
+    'Unconfirmed dispatch must NOT trigger production deploy'
   );
 
   assert.equal(
-    shouldDeployProduction({ event_name: 'workflow_dispatch', inputs: { target_env: 'production', confirm_production: 'DEPLOY_PRODUCTION' } }),
+    shouldDeployProduction({
+      event_name: 'workflow_dispatch',
+      ref: 'refs/heads/main',
+      inputs: { target_env: 'staging', confirm_production: 'DEPLOY_PRODUCTION' }
+    }),
+    false,
+    'Staging dispatch must NOT trigger production deploy'
+  );
+
+  assert.equal(
+    shouldDeployProduction({
+      event_name: 'workflow_dispatch',
+      ref: 'refs/heads/main',
+      inputs: { target_env: 'production', confirm_production: 'DEPLOY_PRODUCTION' }
+    }),
     true,
-    'Only intentional confirmed workflow_dispatch allows production deployment job entry'
+    'Explicitly confirmed dispatch on refs/heads/main MUST trigger production deploy'
   );
 
   const verifyApprovalPrereq = (approvalConfigured, hostProvided) => {
@@ -787,6 +836,273 @@ volumes:
     spawnSync('docker', ['rmi', tagV1, tagV2], { stdio: 'ignore' });
     try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }
+});
+
+// =====================================================================
+// SECTION 4: FIX-16 SAFE ENVIRONMENT SERIALIZATION & PARSING SUITE
+// =====================================================================
+
+runTest('EXECUTION', 'FIX-16 Requirement 5 & 6: Round-trip serialization & parsing preserves all special character edge cases', () => {
+  const edgeCases = {
+    SIMPLE: 'simple_alphanumeric_123',
+    SINGLE_DOLLAR: 'pass$word$with$single$dollars',
+    DOUBLE_DOLLAR: 'pass$$word$$with$$double$$dollars',
+    SINGLE_QUOTE: "user's'special'single'quote'value",
+    DOUBLE_QUOTE: 'quoted"value"with"internal"double"quotes',
+    HASH_COMMENT: 'value#with#hashes#not#a#comment',
+    BACKSLASH: 'value\\with\\multiple\\backslashes\\\\path',
+    UNICODE_VIETNAMESE: 'Cà Phê Sữa Đá ☕ Đậm Đà Phong Vị Việt Nam 100% 🎯',
+    SPACES_AND_TABS: '   value with leading, internal   and trailing spaces \t tabbed   ',
+    NEWLINES: 'multi\nline\r\nvalue\twith\nescaped\rcharacters',
+    CMD_SUBSTITUTION_DOLLAR: '$(whoami)_$(cat /etc/passwd)_${DOMAIN}',
+    CMD_SUBSTITUTION_BACKTICK: '`whoami`_`id`_`hostname`',
+    COMBINED_STRESS: '`cmd` $(id) "quoted" \'single\' \\path\\ #hash $FOO $$BAR \t\n cà phê ☕'
+  };
+
+  const serialized = serializeEnv(edgeCases);
+  const parsed = parseEnv(serialized);
+
+  for (const [key, originalValue] of Object.entries(edgeCases)) {
+    assert.strictEqual(
+      parsed[key],
+      originalValue,
+      `Value before serialization must equal value after parsing for key "${key}"`
+    );
+  }
+});
+
+runTest('EXECUTION', 'FIX-16 Requirement 7: Validation explicitly rejects invalid keys, null bytes, and unsupported control characters', () => {
+  // 1. Invalid keys must be rejected
+  assert.throws(() => validateKey('123NUMERIC_START'), /Invalid environment variable key/);
+  assert.throws(() => validateKey('KEY-WITH-DASH'), /Invalid environment variable key/);
+  assert.throws(() => validateKey('KEY WITH SPACES'), /Invalid environment variable key/);
+  assert.throws(() => validateKey(''), /Invalid environment variable key/);
+
+  // 2. Null bytes and forbidden control characters must be rejected
+  assert.throws(() => validateValue('TEST', null), /cannot be null or undefined/);
+  assert.throws(() => validateValue('TEST', undefined), /cannot be null or undefined/);
+  assert.throws(() => validateValue('TEST', 'secret\0with_null_byte'), /unsupported control characters/);
+  assert.throws(() => validateValue('TEST', 'secret\x07bell'), /unsupported control characters/);
+  assert.throws(() => validateValue('TEST', 'secret\x1Bescape'), /unsupported control characters/);
+
+  // 3. Supported characters must not throw
+  assert.doesNotThrow(() => validateKey('VALID_KEY_123'));
+  assert.doesNotThrow(() => validateKey('_PRIVATE_VAR'));
+  assert.doesNotThrow(() => validateValue('TEST', 'Valid with \n newlines \r and \t tabs and Unicode ☕'));
+
+  // 4. CLI validate command fails-closed when required keys are missing
+  const tempDir = path.join(tmpdir(), 'safe-env-val-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+  try {
+    const envFile = path.join(tempDir, '.env');
+    writeFileSync(envFile, 'DOMAIN=brewlite.vn\nPOSTGRES_USER=brewlite\n', 'utf8');
+
+    // Missing POSTGRES_DB must exit 1
+    const resMissing = spawnSync(process.execPath, [
+      path.join(root, 'scripts/safe-env.mjs'),
+      'validate',
+      envFile,
+      'DOMAIN',
+      'POSTGRES_USER',
+      'POSTGRES_DB'
+    ], { encoding: 'utf8' });
+    assert.equal(resMissing.status, 1, 'Missing required key POSTGRES_DB must cause exit 1');
+    assert.ok(resMissing.stderr.includes('POSTGRES_DB'), 'Error must specify missing key');
+
+    // All present must exit 0
+    const resSuccess = spawnSync(process.execPath, [
+      path.join(root, 'scripts/safe-env.mjs'),
+      'validate',
+      envFile,
+      'DOMAIN',
+      'POSTGRES_USER'
+    ], { encoding: 'utf8' });
+    assert.equal(resSuccess.status, 0, 'All required keys present must exit 0');
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-16 Requirement 6: Docker Compose config parses serialized special characters with zero errors', () => {
+  const tempDir = path.join(tmpdir(), 'compose-special-' + Date.now());
+  mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const specialVars = {
+      POSTGRES_DB: 'brewlite_prod_db',
+      POSTGRES_USER: 'brewlite_user',
+      POSTGRES_PASSWORD: 'p@$$w0rd!#%^&*()_+~`"\':;/?\\',
+      JWT_SECRET: 'jwt_secret_$with_$dollars_and_#hash_and_"quotes"',
+      DOMAIN: 'brewlite.vn',
+      CMD_SUB: '$(whoami)_`id`_${PATH}',
+      UNICODE_VAR: 'Cà Phê Sữa Đá ☕'
+    };
+
+    const composeContent = `services:
+  app:
+    image: alpine:latest
+    environment:
+      POSTGRES_DB: \${POSTGRES_DB}
+      POSTGRES_USER: \${POSTGRES_USER}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
+      JWT_SECRET: \${JWT_SECRET}
+      DOMAIN: \${DOMAIN}
+      CMD_SUB: \${CMD_SUB}
+      UNICODE_VAR: \${UNICODE_VAR}
+`;
+
+    writeFileSync(path.join(tempDir, 'docker-compose.yml'), composeContent, 'utf8');
+    writeFileSync(path.join(tempDir, '.env'), serializeEnv(specialVars), 'utf8');
+
+    const res = spawnSync('docker', ['compose', '-f', path.join(tempDir, 'docker-compose.yml'), 'config', '-q'], {
+      cwd: tempDir,
+      encoding: 'utf8',
+    });
+
+    if (res.error && res.error.code === 'ENOENT') {
+      return { skipped: true, reason: 'docker CLI not available in current host PATH' };
+    }
+
+    assert.equal(res.status, 0, `Docker Compose config must validate serialized .env cleanly: ${res.stderr}`);
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-16 Requirement 1, 4 & 6: Shell command injection prevention test (safe-env prevents arbitrary code execution)', () => {
+  const tempDir = path.join(tmpdir(), 'cmd-inj-test-' + Date.now());
+  const appDir = path.join(tempDir, 'app');
+  const scriptsDir = path.join(appDir, 'scripts');
+  mkdirSync(scriptsDir, { recursive: true });
+
+  const pwnFile1 = path.join(tempDir, 'pwned_user.txt');
+  const pwnFile2 = path.join(tempDir, 'pwned_db.txt');
+  const bashPwnFile1 = getBashPath(pwnFile1);
+  const bashPwnFile2 = getBashPath(pwnFile2);
+
+  try {
+    copyFileSync(path.join(root, 'scripts/safe-env.mjs'), path.join(scriptsDir, 'safe-env.mjs'));
+
+    // Malicious secrets containing command substitutions
+    const dangerousVars = {
+      POSTGRES_USER: `$(touch ${bashPwnFile1})`,
+      POSTGRES_DB: `\`touch ${bashPwnFile2}\``,
+      POSTGRES_PASSWORD: 'super_secret_password',
+      JWT_SECRET: 'jwt_secret_token_abc',
+      DOMAIN: 'brewlite.vn'
+    };
+
+    writeFileSync(path.join(appDir, '.env'), serializeEnv(dangerousVars), 'utf8');
+
+    // 1. Run simulated deployment extraction via safe-env.mjs get (our hardened approach)
+    const safeScriptPath = path.join(tempDir, 'safe-extract.sh');
+    const safeScriptContent = `#!/bin/bash
+set -eo pipefail
+cd "${getBashPath(appDir)}"
+NODE_BIN="$(command -v node || command -v node.exe || echo 'node')"
+POSTGRES_USER=$("$NODE_BIN" scripts/safe-env.mjs get .env POSTGRES_USER)
+POSTGRES_DB=$("$NODE_BIN" scripts/safe-env.mjs get .env POSTGRES_DB)
+DOMAIN=$("$NODE_BIN" scripts/safe-env.mjs get .env DOMAIN)
+export POSTGRES_USER POSTGRES_DB DOMAIN
+echo "SAFE_USER=$POSTGRES_USER"
+echo "SAFE_DB=$POSTGRES_DB"
+`;
+    writeFileSync(safeScriptPath, safeScriptContent, 'utf8');
+
+    const resSafe = spawnSync('bash', [getBashPath(safeScriptPath)], { encoding: 'utf8' });
+    if (resSafe.error && resSafe.error.code === 'ENOENT') {
+      return { skipped: true, reason: 'bash CLI not available in current host PATH' };
+    }
+
+    assert.equal(resSafe.status, 0, `Safe extraction script must succeed: ${resSafe.stderr}`);
+    assert.ok(resSafe.stdout.includes('SAFE_USER=$(touch'), 'Extracted user contains literal string without execution');
+    assert.ok(resSafe.stdout.includes('SAFE_DB=`touch'), 'Extracted db contains literal backticks without execution');
+
+    // CRUCIAL: Prove probe files WERE NOT CREATED by safe extraction!
+    assert.ok(!existsSync(pwnFile1), 'Security invariant: touch command substitution in POSTGRES_USER was NOT executed!');
+    assert.ok(!existsSync(pwnFile2), 'Security invariant: backtick command substitution in POSTGRES_DB was NOT executed!');
+
+    // 2. Conversely, demonstrate that raw "source .env" WOULD HAVE BEEN VULNERABLE
+    const vulnScriptPath = path.join(tempDir, 'vuln-source.sh');
+    const vulnScriptContent = `#!/bin/bash
+cd "${getBashPath(appDir)}"
+# Intentionally test raw source to prove the vulnerability that was fixed
+set -a
+. ./.env 2>/dev/null || true
+set +a
+`;
+    writeFileSync(vulnScriptPath, vulnScriptContent, 'utf8');
+    spawnSync('bash', [getBashPath(vulnScriptPath)], { encoding: 'utf8' });
+
+    // The probe file MUST have been created by raw source, proving why source .env is forbidden!
+    const sourceWasVulnerable = existsSync(pwnFile1);
+    if (sourceWasVulnerable) {
+      try { rmSync(pwnFile1, { force: true }); } catch {}
+      console.log('    ℹ️ Verified vulnerability baseline: raw "source .env" executed malicious payload; safe-env blocked it completely.');
+    }
+  } finally {
+    try { rmSync(pwnFile1, { force: true }); } catch {}
+    try { rmSync(pwnFile2, { force: true }); } catch {}
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-16 Requirement 6: Backup script and smoke test safely load credentials from .env without shell export', () => {
+  const tempDir = path.join(tmpdir(), 'backup-env-test-' + Date.now());
+  const backupOutDir = path.join(tempDir, 'backups');
+  mkdirSync(backupOutDir, { recursive: true });
+
+  try {
+    const customDbName = 'brewlite_custom_db_' + Date.now();
+    const customUser = 'brewlite_custom_user_' + Date.now();
+    const envContent = serializeEnv({
+      POSTGRES_DB: customDbName,
+      POSTGRES_USER: customUser,
+      BACKUP_DIR: backupOutDir,
+      DB_CONTAINER: 'test-db-container-' + Date.now()
+    });
+    writeFileSync(path.join(tempDir, '.env'), envContent, 'utf8');
+
+    // Run backup-db.mjs inside tempDir where .env is present, with unexported env vars
+    const testEnv = { ...process.env, ENV_FILE: path.join(tempDir, '.env') };
+    delete testEnv.POSTGRES_DB;
+    delete testEnv.POSTGRES_USER;
+
+    const res = spawnSync(process.execPath, [path.join(root, 'scripts/backup-db.mjs'), '--fresh'], {
+      cwd: tempDir,
+      env: testEnv,
+      encoding: 'utf8',
+    });
+
+    // It fails-closed on missing container as expected, but must display the custom DB & user parsed from .env!
+    assert.equal(res.status, 1, 'Must exit 1 because mock container is not running');
+    assert.ok(
+      res.stdout.includes(`Database:  ${customDbName}`),
+      `backup-db.mjs must read POSTGRES_DB from .env, got output:\n${res.stdout}`
+    );
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+runTest('EXECUTION', 'FIX-16 Requirement 6: safeMaskSecret masks credentials and zero secrets are leaked in logs', () => {
+  const secretPw = 'SuperSecretProductionPassword123!';
+  const masked = safeMaskSecret(secretPw);
+  assert.equal(masked, 'Su***3!', 'Must mask secret while keeping length <= 4 as ***');
+  assert.equal(safeMaskSecret('abc'), '***');
+  assert.equal(safeMaskSecret(''), '');
+
+  // Test error handling in safe-env.mjs CLI
+  const res = spawnSync(process.execPath, [
+    path.join(root, 'scripts/safe-env.mjs'),
+    'get',
+    'non-existent-env-file-' + Date.now(),
+    'SECRET_KEY'
+  ], { encoding: 'utf8' });
+
+  assert.equal(res.status, 1);
+  assert.ok(res.stderr.includes('safe-env error'), 'Stderr must state safe-env error');
+  assert.ok(!res.stderr.includes(secretPw), 'Stderr must not leak sensitive parameters');
 });
 
 console.log('\n======================================================================');

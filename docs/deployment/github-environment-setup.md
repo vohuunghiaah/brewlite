@@ -55,30 +55,36 @@ Truy cập `Settings -> Secrets and variables -> Actions -> Variables`:
 | `DOMAIN` | `brewlite.vn` hoặc `localhost` | Tên miền phục vụ reverse proxy Caddy và cấp phát HTTPS tự động |
 | `ACME_EMAIL` | `admin@brewlite.vn` | Địa chỉ email đăng ký chứng chỉ SSL/TLS Let's Encrypt |
 | `FRONTEND_URL` | `https://brewlite.vn` | Domain cấu hình CORS backend cho phép kết nối |
-| `PRODUCTION_APPROVAL_CONFIGURED` | `true` | Cờ xác nhận GitHub Environment 'production' đã được cấu hình Required Reviewers (FIX-14) |
+| `PRODUCTION_APPROVAL_CONFIGURED` | `true` | Cờ xác nhận quản trị (Administrative Confirmation): Khẳng định quản trị viên đã cấu hình GitHub Environment 'production' với Required Reviewers (FIX-14, FIX-16) |
 
 ---
 
-## 4. Cơ chế Kích hoạt và Truyền Secrets an toàn (FIX-13, FIX-14, FIX-15)
+## 4. Cơ chế Kích hoạt, Bảo vệ Nhánh và Truyền Secrets an toàn (FIX-13, FIX-14, FIX-15, FIX-16)
 
-1. **Kích hoạt có chủ đích (FIX-14):**
+1. **Kích hoạt có chủ đích & Ràng buộc nhánh main (FIX-14, FIX-16):**
    - Push vào nhánh `main` hoặc merge PR chỉ chạy Quality Gates và Build/Publish image lên GHCR.
    - Job `deploy-production` tuyệt đối KHÔNG tự động chạy khi push `main`.
+   - Ràng buộc nghiêm ngặt nhánh: `github.ref == 'refs/heads/main'` — từ chối kích hoạt từ nhánh tính năng hoặc PR.
    - Triển khai production chỉ được kích hoạt thủ công qua `workflow_dispatch` với:
+     - `ref: refs/heads/main`
      - `target_env: production`
      - `confirm_production: DEPLOY_PRODUCTION`
-   - Bắt buộc kiểm tra `vars.PRODUCTION_APPROVAL_CONFIGURED == 'true'`. Nếu thiếu cấu hình bảo vệ phê duyệt, deployment tự động chuyển trạng thái **BLOCKED** mà không thực hiện bất kỳ lệnh SSH nào.
+   - **Xác nhận quản trị vs Thực thi nền tảng (Administrative Confirmation vs Platform Enforcement):**
+     - Cờ `vars.PRODUCTION_APPROVAL_CONFIGURED == 'true'` là kiểm tra pre-flight nhằm nhắc nhở và xác nhận quản trị viên đã thiết lập chính sách phê duyệt.
+     - Cơ chế bảo vệ thực tế (enforcement) được đảm bảo bởi tính năng **Required Reviewers** của GitHub Environment `production`, tự động tạm dừng quy trình triển khai cho đến khi người có thẩm quyền ký duyệt trên giao diện GitHub.
 
-2. **Truyền Secrets an toàn qua SSH stdin (FIX-15):**
+2. **Truyền Secrets & Tuần tự hóa an toàn qua safe-env.mjs (FIX-15, FIX-16):**
    - Không chèn trực tiếp `${{ secrets.* }}` vào nội dung mã shell script (toàn bộ mapping qua `env:`).
-   - Nội dung cấu hình `.env` được mã hóa Base64 phía runner và truyền qua luồng `stdin` của SSH tới `base64 -d`.
+   - Nội dung cấu hình `.env` được tuần tự hóa an toàn bằng tiện ích chuyên dụng `scripts/safe-env.mjs` (escape đúng chuẩn Docker Compose cho `"`, `'`, `$`, `$$`, `#`, `\`, newlines, Unicode và chuỗi command substitution).
+   - Truyền qua luồng `stdin` của SSH được mã hóa Base64 tới `base64 -d`.
    - Không xuất hiện mật khẩu hay khóa JWT trong danh sách tiến trình (`ps`) hoặc log CI.
    - Tệp `.env` được ghi vào file tạm, gán quyền `0600` và thay thế nguyên tử (`mv -f .env.tmp.$$ .env`).
-   - Xử lý hoàn hảo mọi ký tự đặc biệt: dấu nháy kép `"`, dấu nháy đơn `'`, `$`, `#`, `\`, newlines.
 
-3. **Phân tách biến Runner và Remote Host (FIX-13):**
-   - Remote script trên máy chủ tự động nạp cấu hình bằng `set -a; . ./.env; set +a`.
-   - Kiểm tra database readiness bằng Docker healthcheck và `pg_isready` với biến đã load.
+3. **Trích xuất an toàn & Loại bỏ hoàn toàn `source .env` trên Remote Host (FIX-13, FIX-16):**
+   - Tuyệt đối KHÔNG sử dụng `set -a; . ./.env; set +a` hoặc `source .env` trên máy chủ (chống thực thi mã tùy ý từ nội dung secret).
+   - Script deployment chỉ trích xuất các biến cần thiết (`DOMAIN`, `POSTGRES_USER`, `POSTGRES_DB`) thông qua `scripts/safe-env.mjs get .env <KEY>`.
+   - Tiện ích xác thực tính toàn vẹn `.env` bằng `scripts/safe-env.mjs validate .env` trước khi khởi động dịch vụ.
+   - Docker Compose tự đọc tệp `.env` đã được escape an toàn theo chuẩn Compose specification.
    - Production smoke test sử dụng trực tiếp biến `https://$DOMAIN` đã được cấu hình, không fallback ngầm.
 
 ---

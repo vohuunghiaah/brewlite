@@ -237,12 +237,13 @@ jobs:
           echo "**Reason:** Staging cloud instance is not provisioned in this milestone (ADR-007 defines single-VM production topology)." >> $GITHUB_STEP_SUMMARY
           echo "**Safety:** No deployment was performed to avoid false claims of staging readiness." >> $GITHUB_STEP_SUMMARY
 
-  # Production Deployment Job (Requires Intentional Approval Gate & Manual Trigger - FIX-10, FIX-14)
+  # Production Deployment Job (Requires Intentional Approval Gate & Manual Trigger - FIX-10, FIX-14, FIX-16)
   deploy-production:
     name: Deploy to Production (AWS Lightsail)
     needs: [quality-gate, build-and-push]
     if: |
       github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
       inputs.target_env == 'production' &&
       inputs.confirm_production == 'DEPLOY_PRODUCTION'
     runs-on: ubuntu-latest
@@ -254,7 +255,7 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Verify Production Host Prerequisites & Required Secrets (FIX-07, FIX-08, FIX-14, FIX-15)
+      - name: Verify Production Host Prerequisites & Required Secrets (FIX-07, FIX-08, FIX-14, FIX-15, FIX-16)
         id: check-prereqs
         shell: bash
         env:
@@ -294,13 +295,14 @@ jobs:
           check_var "$INPUT_JWT_SEC" "JWT_SECRET"
           check_var "$INPUT_DOMAIN" "DOMAIN (variable)"
 
-          # FIX-14: Verification of explicit approval gate configuration
+          # FIX-14 & FIX-16: Verification of explicit approval gate configuration
           if [ "$INPUT_APPROVAL_CONF" != "true" ]; then
             HAS_HOST=false
             MISSING_SECRETS="$MISSING_SECRETS PRODUCTION_APPROVAL_CONFIGURED"
             echo "❌ PRODUCTION_APPROVAL_CONFIGURED is not 'true'. Refusing deployment without verified approval gate."
           else
-            echo "✔ Production approval gate verified (PRODUCTION_APPROVAL_CONFIGURED=true)."
+            echo "✔ Production administrative confirmation verified (PRODUCTION_APPROVAL_CONFIGURED=true)."
+            echo "ℹ️ Note: Platform enforcement is guaranteed by GitHub Environment 'production' Required Reviewers policy."
           fi
 
           if [ "$HAS_HOST" = "true" ]; then
@@ -319,7 +321,7 @@ jobs:
           docker compose -f docker-compose.prod.yml config -q
           echo "✔ Compose configuration syntax is valid (zero secrets dumped)."
 
-      - name: Hardened Remote Deployment Execution (FIX-07 to FIX-15)
+      - name: Hardened Remote Deployment Execution (FIX-07 to FIX-16)
         if: steps.check-prereqs.outputs.has_host == 'true'
         id: remote-deploy
         shell: bash
@@ -362,19 +364,24 @@ jobs:
             mkdir -p /home/$USER/app && chmod 700 /home/$USER/app
           EOF
 
-          echo "2. Provisioning environment secrets securely to host (FIX-15: streaming base64 payload via SSH stdin)..."
+          echo "2. Provisioning environment secrets securely to host (FIX-15 & FIX-16: safe serialization via safe-env.mjs)..."
           node -e '
-            const lines = [
-              `POSTGRES_DB=${process.env.PG_DB}`,
-              `POSTGRES_USER=${process.env.PG_USER}`,
-              `POSTGRES_PASSWORD=${process.env.PG_PASS}`,
-              `JWT_SECRET=${process.env.JWT_SEC}`,
-              `DOMAIN=${process.env.DOMAIN}`,
-              `API_IMAGE_REF=${process.env.API_IMAGE_REF}`,
-              `WEB_IMAGE_REF=${process.env.WEB_IMAGE_REF}`,
-              `NODE_ENV=production`
-            ];
-            process.stdout.write(Buffer.from(lines.join("\n") + "\n", "utf8").toString("base64"));
+            import("./scripts/safe-env.mjs").then(({ serializeEnv }) => {
+              const content = serializeEnv({
+                POSTGRES_DB: process.env.PG_DB,
+                POSTGRES_USER: process.env.PG_USER,
+                POSTGRES_PASSWORD: process.env.PG_PASS,
+                JWT_SECRET: process.env.JWT_SEC,
+                DOMAIN: process.env.DOMAIN,
+                API_IMAGE_REF: process.env.API_IMAGE_REF,
+                WEB_IMAGE_REF: process.env.WEB_IMAGE_REF,
+                NODE_ENV: "production"
+              });
+              process.stdout.write(Buffer.from(content, "utf8").toString("base64"));
+            }).catch(err => {
+              console.error("❌ Failed to serialize production environment:", err.message);
+              process.exit(1);
+            });
           ' | $SSH_CMD "$SSH_USER@$HOST" '
             set -eo pipefail
             APP_DIR="/home/$USER/app"
@@ -391,25 +398,25 @@ jobs:
           echo "3. Syncing deployment descriptors to host..."
           $SCP_CMD -r docker-compose.prod.yml Caddyfile scripts "$SSH_USER@$HOST:/home/$SSH_USER/app/"
 
-          echo "4. Executing transactional deployment pipeline on remote host (FIX-08, FIX-09, FIX-13)..."
+          echo "4. Executing transactional deployment pipeline on remote host (FIX-08, FIX-09, FIX-13, FIX-16)..."
           $SSH_CMD "$SSH_USER@$HOST" "bash -s" << 'EOF'
             set -eo pipefail
             cd /home/$USER/app
 
-            # FIX-13: Safely export environment variables from .env to remote shell
+            # FIX-16: Safely extract essential variables without sourcing .env
             if [ ! -f .env ]; then
               echo "❌ FATAL: .env file missing in /home/$USER/app"
               exit 1
             fi
-            set -a
-            . ./.env
-            set +a
 
-            # Verify mandatory runtime variables are loaded
-            if [ -z "$DOMAIN" ] || [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_DB" ]; then
-              echo "❌ FATAL: Essential environment variables (DOMAIN, POSTGRES_USER, POSTGRES_DB) missing from .env!"
-              exit 1
-            fi
+            # Validate mandatory production variables exist in .env
+            node scripts/safe-env.mjs validate .env DOMAIN POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET
+
+            # Safely extract variables needed for container readiness check and smoke test
+            DOMAIN=$(node scripts/safe-env.mjs get .env DOMAIN)
+            POSTGRES_USER=$(node scripts/safe-env.mjs get .env POSTGRES_USER)
+            POSTGRES_DB=$(node scripts/safe-env.mjs get .env POSTGRES_DB)
+            export DOMAIN POSTGRES_USER POSTGRES_DB
 
             # A. Record current deployment state (FIX-09: never ignore errors with || true)
             node scripts/deployment-state.mjs

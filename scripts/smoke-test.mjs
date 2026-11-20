@@ -13,9 +13,25 @@
  */
 
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { parseEnv } from './safe-env.mjs';
+
+// FIX-16: Safely load .env if present without shell source execution
+let fileEnv = {};
+const envCandidate = (process.env.ENV_FILE && existsSync(process.env.ENV_FILE))
+  ? process.env.ENV_FILE
+  : (existsSync(path.resolve('.env')) ? path.resolve('.env') : null);
+
+if (envCandidate) {
+  try {
+    fileEnv = parseEnv(readFileSync(envCandidate, 'utf8'));
+  } catch {}
+}
 
 const targetEnv = (process.env.TARGET_ENV || process.env.ENVIRONMENT || (process.env.NODE_ENV === 'production' ? 'production' : 'development')).toLowerCase().trim();
-const rawTargetUrl = (process.env.TARGET_URL || process.env.FRONTEND_URL || (targetEnv === 'production' ? '' : 'http://localhost')).trim();
+const fallbackProdUrl = fileEnv.DOMAIN ? `https://${fileEnv.DOMAIN}` : '';
+const rawTargetUrl = (process.env.TARGET_URL || process.env.FRONTEND_URL || (targetEnv === 'production' ? fallbackProdUrl : 'http://localhost')).trim();
 
 const sensitivePatterns = [
   /postgres_password/i,

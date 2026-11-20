@@ -17,12 +17,26 @@
  */
 
 import { spawn, execFileSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, statSync, rmSync, chmodSync, openSync, readSync, closeSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, statSync, rmSync, chmodSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseEnv } from './safe-env.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const backupDir = process.env.BACKUP_DIR || path.join(root, 'backups');
+
+// FIX-16: Safely load .env if present without shell source execution
+let fileEnv = {};
+const envCandidate = (process.env.ENV_FILE && existsSync(process.env.ENV_FILE))
+  ? process.env.ENV_FILE
+  : (existsSync(path.resolve('.env')) ? path.resolve('.env') : (existsSync(path.join(root, '.env')) ? path.join(root, '.env') : null));
+
+if (envCandidate) {
+  try {
+    fileEnv = parseEnv(readFileSync(envCandidate, 'utf8'));
+  } catch {}
+}
+
+const backupDir = process.env.BACKUP_DIR || fileEnv.BACKUP_DIR || path.join(root, 'backups');
 if (!existsSync(backupDir)) {
   mkdirSync(backupDir, { recursive: true });
 }
@@ -30,9 +44,9 @@ if (!existsSync(backupDir)) {
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const backupFile = path.join(backupDir, `db-backup-${timestamp}.sql`);
 
-const container = process.env.DB_CONTAINER || 'brewlite-prod-db';
-const user = process.env.POSTGRES_USER || 'brewlite';
-const dbName = process.env.POSTGRES_DB || 'brewlite';
+const container = process.env.DB_CONTAINER || fileEnv.DB_CONTAINER || 'brewlite-prod-db';
+const user = process.env.POSTGRES_USER || fileEnv.POSTGRES_USER || 'brewlite';
+const dbName = process.env.POSTGRES_DB || fileEnv.POSTGRES_DB || 'brewlite';
 const isExplicitFresh = process.argv.includes('--fresh') || process.env.IS_FRESH_DEPLOY === 'true';
 
 function maskSecret(text) {

@@ -206,6 +206,13 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
 - Đã kiểm chứng thực nghiệm: đọc tệp dump dung lượng lớn không làm tăng heap memory Node.js.
 - Xử lý triệt để lỗi stream/process, tự động xóa tệp dump hỏng/dở dang và thoát mã lỗi 1 khi backup thất bại.
 
+### FIX-16: Tuần tự hóa, Phân tích .env an toàn và Ràng buộc Nhánh Production
+- **Loại bỏ hoàn toàn `source .env`:** Thay thế `set -a; . ./.env; set +a` bằng tiện ích an toàn [`scripts/safe-env.mjs`](../../scripts/safe-env.mjs) chống thực thi mã độc và command injection từ nội dung secrets.
+- **Tuần tự hóa và Phân tích tương thích hai chiều:** Xử lý toàn diện mọi ký tự đặc biệt (`$`, `$$`, `'`, `"`, `#`, `\`, Unicode tiếng Việt, khoảng trắng, xuống dòng, `$(whoami)`, `` `id` ``, `${PATH}`) tương thích hoàn hảo giữa Docker Compose và Node.js.
+- **Fail-Closed Validation:** Tiện ích `validateKey` và `validateValue` từ chối rõ ràng các khóa không hợp lệ hoặc các byte điều khiển/null byte không an toàn trước khi deploy thay vì âm thầm làm sai lệch.
+- **Ràng buộc Nhánh Production (Branch Safety):** Ràng buộc job `deploy-production` trong `.github/workflows/deploy.yml` với điều kiện `github.ref == 'refs/heads/main'`, từ chối tuyệt đối kích hoạt triển khai production từ nhánh tính năng hoặc PR.
+- **Làm rõ Cổng Phê duyệt (Approval Gate Verification):** Làm rõ `PRODUCTION_APPROVAL_CONFIGURED=true` là cờ xác nhận cấu hình quản trị (Administrative Confirmation), trong khi tính năng **Required Reviewers** của GitHub Environment `production` đảm bảo việc thực thi bảo vệ vật lý và mật mã trên nền tảng.
+
 ---
 
 ## 9. Kết quả kiểm thử tự động toàn diện
@@ -220,8 +227,8 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
    - 13 bước luồng MVP: PASS 100%.
    - 11 bài kiểm thử bảo mật & ngoại lệ (CORS preflight, IDOR, Idempotency, OCC refund): PASS 100%.
 4. **Kiểm thử công cụ triển khai (`scripts/test-deployment-scripts.mjs`):**
-   - **29 bài kiểm thử toàn diện** (11 Static, 14 Execution, 4 Simulation): **PASS 100%**.
-   - Bao gồm toàn bộ các bài kiểm tra thực thi cho FIX-13 (truyền biến môi trường & DOMAIN), FIX-14 (chặn push main auto-deploy & kiểm tra approval gate), và FIX-15 (truyền secrets an toàn qua Base64 stdin).
+   - **34 bài kiểm thử toàn diện** (11 Static, 19 Execution, 4 Simulation): **PASS 100%**.
+   - Bao gồm toàn bộ các bài kiểm tra thực thi cho FIX-13 (truyền biến môi trường & DOMAIN), FIX-14 (chặn push main auto-deploy & kiểm tra approval gate), FIX-15 (truyền secrets an toàn qua Base64 stdin), và FIX-16 (safe-env serialization, branch protection & command injection prevention).
 
 ---
 
@@ -235,16 +242,17 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
 6. [`docker-compose.prod.yml`](../../docker-compose.prod.yml): Docker Compose production theo chuẩn ADR-007.
 7. [`Caddyfile`](../../Caddyfile): Cấu hình reverse proxy, HTTPS tự động và security headers.
 8. [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml): Quy trình Continuous Delivery & Deployment.
-9. [`scripts/deployment-state.mjs`](../../scripts/deployment-state.mjs): Mô-đun quản lý và ghi nhận trạng thái deployment state.
-10. [`scripts/smoke-test.mjs`](../../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret (Fail-closed & TLS).
-11. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed và streaming memory safe.
-12. [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn và xác định.
-13. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện 29 ca cho các công cụ triển khai.
+9. [`scripts/safe-env.mjs`](../../scripts/safe-env.mjs): Tiện ích tuần tự hóa, phân tích cú pháp dotenv an toàn và trích xuất biến môi trường không dùng eval/shell source (FIX-16).
+10. [`scripts/deployment-state.mjs`](../../scripts/deployment-state.mjs): Mô-đun quản lý và ghi nhận trạng thái deployment state.
+11. [`scripts/smoke-test.mjs`](../../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret (Fail-closed & TLS).
+12. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed và streaming memory safe.
+13. [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn và xác định.
+14. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện 34 ca cho các công cụ triển khai.
 
 ---
 
 ## 11. Kết luận
 
-Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2 cùng toàn bộ 15 yêu cầu kiểm toán độc lập nghiêm ngặt (FIX-01 đến FIX-15). Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã hoàn thiện ở mức chất lượng cao nhất.
+Task 5.3 đã hoàn thành xuất sắc toàn bộ các yêu cầu của mục 7.3 trong tài liệu Assignment 2 cùng toàn bộ 16 yêu cầu kiểm toán độc lập nghiêm ngặt (FIX-01 đến FIX-16). Toàn bộ mã nguồn, Dockerfile đa tầng, cấu hình mạng, reverse proxy, workflow CI/CD và tài liệu vận hành đã hoàn thiện ở mức chất lượng cao nhất.
 
 **Trạng thái đề xuất:** **READY FOR MANUAL MERGE** (Chờ người dùng review và merge thủ công vào `main`).
