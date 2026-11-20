@@ -16,8 +16,8 @@ const BCRYPT_ROUNDS = 10;
 const DUMMY_HASH =
   '$2b$10$D7thz/NCDNNcAeVk5bUY7.lU4.16iFgDj5ADVnyzbtAcgZo3kL4Mm';
 
-function publicUser({ id, email, createdAt }: User) {
-  return { id, email, createdAt };
+function publicUser({ id, email, createdAt, role }: User) {
+  return { id, email, createdAt, role };
 }
 
 @Injectable()
@@ -58,7 +58,7 @@ export class AuthService {
   async login({ email, password }: CredentialsDto) {
     const user = await this.users.findOne({
       where: { email },
-      select: { id: true, email: true, createdAt: true, passwordHash: true },
+      select: { id: true, email: true, createdAt: true, passwordHash: true, role: true },
     });
 
     const matches = await compare(password, user?.passwordHash ?? DUMMY_HASH);

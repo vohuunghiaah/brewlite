@@ -8,6 +8,12 @@ import {
 
 export const USER_EMAIL_UNIQUE = 'UQ_users_email';
 
+export enum UserRole {
+  CUSTOMER = 'CUSTOMER',
+  STAFF = 'STAFF',
+  ADMIN = 'ADMIN',
+}
+
 @Entity('users')
 @Unique(USER_EMAIL_UNIQUE, ['email'])
 export class User {
@@ -19,6 +25,9 @@ export class User {
 
   @Column({ type: 'varchar', length: 60, select: false })
   passwordHash: string;
+
+  @Column({ type: 'varchar', length: 16, default: UserRole.CUSTOMER })
+  role: UserRole;
 
   @CreateDateColumn()
   createdAt: Date;

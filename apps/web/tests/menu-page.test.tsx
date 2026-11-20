@@ -13,6 +13,7 @@ describe('MenuPage React Component Tests', () => {
   };
 
   beforeEach(() => {
+    window.history.replaceState(null, "", "/menu");
     localStorage.setItem('brewlite_access_token', 'mock_jwt_token_123');
     localStorage.setItem('brewlite_user', JSON.stringify({ id: 1, email: 'user@brewlite.vn' }));
 
@@ -665,7 +666,7 @@ describe('MenuPage React Component Tests', () => {
     expect(buzzerDialog).toBeInTheDocument();
     expect(buzzerDialog).toHaveTextContent(/BrewLite Digital Buzzer/i);
     expect(buzzerDialog).toHaveTextContent(/Bàn số 8/i);
-    expect(buzzerDialog).toHaveTextContent(/PAID/i);
+    expect(buzzerDialog).toHaveTextContent("Đã thanh toán — Đang chờ cửa hàng tiếp nhận.");
 
     // 8. Đóng vé chuông và kiểm tra giỏ hàng đã được làm trống đúng FR-06
     const dismissBtns = screen.getAllByRole('button', { name: /đóng vé chuông/i });

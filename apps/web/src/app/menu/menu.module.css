@@ -21,7 +21,8 @@
 }
 
 .navInner {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   width: min(100% - 48px, 1400px);
   min-height: 76px;
   align-items: center;
@@ -1552,12 +1553,16 @@
 
 /* ================= AUTH MODAL & USER NAVIGATION (TASK 5.1.2 & FIGMA SCREEN 04) ================= */
 .navActions {
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
 .userSession {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2870,3 +2875,39 @@
 }
 
 
+
+.welcome {
+  min-height: clamp(320px, 58vh, 640px);
+  align-items: center;
+  padding: clamp(28px, 7vw, 96px);
+}
+.welcome h1 { font-size: clamp(36px, 6vw, 76px); }
+.explore {
+  margin-top: 24px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 24px;
+  background: #fff7eb;
+  color: #43291f;
+  cursor: pointer;
+}
+.timeline { list-style: none; padding-inline: 0; }
+.timelineStep { flex: 1; min-width: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .welcome { animation: welcomeIn 260ms ease-out; }
+  @keyframes welcomeIn { from { opacity: 0; transform: translateY(6px); } }
+}
+@media (max-width: 1040px) {
+  .navInner { grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding-top: 8px; }
+  .navigation { grid-column: 1 / -1; grid-row: 2; justify-content: center; padding-bottom: 8px; }
+  .navActions { grid-column: 2; grid-row: 1; }
+}
+@media (max-width: 600px) {
+  .userEmail { display: none; }
+  .navActions, .userSession { gap: 4px; }
+  .userSession { padding: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .navigation { gap: 2px; }
+  .navigation a { padding-inline: 8px; }
+  .cartSummary > span:nth-last-child(-n+2) { display: none; }
+  .timelineLabel { font-size: 12px; }
+}

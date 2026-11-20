@@ -1,14 +1,17 @@
 import {
   Injectable,
+  ConflictException,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull, Not } from 'typeorm';
+import { Repository, DataSource, In, IsNull, Not } from 'typeorm';
 
-import { Order } from './entities/order.entity';
+import { serviceTargets } from './dto/update-order-status.dto';
+import { assertOrderTransition } from './state-machine/order-state-machine';
+import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem, ProductSize } from './entities/order-item.entity';
 import { Product } from '../products/entities/product.entity';
 
@@ -39,6 +42,41 @@ export class OrdersService {
 
     private readonly dataSource: DataSource,
   ) {}
+
+  serviceQueue() {
+    return this.orderRepository.find({
+      where: { status: In([OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.READY]) },
+      select: {
+        id: true, orderCode: true, createdAt: true, status: true, pickupMethod: true,
+        tableNumber: true, note: true, items: {
+          id: true, productName: true, quantity: true, size: true, toppings: true, note: true,
+        },
+      },
+      relations: { items: true },
+      order: { createdAt: 'ASC', id: 'ASC', items: { id: 'ASC' } },
+    });
+  }
+
+  updateServiceStatus(id: number, target: OrderStatus) {
+    if (!serviceTargets.includes(target)) {
+      throw new BadRequestException('Trạng thái ngoài quy trình phục vụ');
+    }
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, {
+        where: { id }, select: { id: true, status: true }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+      if (order.status === target) return { id, status: target };
+      try {
+        assertOrderTransition(order.status, target, id);
+      } catch (error) {
+        if (error instanceof BadRequestException) throw new ConflictException(error.message);
+        throw error;
+      }
+      await manager.update(Order, id, { status: target });
+      return { id, status: target };
+    });
+  }
 
   // Lấy danh sách đơn hàng
   async findAll(userId: number) {

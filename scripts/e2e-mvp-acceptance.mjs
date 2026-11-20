@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { verifyFulfillment, verifyNavigation } from './staff-fulfillment-e2e.mjs';
 import { chromium } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -40,7 +41,7 @@ async function saveScreenshot(page, filename) {
   }
 }
 
-// ================= TIẾN TRÌNH KIỂM THỬ E2E CHÍNH (13 BƯỚC) =================
+// ================= TIẾN TRÌNH KIỂM THỬ E2E CHÍNH (14 BƯỚC) =================
 async function runAcceptanceTest() {
   // Xác minh môi trường an toàn và đối chiếu database thực tế qua SELECT current_database() trước mọi thao tác (DEF-02)
   const liveDb = verifyLiveDatabase();
@@ -141,6 +142,9 @@ async function runAcceptanceTest() {
 
     // Mở Cart Drawer qua nút cartSummary trên topbar
     const cartSummaryBtn = page.locator('button[class*="cartSummary"]').first();
+    const beforeNavigation = await cartSummaryBtn.getAttribute('aria-label');
+    await verifyNavigation(page);
+    assert.equal(await cartSummaryBtn.getAttribute('aria-label'), beforeNavigation);
     await cartSummaryBtn.click();
 
     const drawer = page.locator('#cart');
@@ -410,6 +414,9 @@ async function runAcceptanceTest() {
     }
     await saveScreenshot(page, '07-order-history.png');
     testResults.push({ step: '13. Đối chiếu lịch sử UI/API', status: 'PASS' });
+    await verifyFulfillment({ browser, page, api: API_URL, web: WEB_URL, order: paid, productId: targetProductId });
+    await verifyNavigation(page);
+    testResults.push({ step: '14. Staff, PostgreSQL, customer ticket and responsive navigation', status: 'PASS' });
 
   } catch (err) {
     console.error('❌ LỖI TRONG QUÁ TRÌNH KIỂM THỬ:', err);
@@ -424,16 +431,16 @@ async function runAcceptanceTest() {
 
 runAcceptanceTest().then((res) => {
   console.log('\n======================================================================');
-  console.log(`📊 KẾT QUẢ NGHIỆM THU E2E CHROMIUM & POSTGRESQL (${res.testResults.length}/13 BƯỚC)`);
+  console.log(`📊 KẾT QUẢ NGHIỆM THU E2E CHROMIUM & POSTGRESQL (${res.testResults.length}/14 BƯỚC)`);
   console.log('======================================================================');
   console.table(res.testResults);
 
-  const allPass = res.testResults.length === 13 && res.testResults.every((r) => r.status === 'PASS');
+  const allPass = res.testResults.length === 14 && res.testResults.every((r) => r.status === 'PASS');
   if (allPass) {
-    console.log('\n🎉 TẤT CẢ 13 BƯỚC LUỒNG MVP ĐÃ PASS 100% TRÊN CHROMIUM & POSTGRESQL!');
+    console.log('\n🎉 TẤT CẢ 14 BƯỚC LUỒNG MVP ĐÃ PASS 100% TRÊN CHROMIUM & POSTGRESQL!');
     process.exit(0);
   } else {
-    console.error('\n⚠️ CÓ BƯỚC KIỂM THỬ THẤT BẠI HOẶC CHƯA ĐỦ 13 BƯỚC!');
+    console.error('\n⚠️ CÓ BƯỚC KIỂM THỬ THẤT BẠI HOẶC CHƯA ĐỦ 14 BƯỚC!');
     process.exit(1);
   }
 }).catch((err) => {

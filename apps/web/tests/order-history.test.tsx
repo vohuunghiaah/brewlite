@@ -214,6 +214,7 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
   ];
 
   beforeEach(() => {
+    window.history.replaceState(null, "", "/menu");
     localStorage.clear();
     localStorage.setItem('brewlite_access_token', 'mock_jwt_token_123');
     localStorage.setItem('brewlite_user', JSON.stringify({ id: 1, email: 'test@brewlite.vn' }));
@@ -845,6 +846,50 @@ describe('Screen 07: Order History Component Tests (FR-11, UC-05, UC-06, FIX-01.
     fireEvent.click(closeButtons[0]);
 
     jest.useRealTimers();
+  });
+
+  it('keeps one request in flight and ignores a late response after closing the ticket', async () => {
+    jest.useFakeTimers();
+    try {
+      let release!: (r: Response) => void;
+      const pending = new Promise<Response>(resolve => { release = resolve; });
+      const mockFetch = global.fetch as jest.Mock;
+      const original = mockFetch.getMockImplementation()!;
+      mockFetch.mockImplementation((url, options) => String(url).endsWith('/orders/101')
+        ? pending : original(url, options));
+      render(<MenuPage />);
+      fireEvent.click(screen.getByText('Lịch sử'));
+      fireEvent.click((await screen.findAllByRole('button', { name: /Theo dõi vé chuông/ }))[0]);
+      const calls = () => mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/orders/101'));
+      expect(calls()).toHaveLength(1);
+      act(() => { jest.advanceTimersByTime(10000); });
+      expect(calls()).toHaveLength(1);
+      fireEvent.click(screen.getAllByRole('button', { name: /Đóng vé/ })[0]);
+      expect(calls()[0][1].signal.aborted).toBe(true);
+      await act(async () => {
+        release({ ok: true, json: async () => ({ ...mockOrders[0], status: 'COMPLETED' }) } as Response);
+        await pending;
+      });
+      expect(screen.getByText('#BL-9216')).toBeVisible();
+      act(() => { jest.advanceTimersByTime(6000); });
+      expect(calls()).toHaveLength(1);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it.each(['COMPLETED', 'CANCELLED'])('stops polling on authoritative %s', async status => {
+    jest.useFakeTimers();
+    try {
+      const mockFetch = global.fetch as jest.Mock;
+      const original = mockFetch.getMockImplementation()!;
+      mockFetch.mockImplementation((url, options) => String(url).endsWith('/orders/101')
+        ? Promise.resolve({ ok: true, json: async () => ({ ...mockOrders[0], status }) }) : original(url, options));
+      render(<MenuPage />);
+      fireEvent.click(screen.getByText('Lịch sử'));
+      fireEvent.click((await screen.findAllByRole('button', { name: /Theo dõi vé chuông/ }))[0]);
+      await screen.findByText(status === 'COMPLETED' ? 'Hoàn tất — Cảm ơn bạn đã lựa chọn BrewLite.' : 'Đơn hàng đã hủy.');
+      act(() => { jest.advanceTimersByTime(9000); });
+      expect(mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/orders/101'))).toHaveLength(1);
+    } finally { jest.useRealTimers(); }
   });
 
   it('15. Order Status Tracking: stops polling on modal close, logout, or terminal status (FIX-02, FIX-07 #6)', async () => {

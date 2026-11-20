@@ -1,5 +1,10 @@
 # Ma Trận Truy Vết Yêu Cầu (Requirements Traceability Matrix - RTM)
 
+### Cập nhật triển khai — luồng phục vụ sau thanh toán
+
+Các bảng audit bên dưới là ảnh chụp của các mốc trước. Trên nhánh sửa luồng phục vụ, FR-07 dùng chung state machine với thanh toán và khóa bản ghi khi nhân viên cập nhật. FR-11 giữ quyền đọc đơn theo chủ sở hữu và đồng bộ vé với PostgreSQL qua API. FR-12 bổ sung hàng đợi nhân viên và PATCH có JWT, kiểm tra role từ database. Bằng chứng chấp nhận là bài E2E đối chiếu từng bước với SQL, GET của khách và giao diện Chromium. [Quy trình nghiệm thu và vận hành](deployment/staff-order-progress.md)
+
+
 **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
 **Phiên bản:** 2.5.0 (Task 2 Complete Handover, UML Verification & Architecture Synchronization)
 **Ngày cập nhật:** 17/11/2026 (chỉ đồng bộ trạng thái Task 3.2; giữ baseline chức năng)

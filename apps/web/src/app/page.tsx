@@ -1,3 +1,1 @@
-import MenuPage from "./menu/page";
-
-export default MenuPage;
+export { default } from "./menu/page";

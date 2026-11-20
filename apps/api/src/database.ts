@@ -4,11 +4,14 @@ import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1
 import { AddAccountAuthentication1732060800000 } from './migrations/1732060800000-add-account-authentication';
 import { AddPaymentsAndStockOcc1732147200000 } from './migrations/1732147200000-add-payments-and-stock-occ';
 
+import { AddUserRole1732233600000 } from './migrations/1732233600000-add-user-role';
+
 export const migrations = [
   CreateOrderCatalog1731888000000,
   AddCustomizationAndNoteToOrderItems1731974400000,
   AddAccountAuthentication1732060800000,
   AddPaymentsAndStockOcc1732147200000,
+  AddUserRole1732233600000,
 ];
 
 export function databaseOptions(): DataSourceOptions {

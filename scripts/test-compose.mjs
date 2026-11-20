@@ -69,16 +69,16 @@ try {
   const snapshot = () => sql('SELECT id, name, price, stock, version FROM products ORDER BY id');
   setup('db:migrate');
   setup('db:seed');
-  assert.equal(sql('SELECT count(*) FROM migrations'), '4');
+  assert.equal(sql('SELECT count(*) FROM migrations'), '5');
   assert.equal(sql('SELECT count(*) FROM products'), '4');
   // Simulate an inventory correction. A second seed must preserve it.
   sql('UPDATE products SET stock = stock + 1 WHERE id = (SELECT min(id) FROM products)');
   const before = snapshot();
   setup('db:migrate');
   setup('db:seed');
-  assert.equal(sql('SELECT count(*) FROM migrations'), '4');
+  assert.equal(sql('SELECT count(*) FROM migrations'), '5');
   assert.equal(snapshot(), before);
-  console.log('Repeated setup preserved four migrations and catalog rows:\n' + before);
+  console.log('Repeated setup preserved five migrations and catalog rows:\n' + before);
 
   if (process.argv.includes('--quality')) {
     // The legacy concurrency suite clears gateway fixtures. Give it its own database.
