@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -39,7 +40,7 @@ async function saveScreenshot(page, filename) {
   }
 }
 
-// ================= TIẾN TRÌNH KIỂM THỬ E2E CHÍNH (12 BƯỚC) =================
+// ================= TIẾN TRÌNH KIỂM THỬ E2E CHÍNH (13 BƯỚC) =================
 async function runAcceptanceTest() {
   // Xác minh môi trường an toàn và đối chiếu database thực tế qua SELECT current_database() trước mọi thao tác (DEF-02)
   const liveDb = verifyLiveDatabase();
@@ -63,7 +64,7 @@ async function runAcceptanceTest() {
   let createdOrderId = null;
   let targetProductId = null;
   let targetProductName = null;
-  let orderedQuantity = 2;
+  const orderedQuantity = 2;
   let stockBefore = null;
   let versionBefore = null;
   let buzzerCode = null;
@@ -97,18 +98,16 @@ async function runAcceptanceTest() {
     console.log('✔ Modal Tùy chỉnh (Figma Screen 02) đã mở');
 
     // Chọn Size MEDIUM (+5.000đ)
-    const sizeMediumBtn = modal.locator('button[role="radio"]:has-text("MEDIUM")').first();
-    if (await sizeMediumBtn.count() > 0) {
-      await sizeMediumBtn.click();
-      console.log('✔ Đã chọn Size MEDIUM (+5.000đ)');
-    }
-
-    // Chọn Topping đầu tiên có sẵn (ví dụ: Thạch cà phê)
-    const toppingLabel = modal.locator('label:has-text("Thạch cà phê"), input[type="checkbox"]').first();
-    if (await toppingLabel.count() > 0) {
-      await toppingLabel.click();
-      console.log('✔ Đã chọn Topping');
-    }
+    await modal.getByRole('radio', { name: /Vừa \(M\)/ }).click();
+    await modal.getByRole('checkbox', { name: /Kem cheese/ }).check();
+    const catalogResponse = await context.request.get(`${API_URL}/products`);
+    assert.equal(catalogResponse.status(), 200);
+    const catalog = await catalogResponse.json();
+    const product = catalog.find(p => p.name === targetProductName);
+    assert.ok(product?.isAvailable);
+    const unitPrice = Number(product.price) + 5000 + 10000;
+    const expectedTotal = unitPrice * orderedQuantity;
+    const displayedTotal = expectedTotal.toLocaleString('vi-VN') + ' đ';
 
     // Chọn mức đá 70% và mức đường 50%
     const ice70 = modal.locator('button[role="radio"]:has-text("70% đá")').first();
@@ -157,10 +156,9 @@ async function runAcceptanceTest() {
 
     // Tăng số lượng lên 2
     const plusBtn = drawer.locator('button:has-text("+")').first();
-    if (await plusBtn.count() > 0) {
-      await plusBtn.click();
-      console.log(`✔ Đã tăng số lượng món lên ${orderedQuantity} ly`);
-    }
+    await plusBtn.click();
+    await drawer.getByText(`Tổng cộng (${orderedQuantity} món):`, { exact: true })
+      .locator('..').getByText(displayedTotal, { exact: true }).waitFor();
 
     await saveScreenshot(page, '03-cart-drawer.png');
     testResults.push({ step: '3. Thêm món, thay đổi số lượng và quản lý giỏ (Screen 03)', status: 'PASS' });
@@ -247,11 +245,12 @@ async function runAcceptanceTest() {
     }
 
     // Lấy productId động từ order_items trong database để không phụ thuộc cứng vào productId=1 (Section C)
-    const dbOrderItem = queryDb(`SELECT "productId", quantity FROM order_items WHERE "orderId" = ${createdOrderId} LIMIT 1;`);
-    const [fetchedProdId, fetchedQty] = dbOrderItem.split('|');
-    targetProductId = parseInt(fetchedProdId, 10);
-    orderedQuantity = parseInt(fetchedQty, 10) || 2;
-    console.log(`✔ Lấy thành công productId động từ đơn hàng: #${targetProductId} (Số lượng đặt: ${orderedQuantity} ly)`);
+    const dbOrderItem = queryDb(`SELECT "productId", quantity, size, toppings, "unitPrice", subtotal
+      FROM order_items WHERE "orderId" = ${createdOrderId}`);
+    assert.equal(dbOrderItem, [product.id, orderedQuantity, 'MEDIUM', '["Kem cheese"]',
+      unitPrice.toFixed(2), expectedTotal.toFixed(2)].join('|'));
+    assert.equal(dbOrder, [createdOrderId, 'PENDING', expectedTotal.toFixed(2)].join('|'));
+    targetProductId = product.id;
 
     testResults.push({ step: '6. Tạo đơn với trạng thái PENDING', status: 'PASS' });
 
@@ -393,6 +392,25 @@ async function runAcceptanceTest() {
     console.log('✔ Xác minh hoàn tất: Số lượng món giỏ hàng = 0, Tổng tiền = 0 đ theo đúng quy định FR-06');
     testResults.push({ step: '12. Xóa giỏ hàng sau khi hoàn tất', status: 'PASS' });
 
+    console.log('--- BƯỚC 13: Đối chiếu lịch sử với GET /orders/me ---');
+    const [historyResponse] = await Promise.all([
+      page.waitForResponse(r => r.url() === `${API_URL}/orders/me` && r.request().method() === 'GET'),
+      page.getByRole('link', { name: 'Lịch sử', exact: true }).click(),
+    ]);
+    assert.equal(historyResponse.status(), 200);
+    const history = await historyResponse.json();
+    assert.equal(history.length, 1);
+    const [paid] = history;
+    assert.equal(paid.id, createdOrderId);
+    assert.equal(paid.status, 'PAID');
+    assert.equal(Number(paid.totalAmount), expectedTotal);
+    const card = page.getByRole('article', { name: paid.orderCode, exact: true });
+    for (const text of ['Đã thanh toán', targetProductName, displayedTotal]) {
+      await card.getByText(text, { exact: false }).first().waitFor();
+    }
+    await saveScreenshot(page, '07-order-history.png');
+    testResults.push({ step: '13. Đối chiếu lịch sử UI/API', status: 'PASS' });
+
   } catch (err) {
     console.error('❌ LỖI TRONG QUÁ TRÌNH KIỂM THỬ:', err);
     await saveScreenshot(page, 'error-failure.png').catch(() => {});
@@ -406,16 +424,16 @@ async function runAcceptanceTest() {
 
 runAcceptanceTest().then((res) => {
   console.log('\n======================================================================');
-  console.log(`📊 KẾT QUẢ NGHIỆM THU E2E CHROMIUM & POSTGRESQL (${res.testResults.length}/12 BƯỚC)`);
+  console.log(`📊 KẾT QUẢ NGHIỆM THU E2E CHROMIUM & POSTGRESQL (${res.testResults.length}/13 BƯỚC)`);
   console.log('======================================================================');
   console.table(res.testResults);
 
-  const allPass = res.testResults.length === 12 && res.testResults.every((r) => r.status === 'PASS');
+  const allPass = res.testResults.length === 13 && res.testResults.every((r) => r.status === 'PASS');
   if (allPass) {
-    console.log('\n🎉 TẤT CẢ 12 BƯỚC LUỒNG MVP ĐÃ PASS 100% TRÊN CHROMIUM & POSTGRESQL!');
+    console.log('\n🎉 TẤT CẢ 13 BƯỚC LUỒNG MVP ĐÃ PASS 100% TRÊN CHROMIUM & POSTGRESQL!');
     process.exit(0);
   } else {
-    console.error('\n⚠️ CÓ BƯỚC KIỂM THỬ THẤT BẠI HOẶC CHƯA ĐỦ 12 BƯỚC!');
+    console.error('\n⚠️ CÓ BƯỚC KIỂM THỬ THẤT BẠI HOẶC CHƯA ĐỦ 13 BƯỚC!');
     process.exit(1);
   }
 }).catch((err) => {

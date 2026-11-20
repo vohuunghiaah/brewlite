@@ -20,6 +20,7 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
     name: 'Cà phê Latte',
     price: '45000.00',
     isAvailable: true,
+    stock: 10,
   } as Product;
 
   const mockProductUnavailable = {
@@ -93,6 +94,16 @@ describe('OrdersService - Customization & Cart Acceptance Tests', () => {
     }).compile();
 
     service = module.get<OrdersService>(OrdersService);
+  });
+
+  it('rejects combined quantities exceeding stock across sizes before TX1 commits', async () => {
+    await expect(service.create({
+      customerName: 'Test', customerPhone: '0901234567',
+      items: [
+        { productId: 1, size: ProductSize.SMALL, quantity: 6 },
+        { productId: 1, size: ProductSize.LARGE, quantity: 5 },
+      ],
+    }, 1)).rejects.toThrow('không đủ tồn kho');
   });
 
   it('1. should calculate unitPrice correctly for default SMALL size without toppings', async () => {

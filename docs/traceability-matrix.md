@@ -7,6 +7,18 @@
 
 ---
 
+### Truy vết triển khai TypeORM sau PR #33 — Task 5.2
+
+| SRS / Use Case | Mã nguồn | Kiểm thử | Bằng chứng |
+|---|---|---|---|
+| FR-01–03 / UC-01–03 | products.service, menu-controller, menu/page | products.test.mjs, menu-modal-flow.test.mjs, E2E bước 1–5 | Log Node và ảnh menu, tùy chỉnh, giỏ |
+| FR-04, FR-05 / UC-07,08,04 | auth.module, orders.service | auth.e2e.spec, orders.service.spec, e2e-security-exceptions | JWT, TX1 và giá mới từ SQL |
+| FR-06–09 / UC-04,10 | payments.service, mock-payment-gateway.service | payments.postgres.integration.spec, e2e-security-exceptions | PostgreSQL thật, replay, OCC, bồi hoàn |
+| FR-11 / UC-05,06 | orders.controller, menu/page | order-history.test.tsx, e2e-mvp-acceptance bước 11–13 | Ảnh vé và lịch sử, GET /orders/me |
+| FR-13 / UC-13, NFR-05 | health.controller, database.ts, products.seed, docker-compose.yml | test-compose.mjs | DB trống, hai lượt setup, HTTP 200 → 503 → 200 |
+
+[Báo cáo và bằng chứng Task 5.2](task-5-2-completion-report.md). Các bảng dưới đây ghi nhận baseline lịch sử Task 2–3.
+
 ### Ghi Nhận Hiện Trạng Kỹ Thuật (Engineering Baseline & Audit Scope)
 1. **Nghiệm thu Thiết kế UML (Task 2 Handover — DESIGN VERIFIED):**
    - **Task 2.1 (Activity Diagram):** Đã nghiệm thu (PASS) qua PR #19 (commit `acb9a5ea`), phân tách ranh giới 5 swimlanes và 2 giao dịch độc lập: TX1 tạo đơn `PENDING` (`ActivityDiagram.puml`), TX2 thanh toán & trừ kho OCC -> `PAID` (`ActivityDiagram-UC10.puml`) và sơ đồ hợp nhất (`ActivityDiagram-Unified.puml`).

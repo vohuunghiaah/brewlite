@@ -1,10 +1,12 @@
 # BREWLITE — HƯỚNG DẪN BỘ KIỂM THỬ E2E & BẢO VỆ MÔI TRƯỜNG AN TOÀN
 ## (End-to-End Acceptance, Security Verification & Environment Safety Guide)
 
+Để nghiệm thu từ clone sạch, dùng [runner Task 5.2](../docs/testing/task-5-2.md). Runner tạo database, JWT và project riêng cho mỗi lượt chạy.
+
 Tài liệu này hướng dẫn cách thiết lập, cài đặt dependencies và chạy các kịch bản kiểm thử tự động độc lập của BrewLite:
 1. `scripts/test-env-safety.mjs`: Bộ kiểm thử đơn vị xác minh cơ chế an toàn môi trường, chặn production và phát hiện sai lệch cấu hình database / API (DEF-02).
-2. `scripts/e2e-mvp-acceptance.mjs`: Kiểm thử nghiệm thu luồng MVP hoàn chỉnh 12 bước trên trình duyệt Chromium thật và cơ sở dữ liệu PostgreSQL thật.
-3. `scripts/e2e-security-exceptions.mjs`: Kiểm thử 10 ca kiểm thử bảo mật, ngoại lệ, CORS preflight thực tế cho `Idempotency-Key`, race condition và tính bền vững giao dịch.
+2. `scripts/e2e-mvp-acceptance.mjs`: Kiểm thử nghiệm thu luồng MVP hoàn chỉnh 13 bước trên trình duyệt Chromium thật và cơ sở dữ liệu PostgreSQL thật.
+3. `scripts/e2e-security-exceptions.mjs`: Kiểm thử 11 ca kiểm thử bảo mật, ngoại lệ, CORS preflight thực tế cho `Idempotency-Key`, race condition và tính bền vững giao dịch.
 
 ---
 
@@ -31,7 +33,7 @@ npm --prefix apps/web install
 npm --prefix scripts install
 
 # 4. Cài đặt trình duyệt Chromium cho Playwright
-npx playwright install chromium
+node scripts/node_modules/playwright/cli.js install chromium --only-shell
 ```
 
 ---
@@ -42,7 +44,7 @@ Khởi động các dịch vụ backend và frontend:
 
 ```bash
 # Khởi động PostgreSQL 16
-docker compose up -d brewlite-db
+docker compose up -d db
 
 # Đảm bảo database đã áp dụng migrations
 # (Nếu khởi động toàn bộ stack bằng Docker)
@@ -87,7 +89,7 @@ Hệ thống kiểm thử sử dụng module bảo vệ độc lập [scripts/en
 node scripts/test-env-safety.mjs
 ```
 
-### 5.2 Chạy Luồng MVP E2E 12 bước (`e2e-mvp-acceptance.mjs`)
+### 5.2 Chạy Luồng MVP E2E 13 bước (`e2e-mvp-acceptance.mjs`)
 ```powershell
 node scripts/e2e-mvp-acceptance.mjs
 ```
@@ -106,7 +108,7 @@ node scripts/e2e-security-exceptions.mjs
 node scripts/test-env-safety.mjs
 ```
 
-### 6.2 Chạy Luồng MVP E2E 12 bước
+### 6.2 Chạy Luồng MVP E2E 13 bước
 ```bash
 node scripts/e2e-mvp-acceptance.mjs
 ```
@@ -153,10 +155,11 @@ node scripts/e2e-security-exceptions.mjs
 
 ## 8. Danh mục bằng chứng ảnh chụp màn hình (Visual Evidence)
 
-Khi chạy `e2e-mvp-acceptance.mjs`, các ảnh chụp màn hình tương ứng với từng bước trong thiết kế Figma (Screens 01-06) sẽ được lưu tại `docs/testing/screenshots/`:
+Khi chạy `e2e-mvp-acceptance.mjs`, các ảnh chụp màn hình tương ứng với từng bước trong thiết kế Figma (Screens 01-07) sẽ được lưu tại `docs/testing/screenshots/`:
 1. `01-menu-discovery.png`: Màn hình Menu (Figma Screen 01).
 2. `02-customizer-modal.png`: Modal tùy chỉnh Size, Topping, Đá, Đường, Ghi chú (Figma Screen 02).
 3. `03-cart-drawer.png`: Slide-over Cart Drawer và điều chỉnh số lượng (Figma Screen 03).
 4. `04-auth-modal.png`: Auth Modal đăng ký tài khoản mới khi checkout (Figma Screen 04).
 5. `05-checkout-flow.png`: Cashless Checkout chọn nhận hàng tại bàn và thanh toán VietQR (Figma Screen 05).
 6. `06-pickup-ticket.png`: Vé Chuông Điện Tử với mã `#BL-XXXX` và timeline 4 bước (Figma Screen 06).
+7. `07-order-history.png`: Lịch sử khớp mã đơn, trạng thái và tổng tiền của API (Figma Screen 07).

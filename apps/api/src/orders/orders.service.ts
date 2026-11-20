@@ -87,6 +87,7 @@ export class OrdersService {
     return this.dataSource.transaction(
       async (manager) => {
         const orderItems: OrderItem[] = [];
+        const quantityByProduct = new Map<number, number>();
         let totalAmount = 0;
 
         for (const item of createOrderDto.items) {
@@ -109,6 +110,12 @@ export class OrdersService {
               `Sản phẩm ${product.name} hiện không có sẵn`,
             );
           }
+
+          const requested = (quantityByProduct.get(product.id) ?? 0) + item.quantity;
+          if (requested > product.stock) {
+            throw new BadRequestException(`Sản phẩm ${product.name} không đủ tồn kho`);
+          }
+          quantityByProduct.set(product.id, requested);
 
           // Xác thực và tính phụ thu kích cỡ (Size)
           const size = item.size ?? ProductSize.SMALL;

@@ -10,6 +10,7 @@ jobs:
   quality:
     name: ${{ matrix.app }} lint, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16-alpine
@@ -53,3 +54,29 @@ jobs:
           POSTGRES_DB: brewlite_test
       - name: Build
         run: npm run build
+
+  acceptance:
+    name: Compose, Chromium and PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+      - run: npm ci --prefix scripts
+      - run: node scripts/node_modules/playwright/cli.js install --with-deps chromium --only-shell
+      - name: Rebuild database and run acceptance
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          node scripts/test-compose.mjs 2>&1 | tee test-results/acceptance.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: task-5-2-acceptance
+          path: test-results/
+          retention-days: 14

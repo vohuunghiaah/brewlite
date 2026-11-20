@@ -1,0 +1,110 @@
+Empty database verified: 0 tables
+Applied 4 migration(s). [
+  'CreateOrderCatalog1731888000000',
+  'AddCustomizationAndNoteToOrderItems1731974400000',
+  'AddAccountAuthentication1732060800000',
+  'AddPaymentsAndStockOcc1732147200000'
+Applied 0 migration(s). []
+Repeated setup preserved four migrations and catalog rows:
+1|Cà phê Latte|45000.00|51|1
+2|Trà đào|35000.00|40|1
+3|Cacao sữa|40000.00|35|1
+4|Nước suối|10000.00|100|1
+> api-temp@0.0.1 lint
+Found 2 warnings and 0 errors.
+PASS src/payments/payments.postgres.integration.spec.ts (5.378 s)
+PASS src/payments/payments.service.spec.ts
+PASS src/orders/orders.service.spec.ts
+PASS src/orders/orders.e2e.spec.ts
+PASS src/orders/orders.security.spec.ts
+PASS src/payments/payments.e2e.spec.ts
+PASS src/auth/auth.e2e.spec.ts
+PASS src/products/products.e2e.spec.ts
+PASS src/migrations/1731974400000-AddCustomizationAndNoteToOrderItems.spec.ts
+PASS src/products/products.service.spec.ts
+PASS src/migrations/1732147200000-add-payments-and-stock-occ.spec.ts
+  AddPaymentsAndStockOcc1732147200000 Migration Safeguard
+PASS src/products/products.controller.spec.ts
+PASS src/health.controller.spec.ts
+PASS src/auth/jwt.config.spec.ts
+PASS src/app.controller.spec.ts
+Test Suites: 15 passed, 15 total
+Tests:       119 passed, 119 total
+> api-temp@0.0.1 build
+> web-temp@0.1.0 lint
+ℹ tests 14
+ℹ pass 14
+ℹ fail 0
+ℹ skipped 0
+PASS tests/order-history.test.tsx
+PASS tests/menu-page.test.tsx
+Test Suites: 2 passed, 2 total
+Tests:       30 passed, 30 total
+> web-temp@0.1.0 build
+✓ Compiled successfully in 3.2s
+brewlite-test-735b211d-3a2-api   brewlite-test-735b211d-3a2-api   "docker-entrypoint.s…"   api       16 seconds ago       Up 14 seconds (healthy)       0.0.0.0:15301->3001/tcp, [::]:15301->3001/tcp
+brewlite-test-735b211d-3a2-db    postgres:16-alpine               "docker-entrypoint.s…"   db        About a minute ago   Up About a minute (healthy)   0.0.0.0:15432->5432/tcp, [::]:15432->5432/tcp
+brewlite-test-735b211d-3a2-web   brewlite-test-735b211d-3a2-web   "docker-entrypoint.s…"   web       15 seconds ago       Up 7 seconds (healthy)        0.0.0.0:15300->3000/tcp, [::]:15300->3000/tcp
+GET /health 200 { status: 'ok', database: 'up' }
+ℹ tests 9
+ℹ pass 9
+ℹ fail 0
+ℹ skipped 0
+--- BƯỚC 1: Khách truy cập Menu (Figma Screen 01) ---
+--- BƯỚC 2: Xem chi tiết và tùy chỉnh đồ uống (Figma Screen 02) ---
+--- BƯỚC 3: Thêm món, thay đổi số lượng và quản lý giỏ (Figma Screen 03) ---
+--- BƯỚC 4: Đăng ký hoặc đăng nhập (Figma Screen 04) ---
+--- BƯỚC 5: Khôi phục giỏ hàng sau đăng nhập ---
+--- BƯỚC 6: Tạo đơn với trạng thái PENDING ---
+✔ Kiểm tra PostgreSQL: 1|PENDING|120000.00
+--- BƯỚC 7: Chọn phương thức nhận hàng (Screen 05) ---
+--- BƯỚC 8: Thanh toán bằng Mock Gateway ---
+📊 Tồn kho sản phẩm #1 trước thanh toán: stock = 51, version = 1
+--- BƯỚC 9: Xác nhận Order chuyển sang PAID ---
+✔ Dữ liệu Order trong PostgreSQL: 1|PAID|AT_TABLE|Bàn VIP B-12|#BL-0001
+✔ Dữ liệu Payment trong PostgreSQL: 1|SUCCESS|120000.00|VIETQR
+--- BƯỚC 10: Kiểm tra tồn kho giảm chính xác bằng OCC trong DB thật ---
+📊 Tồn kho sản phẩm #1 sau thanh toán: stock = 49, version = 2
+--- BƯỚC 11: Hiển thị Vé Chuông Điện Tử (Screen 06) ---
+--- BƯỚC 12: Xóa giỏ hàng sau khi hoàn tất ---
+--- BƯỚC 13: Đối chiếu lịch sử với GET /orders/me ---
+📊 KẾT QUẢ NGHIỆM THU E2E CHROMIUM & POSTGRESQL (13/13 BƯỚC)
+│ 0       │ '1. Khách truy cập Menu (Screen 01)'                         │ 'PASS' │
+│ 1       │ '2. Xem chi tiết và tùy chỉnh đồ uống (Screen 02)'           │ 'PASS' │
+│ 2       │ '3. Thêm món, thay đổi số lượng và quản lý giỏ (Screen 03)'  │ 'PASS' │
+│ 3       │ '4. Đăng ký hoặc đăng nhập (Screen 04)'                      │ 'PASS' │
+│ 4       │ '5. Khôi phục giỏ hàng sau đăng nhập'                        │ 'PASS' │
+│ 5       │ '6. Tạo đơn với trạng thái PENDING'                          │ 'PASS' │
+│ 6       │ '7. Chọn phương thức nhận hàng'                              │ 'PASS' │
+│ 7       │ '8. Thanh toán bằng Mock Gateway'                            │ 'PASS' │
+│ 8       │ '9. Xác nhận Order chuyển sang PAID'                         │ 'PASS' │
+│ 9       │ '10. Kiểm tra tồn kho giảm chính xác bằng OCC trong DB thật' │ 'PASS' │
+│ 10      │ '11. Hiển thị Vé Chuông Điện Tử'                             │ 'PASS' │
+│ 11      │ '12. Xóa giỏ hàng sau khi hoàn tất'                          │ 'PASS' │
+│ 12      │ '13. Đối chiếu lịch sử UI/API'                               │ 'PASS' │
+🎉 TẤT CẢ 13 BƯỚC LUỒNG MVP ĐÃ PASS 100% TRÊN CHROMIUM & POSTGRESQL!
+--- TEST 1: JWT Thiếu ---
+--- TEST 2: JWT Sai / Token Rác ---
+--- TEST 3: Bảo vệ IDOR (User 2 cố truy cập đơn của User 1) ---
+--- TEST 4: Thanh toán thất bại và retry (EX-06) ---
+--- TEST 5: Idempotency Replay (FR-08) ---
+--- TEST 6: Hai Request Thanh Toán Đồng Thời ---
+--- TEST 7: Timeout và Đối Soát (EX-07) ---
+--- TEST 8: Bồi hoàn hoàn tiền BR-REFUND-OCC (Tồn kho không đủ tại TX2) ---
+--- TEST 9: Kiểm tra không còn Advisory Lock tồn đọng trong PostgreSQL ---
+--- TEST 10: Kiểm thử Preflight OPTIONS thực tế cho Idempotency-Key (Section A) ---
+📊 KẾT QUẢ KIỂM THỬ BẢO MẬT VÀ NGOẠI LỆ (11 CA TEST)
+│ 0       │ 'JWT Missing -> 401 Unauthorized'                                      │ 'PASS' │
+│ 1       │ 'JWT Invalid -> 401 Unauthorized'                                      │ 'PASS' │
+│ 2       │ 'IDOR Protection -> 403 Forbidden'                                     │ 'PASS' │
+│ 3       │ 'Payment FAILED & Retry to PAID (EX-06)'                               │ 'PASS' │
+│ 4       │ 'Idempotency Replay (Zero duplicate stock deduction)'                  │ 'PASS' │
+│ 5       │ 'Concurrent Payment Protection (Pessimistic Row Lock)'                 │ 'PASS' │
+│ 6       │ 'Payment Timeout & Reconcile to PAID (EX-07)'                          │ 'PASS' │
+│ 7       │ 'BR-REFUND-OCC Compensation (Atomic CANCELLED + REFUNDED)'             │ 'PASS' │
+│ 8       │ 'PostgreSQL Zero Lingering Advisory Locks (FIX-23)'                    │ 'PASS' │
+│ 9       │ 'Actual CORS Preflight OPTIONS for Idempotency-Key (Section A)'        │ 'PASS' │
+│ 10      │ 'TX1 validation, current price, history ownership and preserved stock' │ 'PASS' │
+🎉 TẤT CẢ 11 BÀI TEST BẢO MẬT & NGOẠI LỆ ĐÃ PASS 100%!
+GET /health 503 { status: 'error', database: 'down' }
+GET /health 200 { status: 'ok', database: 'up' }

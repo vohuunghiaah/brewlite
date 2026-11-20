@@ -1,5 +1,5 @@
 # Sử dụng Node.js LTS
-FROM node:22-alpine
+FROM node:24-alpine
 
 # Thư mục làm việc
 WORKDIR /app
@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Cài đặt dependencies
-RUN npm install
+RUN npm ci
 
 # Sao chép mã nguồn
 COPY . .

@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: brewlite-db
+    container_name: ${DB_CONTAINER:-brewlite-db}
     restart: unless-stopped
 
     environment:
@@ -29,11 +29,11 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
 
-    container_name: brewlite-api
+    container_name: ${API_CONTAINER:-brewlite-api}
     restart: unless-stopped
 
     env_file:
-      - .env
+      - ${BREWLITE_ENV_FILE:-.env}
 
     environment:
       NODE_ENV: development
@@ -43,6 +43,12 @@ services:
       DATABASE_NAME: ${POSTGRES_DB}
       DATABASE_USER: ${POSTGRES_USER}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 3s
+      timeout: 4s
+      retries: 20
 
     ports:
       - "${API_PORT:-3001}:3001"
@@ -65,7 +71,7 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
 
-    container_name: brewlite-web
+    container_name: ${WEB_CONTAINER:-brewlite-web}
     restart: unless-stopped
 
     environment:
@@ -77,7 +83,14 @@ services:
       - "${WEB_PORT:-3000}:3000"
 
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/menu').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
 
     volumes:
       - ./apps/web:/app

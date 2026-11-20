@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppController } from './app.controller';
@@ -8,9 +8,8 @@ import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 import { AuthModule } from './auth/auth.module';
 import { PaymentsModule } from './payments/payments.module';
-import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1731974400000-AddCustomizationAndNoteToOrderItems';
-import { AddAccountAuthentication1732060800000 } from './migrations/1732060800000-add-account-authentication';
-import { AddPaymentsAndStockOcc1732147200000 } from './migrations/1732147200000-add-payments-and-stock-occ';
+import { databaseOptions } from './database';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -23,42 +22,10 @@ import { AddPaymentsAndStockOcc1732147200000 } from './migrations/1732147200000-
     // Cấu hình kết nối PostgreSQL
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      inject: [ConfigService],
-
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres' as const,
-
-        host: config.get<string>('DATABASE_HOST', 'localhost'),
-
-        port: Number(
-          config.get<string>('DATABASE_PORT') ?? 5432,
-        ),
-
-        username: config.get<string>('DATABASE_USER'),
-
-        password: config.get<string>('DATABASE_PASSWORD'),
-
-        database: config.get<string>('DATABASE_NAME'),
-
-        // Tự động nhận diện Entity trong các module
+      useFactory: () => ({
+        ...databaseOptions(),
         autoLoadEntities: true,
-
-        // Chỉ sử dụng synchronize trong môi trường phát triển (tuyệt đối không bật trong production)
-        synchronize: config.get<string>('NODE_ENV') !== 'production',
-
-        // Tự động chạy migration khi khởi động ở production theo thứ tự tuần tự
-        migrationsRun: config.get<string>('NODE_ENV') === 'production',
-
-        migrations: [
-          AddCustomizationAndNoteToOrderItems1731974400000,
-          AddAccountAuthentication1732060800000,
-          AddPaymentsAndStockOcc1732147200000,
-        ],
-
-        // Vô hiệu hóa query logging để tránh rò rỉ credentials/passwords vào logs
-        logging: false,
-
-        // Thử kết nối lại nếu PostgreSQL chưa sẵn sàng
+        migrationsRun: true,
         retryAttempts: 5,
         retryDelay: 3000,
       }),
@@ -70,7 +37,7 @@ import { AddPaymentsAndStockOcc1732147200000 } from './migrations/1732147200000-
     PaymentsModule,
   ],
 
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
 
   providers: [AppService],
 })

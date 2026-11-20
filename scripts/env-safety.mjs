@@ -207,7 +207,7 @@ export function queryDb(sql, env = process.env) {
     // Docker exec: truyền PGPASSWORD qua tùy chọn -e của docker exec
     const args = [
       'exec',
-      '-e', `PGPASSWORD=${config.password}`,
+      '-e', 'PGPASSWORD',
       config.container,
       'psql',
       '-U', config.user,
@@ -216,7 +216,10 @@ export function queryDb(sql, env = process.env) {
       '-A',
       '-c', singleLine,
     ];
-    const stdout = execFileSync('docker', args, { encoding: 'utf8' });
+    const stdout = execFileSync('docker', args, {
+      env: { ...process.env, ...env, PGPASSWORD: config.password },
+      encoding: 'utf8',
+    });
     return stdout.trim();
   }
 }

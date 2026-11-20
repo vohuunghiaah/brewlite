@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import * as crypto from 'crypto';
 import {
   getEffectiveDbConfig,
@@ -35,10 +36,14 @@ async function runSecurityAndExceptionsTests() {
 
   const results = [];
 
-  // Lấy productId có sẵn động từ database (không phụ thuộc cứng vào productId=1)
-  const availableProdIdStr = queryDb(`SELECT id FROM products WHERE "isAvailable" = true LIMIT 1;`);
-  const activeProductId = parseInt(availableProdIdStr, 10);
-  console.log(`✔ Sử dụng sản phẩm động #${activeProductId} cho các ca kiểm thử bảo mật`);
+  // Separate stock for this run, including repeated runs on the same test database.
+  const drink = await apiRequest('/products', {
+    method: 'POST',
+    body: JSON.stringify({ name: `Payment fixture ${crypto.randomUUID()}`, price: '35000', stock: 10 }),
+  });
+  assert.equal(drink.status, 201);
+  const activeProductId = drink.data.id;
+  console.log(`✔ Fixture thanh toán #${activeProductId} có tồn kho riêng`);
 
   // 1. Tạo 2 người dùng để kiểm thử xác thực và IDOR
   const user1Email = `sec-user1-${Date.now()}@brewlite.vn`;
@@ -116,6 +121,15 @@ async function runSecurityAndExceptionsTests() {
   const order1Id = orderRes.data.id;
   const order1Amount = Number(orderRes.data.totalAmount);
   console.log(`User 1 tạo thành công đơn #${order1Id} (Số tiền: ${order1Amount} đ)`);
+
+  assert.equal(orderRes.status, 201);
+  const history = token => apiRequest('/orders/me', { headers: { Authorization: `Bearer ${token}` } });
+  const own = await history(token1);
+  const other = await history(token2);
+  assert.equal(own.status, 200);
+  assert.equal(other.status, 200);
+  assert.deepEqual(own.data.map(order => order.id), [order1Id]);
+  assert.deepEqual(other.data, []);
 
   // User 2 gọi GET /orders/:id của User 1
   const idorGet = await apiRequest(`/orders/${order1Id}`, {
@@ -227,6 +241,7 @@ async function runSecurityAndExceptionsTests() {
   console.log(`Tồn kho: Trước (${stockBeforeReplay}, v${versionBeforeReplay}), Sau (${stockAfterReplay}, v${versionAfterReplay})`);
 
   if (
+    queryDb(`SELECT count(*) FROM payments WHERE "idempotencyKey" = '${retryKey}'`) === '1' &&
     replayRes.data.isDuplicate === true &&
     replayRes.data.status === 'SUCCESS' &&
     stockAfterReplay === stockBeforeReplay &&
@@ -371,10 +386,10 @@ async function runSecurityAndExceptionsTests() {
   console.log('\n--- TEST 8: Bồi hoàn hoàn tiền BR-REFUND-OCC (Tồn kho không đủ tại TX2) ---');
   const specialProdId = parseInt(
     queryDb(`INSERT INTO products ("name", "price", "isAvailable", "stock", "version", "createdAt", "updatedAt")
-             VALUES ('Exclusive Gesha ${Date.now()}', 100000.00, true, 1, 1, now(), now()) RETURNING id;`),
+             VALUES ('Exclusive Gesha ${Date.now()}', 100000.00, true, 2, 1, now(), now()) RETURNING id;`),
     10,
   );
-  console.log(`Tạo sản phẩm giới hạn #${specialProdId} với tồn kho = 1 ly`);
+  console.log(`Tạo sản phẩm giới hạn #${specialProdId} với tồn kho = 2 ly`);
 
   const orderRes4 = await apiRequest('/orders', {
     method: 'POST',
@@ -386,6 +401,8 @@ async function runSecurityAndExceptionsTests() {
     }),
   });
   const order4Id = orderRes4.data.id;
+  if (orderRes4.status !== 201) throw new Error('Expected TX1 to commit before the stock change');
+  queryDb(`UPDATE products SET stock = 1, version = version + 1 WHERE id = ${specialProdId}`);
   const occRefundKey = crypto.randomUUID();
 
   const occPayRes = await apiRequest('/payments', {
@@ -442,7 +459,7 @@ async function runSecurityAndExceptionsTests() {
   const preflightRes = await fetch(`${API_URL}/payments`, {
     method: 'OPTIONS',
     headers: {
-      Origin: 'http://localhost:3000',
+      Origin: config.webUrl,
       'Access-Control-Request-Method': 'POST',
       'Access-Control-Request-Headers': 'authorization,content-type,idempotency-key',
     },
@@ -464,7 +481,7 @@ async function runSecurityAndExceptionsTests() {
   const allowsPost = allowMethods.includes('POST');
   const validStatus = corsStatus === 204 || corsStatus === 200;
 
-  if (validStatus && hasIdempotencyHeader && hasAuthHeader && hasContentType && allowsPost) {
+  if (validStatus && allowOrigin === config.webUrl && hasIdempotencyHeader && hasAuthHeader && hasContentType && allowsPost) {
     results.push({ test: 'Actual CORS Preflight OPTIONS for Idempotency-Key (Section A)', status: 'PASS' });
     console.log('✔ Preflight OPTIONS thực tế được chấp thuận 100%: Cho phép Idempotency-Key, Authorization, POST');
   } else {
@@ -475,14 +492,43 @@ async function runSecurityAndExceptionsTests() {
     });
   }
 
+  // Use a new fixture so a price change never alters a sample or another run's order.
+  const fixture = await apiRequest('/products', {
+    method: 'POST', body: JSON.stringify({ name: `TX1-${crypto.randomUUID()}`, price: '31000', stock: 2 }),
+  });
+  assert.equal(fixture.status, 201);
+  const productId = fixture.data.id;
+  const create = items => apiRequest('/orders', {
+    method: 'POST', headers: { Authorization: `Bearer ${token2}` },
+    body: JSON.stringify({ customerName: 'Integration', customerPhone: '0901234567', items }),
+  });
+  const missingId = Number(queryDb('SELECT max(id) + 1 FROM products'));
+  for (const [item, status] of [
+    [{ productId, quantity: 0 }, 400], [{ productId, quantity: 3 }, 400],
+    [{ productId: missingId, quantity: 1 }, 404],
+  ]) {
+    assert.equal((await create([item])).status, status);
+  }
+  assert.deepEqual((await history(token2)).data, []);
+  const changed = await apiRequest(`/products/${productId}`, {
+    method: 'PATCH', body: JSON.stringify({ price: '32000' }),
+  });
+  assert.equal(changed.status, 200);
+  const placed = await create([{ productId, quantity: 2 }]);
+  assert.equal(placed.status, 201);
+  assert.equal(queryDb(`SELECT o.status, o."totalAmount", i."unitPrice", i.quantity, p.stock
+    FROM orders o JOIN order_items i ON i."orderId" = o.id JOIN products p ON p.id = i."productId"
+    WHERE o.id = ${placed.data.id} AND o."userId" = ${user2Id}`), 'PENDING|64000.00|32000.00|2|2');
+  results.push({ test: 'TX1 validation, current price, history ownership and preserved stock', status: 'PASS' });
+
   console.log('\n======================================================================');
   console.log(`📊 KẾT QUẢ KIỂM THỬ BẢO MẬT VÀ NGOẠI LỆ (${results.length} CA TEST)`);
   console.log('======================================================================');
   console.table(results);
 
-  const allPass = results.length === 10 && results.every((r) => r.status === 'PASS');
+  const allPass = results.length === 11 && results.every((r) => r.status === 'PASS');
   if (allPass) {
-    console.log('\n🎉 TẤT CẢ 10 BÀI TEST BẢO MẬT & NGOẠI LỆ ĐÃ PASS 100%!');
+    console.log('\n🎉 TẤT CẢ 11 BÀI TEST BẢO MẬT & NGOẠI LỆ ĐÃ PASS 100%!');
     process.exit(0);
   } else {
     console.error('\n⚠️ CÓ BÀI TEST NGOẠI LỆ THẤT BẠI!');
