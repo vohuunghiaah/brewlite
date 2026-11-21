@@ -79,12 +79,12 @@ export default function Header({
             aria-current={currentView === "home" ? "page" : undefined}
             className={`relative px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 ${
               currentView === "home"
-                ? "bg-[#3D261D] text-[#FAF6F0] shadow-sm"
-                : "text-[#6B4235] hover:bg-[#EFE8DF] hover:text-[#3D261D]"
+                ? "bg-[#3D261D] !text-[#FAF6F0] shadow-sm"
+                : "!text-[#6B4235] hover:bg-[#EFE8DF] hover:!text-[#3D261D]"
             }`}
           >
-            <Home size={14} className="hidden sm:inline" />
-            <span>Trang chủ</span>
+            <Home size={14} className={`hidden sm:inline ${currentView === "home" ? "text-[#FAF6F0]" : "text-[#6B4235]"}`} />
+            <span className={currentView === "home" ? "text-[#FAF6F0]" : "text-[#6B4235]"}>Trang chủ</span>
           </a>
 
           <a
@@ -96,12 +96,12 @@ export default function Header({
             aria-current={currentView === "menu" ? "page" : undefined}
             className={`relative px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 ${
               currentView === "menu"
-                ? "bg-[#3D261D] text-[#FAF6F0] shadow-sm"
-                : "text-[#6B4235] hover:bg-[#EFE8DF] hover:text-[#3D261D]"
+                ? "bg-[#3D261D] !text-[#FAF6F0] shadow-sm"
+                : "!text-[#6B4235] hover:bg-[#EFE8DF] hover:!text-[#3D261D]"
             }`}
           >
-            <UtensilsCrossed size={14} className="hidden sm:inline" />
-            <span>Menu</span>
+            <UtensilsCrossed size={14} className={`hidden sm:inline ${currentView === "menu" ? "text-[#FAF6F0]" : "text-[#6B4235]"}`} />
+            <span className={currentView === "menu" ? "text-[#FAF6F0]" : "text-[#6B4235]"}>Menu</span>
           </a>
 
           <a
@@ -113,12 +113,12 @@ export default function Header({
             aria-current={currentView === "orders" ? "page" : undefined}
             className={`relative px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 ${
               currentView === "orders"
-                ? "bg-[#3D261D] text-[#FAF6F0] shadow-sm"
-                : "text-[#6B4235] hover:bg-[#EFE8DF] hover:text-[#3D261D]"
+                ? "bg-[#3D261D] !text-[#FAF6F0] shadow-sm"
+                : "!text-[#6B4235] hover:bg-[#EFE8DF] hover:!text-[#3D261D]"
             }`}
           >
-            <ClockIcon size={14} className="hidden sm:inline" />
-            <span>Lịch sử</span>
+            <ClockIcon size={14} className={`hidden sm:inline ${currentView === "orders" ? "text-[#FAF6F0]" : "text-[#6B4235]"}`} />
+            <span className={currentView === "orders" ? "text-[#FAF6F0]" : "text-[#6B4235]"}>Lịch sử</span>
           </a>
 
           <a
@@ -130,12 +130,12 @@ export default function Header({
             aria-current={currentView === "account" ? "page" : undefined}
             className={`relative px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 ${
               currentView === "account"
-                ? "bg-[#3D261D] text-[#FAF6F0] shadow-sm"
-                : "text-[#6B4235] hover:bg-[#EFE8DF] hover:text-[#3D261D]"
+                ? "bg-[#3D261D] !text-[#FAF6F0] shadow-sm"
+                : "!text-[#6B4235] hover:bg-[#EFE8DF] hover:!text-[#3D261D]"
             }`}
           >
-            <User size={14} className="hidden sm:inline" />
-            <span>Tài khoản</span>
+            <User size={14} className={`hidden sm:inline ${currentView === "account" ? "text-[#FAF6F0]" : "text-[#6B4235]"}`} />
+            <span className={currentView === "account" ? "text-[#FAF6F0]" : "text-[#6B4235]"}>Tài khoản</span>
           </a>
         </nav>
 

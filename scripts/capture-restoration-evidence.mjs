@@ -1,3 +1,7 @@
+// [VISUAL REGRESSION TEST FIXTURE]
+// Standardized UI mock data used solely for responsive layout and visual design screenshot generation in docs/ui/restoration-evidence/.
+// NOTE: Real end-to-end integration with NestJS REST API, TypeORM migrations, PostgreSQL, and OCC concurrency is verified separately by scripts/e2e-mvp-acceptance.mjs.
+
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -43,7 +47,7 @@ const mockProducts = [
     name: 'Bánh Croissant Bơ Tỏi',
     description: 'Bánh sừng bò ngàn lớp thơm nức mùi bơ Pháp nhập khẩu và phô mai nướng vàng giòn.',
     price: 32000,
-    imageUrl: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=800&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
     stock: 15,
   },

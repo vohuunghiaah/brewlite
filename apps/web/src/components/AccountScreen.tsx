@@ -67,7 +67,10 @@ export default function AccountScreen({
 
   const initial = user.email ? user.email.charAt(0).toUpperCase() : "U";
   const displayName = user.email.split("@")[0];
-  const totalSpent = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  // Calculate total spent strictly on confirmed paid orders (excluding PENDING, PAYMENT_FAILED, CANCELLED)
+  const PAID_STATUSES = new Set(["PAID", "PREPARING", "READY", "COMPLETED"]);
+  const paidOrders = orders.filter((o) => PAID_STATUSES.has(o.status));
+  const totalSpent = paidOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
 
   return (
     <div className="max-w-lg mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-5">

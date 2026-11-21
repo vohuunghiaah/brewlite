@@ -116,6 +116,16 @@ export default function MenuPage() {
   const [pickupMethod, setPickupMethod] = useState<"AT_COUNTER" | "AT_TABLE">("AT_COUNTER");
   const [tableNumber, setTableNumber] = useState("");
   const [testMode, setTestMode] = useState<"SUCCESS" | "FAILED" | "PENDING">("SUCCESS");
+  // Production safety: Mock payment controls are strictly hidden in production UI
+  const showPaymentTestControls = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      process.env.NODE_ENV === "test" ||
+      (process.env.NODE_ENV !== "production" &&
+        (process.env.NEXT_PUBLIC_ENABLE_TEST_PAYMENT_CONTROLS === "true" ||
+          window.location.search.includes("test_payment_controls=true")))
+    );
+  }, []);
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>("");
@@ -1058,6 +1068,7 @@ export default function MenuPage() {
           onPaymentMethodChange={setSelectedPaymentMethod}
           testMode={testMode}
           onTestModeChange={setTestMode}
+          showTestControls={showPaymentTestControls}
           onConfirmPayment={handleProcessPayment}
           processing={paying}
           paymentError={paymentError}

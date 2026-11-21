@@ -16,6 +16,7 @@ interface CheckoutScreenProps {
   onPaymentMethodChange: (val: "MOMO" | "VIETQR" | "CARD") => void;
   testMode: "SUCCESS" | "FAILED" | "PENDING";
   onTestModeChange: (val: "SUCCESS" | "FAILED" | "PENDING") => void;
+  showTestControls?: boolean;
   onConfirmPayment: () => void;
   processing: boolean;
   paymentError?: string;
@@ -34,6 +35,7 @@ export default function CheckoutScreen({
   onPaymentMethodChange,
   testMode,
   onTestModeChange,
+  showTestControls = false,
   onConfirmPayment,
   processing,
   paymentError,
@@ -251,36 +253,38 @@ export default function CheckoutScreen({
             </div>
           </div>
 
-          {/* Test Mode Simulator (Included for test suites compatibility) */}
-          <div className="bg-[#FAF6F0] border border-[#EFE8DF] rounded-xl p-2.5 flex items-center justify-between text-xs">
-            <span className="font-bold text-[#6B4235] text-[11px]">
-              Chế độ thử nghiệm:
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => onTestModeChange("SUCCESS")}
-                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                  testMode === "SUCCESS"
-                    ? "bg-[#10B981] text-white"
-                    : "bg-white text-[#6B4235] border border-[#EFE8DF]"
-                }`}
-              >
-                Thanh toán thành công
-              </button>
-              <button
-                type="button"
-                onClick={() => onTestModeChange("FAILED")}
-                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                  testMode === "FAILED"
-                    ? "bg-[#EF4444] text-white"
-                    : "bg-white text-[#6B4235] border border-[#EFE8DF]"
-                }`}
-              >
-                Giả lập thất bại
-              </button>
+          {/* Test Mode Simulator (Only rendered when showTestControls is explicitly enabled for testing, hidden from production) */}
+          {showTestControls && (
+            <div className="bg-[#FAF6F0] border border-[#EFE8DF] rounded-xl p-2.5 flex items-center justify-between text-xs">
+              <span className="font-bold text-[#6B4235] text-[11px]">
+                Chế độ thử nghiệm:
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onTestModeChange("SUCCESS")}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                    testMode === "SUCCESS"
+                      ? "bg-[#10B981] text-white"
+                      : "bg-white text-[#6B4235] border border-[#EFE8DF]"
+                  }`}
+                >
+                  Thanh toán thành công
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onTestModeChange("FAILED")}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                    testMode === "FAILED"
+                      ? "bg-[#EF4444] text-white"
+                      : "bg-white text-[#6B4235] border border-[#EFE8DF]"
+                  }`}
+                >
+                  Giả lập thất bại
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Confirm Action Button */}
           <div className="pt-2">

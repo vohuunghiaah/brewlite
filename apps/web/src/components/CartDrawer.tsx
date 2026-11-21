@@ -48,7 +48,6 @@ export default function CartDrawer({
   onNewOrder,
 }: CartDrawerProps) {
   const [voucherCode, setVoucherCode] = useState("");
-  const [voucherApplied, setVoucherApplied] = useState(false);
   const [voucherMessage, setVoucherMessage] = useState("");
 
   useEffect(() => {
@@ -65,20 +64,13 @@ export default function CartDrawer({
 
   const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
-  const discount = voucherApplied ? Math.floor(subtotal * 0.1) : 0;
-  const grandTotal = Math.max(0, subtotal - discount);
+  // FR-10 (Promotions & Vouchers) is DEFERRED/BLOCKED. Frontend must NOT calculate unsupported discounts.
+  const grandTotal = subtotal;
 
   const handleApplyVoucher = (e: React.FormEvent) => {
     e.preventDefault();
     if (!voucherCode.trim()) return;
-    const code = voucherCode.trim().toUpperCase();
-    if (code === "BREW10" || code === "BREWLITE") {
-      setVoucherApplied(true);
-      setVoucherMessage("Áp dụng mã thành công: Giảm 10% đơn hàng!");
-    } else {
-      setVoucherApplied(false);
-      setVoucherMessage("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
-    }
+    setVoucherMessage("Tính năng mã ưu đãi (FR-10) hiện chưa khả dụng trên hệ thống. Không áp dụng giảm giá.");
   };
 
   return (
@@ -281,7 +273,7 @@ export default function CartDrawer({
                 <Tag size={16} className="text-[#C28D58] shrink-0" />
                 <input
                   type="text"
-                  placeholder="Nhập mã ưu đãi (BREW10)..."
+                  placeholder="Mã ưu đãi (Chưa kích hoạt)..."
                   value={voucherCode}
                   onChange={(e) => setVoucherCode(e.target.value)}
                   className="bg-transparent flex-1 text-xs text-[#3D261D] focus:outline-none placeholder:text-[#6B4235]/50 px-1"
@@ -295,9 +287,7 @@ export default function CartDrawer({
               </div>
               {voucherMessage && (
                 <p
-                  className={`text-[10px] font-bold mt-1.5 ml-2 ${
-                    voucherApplied ? "text-[#10B981]" : "text-[#EF4444]"
-                  }`}
+                  className="text-[10px] font-bold mt-1.5 ml-2 text-[#EF4444]"
                 >
                   {voucherMessage}
                 </p>
@@ -364,12 +354,6 @@ export default function CartDrawer({
                 <span>Tạm tính</span>
                 <span className="font-bold text-[#3D261D]">{formatVND(subtotal)}</span>
               </div>
-              {voucherApplied && (
-                <div className="flex justify-between text-[#10B981] font-semibold">
-                  <span>Ưu đãi (10%)</span>
-                  <span>-{formatVND(discount)}</span>
-                </div>
-              )}
               <div className="flex justify-between text-sm sm:text-base font-extrabold text-[#3D261D] pt-1 border-t border-[#EFE8DF]">
                 <span>Tổng cộng ({totalQuantity} món):</span>
                 <span className="text-[#C28D58] font-black">{formatVND(grandTotal)}</span>

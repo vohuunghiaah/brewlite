@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, ChevronRight, Star, Flame, AlertCircle, RefreshCw } from "lucide-react";
+import { Search, Plus, ChevronRight, Flame, AlertCircle, RefreshCw } from "lucide-react";
 import { formatVND } from "./Header";
 
 export interface Product {
@@ -27,6 +27,7 @@ const fallbackImages = {
   coffee: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80",
   tea: "https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=800&q=80",
   cacao: "https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=800&q=80",
+  pastry: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80",
   water: "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=800&q=80",
 };
 
@@ -35,6 +36,7 @@ export function getProductImage(product: Product): string {
     return product.imageUrl;
   }
   const details = `${product.name} ${product.description}`.toLowerCase();
+  if (/croissant|bánh|pastry|cake|cookie/.test(details)) return fallbackImages.pastry;
   if (/trà|tea|đào|cam/.test(details)) return fallbackImages.tea;
   if (/cacao|chocolate/.test(details)) return fallbackImages.cacao;
   if (/nước|water/.test(details)) return fallbackImages.water;
@@ -49,6 +51,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product, onOpenDetail, onQuickAdd }: ProductCardProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const isOutOfStock = !product.isAvailable || (product.stock !== undefined && product.stock <= 0);
   const imgSrc = getProductImage(product);
   const numPrice = Number(product.price);
@@ -62,24 +65,30 @@ export function ProductCard({ product, onOpenDetail, onQuickAdd }: ProductCardPr
         className="relative overflow-hidden bg-[#EFE8DF] aspect-[4/3] cursor-pointer"
         onClick={() => onOpenDetail(product)}
       >
-        {!imgLoaded && <div className="absolute inset-0 skeleton" />}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imgSrc}
-          alt={product.name}
-          className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${
-            imgLoaded ? "opacity-100" : "opacity-0"
-          } ${isOutOfStock ? "grayscale opacity-50" : ""}`}
-          onLoad={() => setImgLoaded(true)}
-        />
-        {/* Badges */}
-        {isOutOfStock ? (
+        {!imgLoaded && !imgError && <div className="absolute inset-0 skeleton" />}
+        {imgError ? (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-[#FAF6F0] text-[#6B4235] p-3 text-center">
+            <span className="text-xs font-bold leading-snug">{product.name}</span>
+          </div>
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={imgSrc}
+            alt={product.name}
+            className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${
+              imgLoaded ? "opacity-100" : "opacity-0"
+            } ${isOutOfStock ? "grayscale opacity-50" : ""}`}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => {
+              setImgError(true);
+              setImgLoaded(true);
+            }}
+          />
+        )}
+        {/* Real availability badge only; no unverified favorite claims */}
+        {isOutOfStock && (
           <span className="absolute top-2.5 left-2.5 bg-[#EF4444] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide shadow">
             Tạm hết hàng
-          </span>
-        ) : (
-          <span className="absolute top-2.5 right-2.5 bg-[#3D261D]/80 backdrop-blur-sm text-[#E8C99A] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-            <Star size={9} fill="currentColor" /> Yêu thích
           </span>
         )}
       </div>
@@ -199,16 +208,18 @@ export default function MenuScreen({
           )}
         </div>
 
-        {/* Stat badges */}
+        {/* Stat badges: Verifiable dynamic count & authentic cashless service attribute */}
         <div className="hidden sm:flex items-center gap-4 z-10 bg-[#FAF6F0]/10 backdrop-blur-sm border border-white/10 rounded-2xl px-5 py-4">
           <div className="text-center">
-            <div className="text-3xl font-black text-[#C28D58]">6+</div>
-            <div className="text-[10px] text-[#E8C99A] font-semibold uppercase tracking-wider">Món mới</div>
+            <div className="text-3xl font-black text-[#C28D58]">
+              {products.length > 0 ? products.length : "—"}
+            </div>
+            <div className="text-[10px] text-[#E8C99A] font-semibold uppercase tracking-wider">Món thực đơn</div>
           </div>
           <div className="w-px h-10 bg-[#6B4235]" />
           <div className="text-center">
-            <div className="text-3xl font-black text-[#C28D58]">0đ</div>
-            <div className="text-[10px] text-[#E8C99A] font-semibold uppercase tracking-wider">Phí giao vận</div>
+            <div className="text-3xl font-black text-[#C28D58]">100%</div>
+            <div className="text-[10px] text-[#E8C99A] font-semibold uppercase tracking-wider">Cashless</div>
           </div>
         </div>
 
