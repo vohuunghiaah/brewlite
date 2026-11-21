@@ -101,10 +101,8 @@ export default function CartDrawer({
         aria-hidden={!isOpen ? "true" : undefined}
         inert={!isOpen ? true : undefined}
         tabIndex={-1}
-        className={`fixed top-0 right-0 bottom-0 z-50 bg-white w-full sm:w-[420px] max-w-full h-full flex flex-col shadow-2xl transition-opacity duration-200 overflow-hidden ${
-          isOpen
-            ? "opacity-100 visible pointer-events-auto"
-            : "opacity-0 invisible pointer-events-none"
+        className={`fixed top-0 right-0 bottom-0 z-50 bg-white w-full sm:w-[420px] max-w-full h-full flex-col shadow-2xl overflow-hidden ${
+          isOpen ? "flex pointer-events-auto" : "hidden pointer-events-none"
         }`}
       >
         {/* Header */}
