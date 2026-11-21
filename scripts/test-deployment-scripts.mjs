@@ -1375,10 +1375,11 @@ runTest('SIMULATION', 'TASK 5.4.1 Phase D (Integration): Isolated PostgreSQL con
     ], { encoding: 'utf8' });
     assert.equal(runRes.status, 0, 'Docker run for isolated container must succeed');
 
-    // 2. Wait for postgres container to be responsive
+    // The temporary init server accepts Unix sockets before restarting.
+    // TCP becomes available only on the final PostgreSQL server.
     let ready = false;
     for (let i = 0; i < 30; i++) {
-      const probe = spawnSync('docker', ['exec', containerName, 'pg_isready', '-U', 'brewlite', '-d', testDb], { stdio: 'ignore' });
+      const probe = spawnSync('docker', ['exec', containerName, 'pg_isready', '-h', '127.0.0.1', '-U', 'brewlite', '-d', testDb], { stdio: 'ignore' });
       if (probe.status === 0) {
         ready = true;
         break;
