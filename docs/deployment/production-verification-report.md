@@ -1,5 +1,9 @@
 # BrewLite — Nghiệm thu production trên AWS Lightsail
 
+**Cập nhật 21/11/2026.** Run #44879328653 đã triển khai bản `7d808408`. Đã kiểm tra lại digest từ container, hai hostname, PostgreSQL và phục hồi dump của run. [Biên bản và bốn mốc runtime](final-production-acceptance-2026-11-21.md)
+
+### Bản ghi ngày 20/11/2026
+
 **PRODUCTION RUNNING — CD DEPLOYMENT PATH NOT YET VERIFIED**
 
 Ngày 20/11/2026, khoảng 20:16–20:19 giờ Việt Nam (13:16–13:19 UTC). Phiên nghiệm thu dùng trình duyệt và HTTPS từ ngoài AWS, bảng điều khiển Lightsail, SSH vào đúng instance, PostgreSQL ở chế độ chỉ đọc, API của GitHub và registry GHCR. Trang thực đơn hoạt động, database đã áp dụng đủ migration và hai image đang chạy khớp bản phát hành. GitHub chưa có lần chạy job deploy production. Máy chủ cũng chưa có cặp image của bản trước để quay lui.

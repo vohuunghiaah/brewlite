@@ -1,5 +1,9 @@
 # BrewLite — Báo Cáo Sẵn Sàng Phát Hành Production (Task 5.4.1)
 
+**Cập nhật 21/11/2026.** Environment production đã có reviewer, giới hạn nhánh main và đã phê duyệt run #44879328653. Cặp digest rollback còn truy xuất được. [Nghiệm thu runtime và restore](final-production-acceptance-2026-11-21.md). Những trạng thái BLOCKED bên dưới được giữ theo mốc kiểm toán Task 5.4.1.
+
+### Baseline trước phát hành
+
 **PRODUCTION READINESS & HARDENING AUDIT REPORT (UPDATED FIX-5.4.1)**
 
 - **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)

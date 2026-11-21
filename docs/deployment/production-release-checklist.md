@@ -1,5 +1,9 @@
 # BrewLite — Danh Sách Kiểm Tra Phát Hành Production (Release Checklist)
 
+## Lần áp dụng ngày 21/11/2026
+
+Release `7d808408` đã qua phê duyệt production. Đã đối chiếu bốn mốc deploy, hai digest, digest rollback, bản backup của run, phục hồi cô lập và HTTPS cả hai domain. [Bảng nghiệm thu có thời gian và kết quả](final-production-acceptance-2026-11-21.md). Các ô bên dưới là mẫu dùng lại cho lần phát hành kế tiếp.
+
 **Tài liệu:** Production Release Checklist (Task 5.4.1 - FIX-5.4.1)  
 **Mục đích:** Bảng kiểm tra tuần tự bắt buộc cho Người phụ trách phát hành (Release Manager), DevOps Engineer và QA Lead trước, trong và sau mỗi lần triển khai mã nguồn lên môi trường Production trên AWS Lightsail.  
 **Nguyên tắc vận hành:** *Thất bại an toàn (Fail-Closed) — Không bỏ qua bất kỳ bước kiểm tra nào — Tự động quay lui (Rollback) khi phát sinh lỗi.*
