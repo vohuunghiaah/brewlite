@@ -181,7 +181,10 @@ runTest('STATIC', 'FIX-16: deploy.yml eliminates hazardous source .env, extracts
   assert.ok(remoteDeploy.includes('scripts/safe-env.mjs get .env DOMAIN'), 'Must extract DOMAIN safely via safe-env.mjs');
   assert.ok(remoteDeploy.includes('scripts/safe-env.mjs get .env POSTGRES_USER'), 'Must extract POSTGRES_USER safely via safe-env.mjs');
   assert.ok(remoteDeploy.includes('scripts/safe-env.mjs get .env POSTGRES_DB'), 'Must extract POSTGRES_DB safely via safe-env.mjs');
-  assert.ok(remoteDeploy.includes('TARGET_URL="https://$DOMAIN"'), 'Smoke test must use exported https://$DOMAIN');
+  const rollout = readFileSync(path.join(root, 'scripts/rollout-production.sh'), 'utf8');
+  assert.ok(remoteDeploy.includes('bash scripts/rollout-production.sh </dev/null'), 'Run the rollout independently of the SSH command stream');
+  assert.ok(rollout.includes('TARGET_URL="https://$DOMAIN"'), 'Smoke test must use exported https://$DOMAIN');
+  assert.match(remoteDeploy, /set -eo pipefail[\s\S]*<< 'EOF' \| tee "\$evidence"[\s\S]*bash scripts\/verify-production-output\.sh "\$evidence"\s+echo "deployed_real=true"/);
   assert.ok(remoteDeploy.includes('scripts/safe-env.mjs validate .env'), 'Validates .env via safe-env.mjs before execution');
   assert.ok(remoteDeploy.includes('node scripts/safe-env.mjs validate .env DOMAIN CADDY_HOSTS POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET'), 'Must validate CADDY_HOSTS in remote .env');
   assert.ok(deployYaml.includes('serializeEnv'), 'Step 2 must serialize secrets via safe-env.mjs');
@@ -611,7 +614,9 @@ runTest('SIMULATION', 'FIX-04 Requirement 1: Dry-run job performs isolated verif
 runTest('SIMULATION', 'FIX-03 & FIX-04: Missing production host credentials blocks deployment without false PASS', () => {
   const deployYaml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
   assert.ok(deployYaml.includes('has_host=false'), 'Must detect missing host secrets');
-  assert.ok(deployYaml.includes('BLOCKED / DRY-RUN'), 'Step summary records BLOCKED / DRY-RUN status');
+  const audit = deployYaml.split('name: Record Deployment State & Audit Summary')[1];
+  assert.match(audit, /if: always\(\)/);
+  assert.match(audit, /else\s+echo "[^"]*BLOCKED[^"]*"[^\n]*\n\s*exit 1/, 'Unverified production must fail the job');
   assert.ok(deployYaml.includes('deployed_real'), 'Only claims VERIFIED IN PRODUCTION if deployed_real is true');
 });
 

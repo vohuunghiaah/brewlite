@@ -68,6 +68,8 @@ jobs:
           cache-dependency-path: scripts/package-lock.json
       - run: npm ci --prefix scripts
       - run: node scripts/node_modules/playwright/cli.js install --with-deps chromium --only-shell
+      - name: Production rollout regression
+        run: bash scripts/test-production-rollout.sh
       - name: Rebuild database and run acceptance
         shell: bash
         run: |
