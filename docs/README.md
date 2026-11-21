@@ -1,4 +1,13 @@
 # CHỈ MỤC TÀI LIỆU DỰ ÁN BREWLITE (DOCUMENTATION CATALOG & REPOSITORY INDEX)
+
+## Hồ sơ nghiệm thu và bàn giao ngày 21/11/2026
+
+| Hồ sơ | Phạm vi | Trạng thái |
+|---|---|---|
+| [Nghiệm thu AWS](deployment/final-production-acceptance-2026-11-21.md) | Release `7d808408`, run #44879328653, digest runtime, backup/restore và HTTPS | RELEASE ACCEPTED |
+| [Bàn giao ASM2](final-handover-report.md) | Từng Task, FR, NFR, sơ đồ, hướng dẫn demo và các việc cần ký nhận | READY FOR REVIEW |
+
+Các bảng kiểm kê bên dưới ghi mốc lịch sử của từng Task.
 ## DỰ ÁN: BREWLITE — HỆ THỐNG ĐẶT CÀ PHÊ KHÔNG DÙNG TIỀN MẶT
 ### PHÂN HỆ: TASK 4.2 — DOCUMENTATION MANAGEMENT & TRACEABILITY
 

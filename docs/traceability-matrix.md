@@ -1,5 +1,11 @@
 # Ma Trận Truy Vết Yêu Cầu (Requirements Traceability Matrix - RTM)
 
+### Kết quả ở release `7d808408` · 21/11/2026
+
+[Ma trận hiện hành theo từng Task, FR-01–13 và NFR-01–07](final-handover-report.md) kết nối SRS và UC với source, test, khoảng trống và người xử lý. [Biên bản AWS](deployment/final-production-acceptance-2026-11-21.md) xác nhận cổng phê duyệt, rollout, digest, migration, restore và smoke.
+
+Các dòng BLOCKED cho host/gate và các cột baseline `main` phía dưới phản ánh thời điểm ghi nhận cũ. Với release này, triển khai production PASS. FR-05 còn sai khác hợp đồng ID/mã nhận món, FR-10 chưa nghiệm thu, FR-12 DEFERRED và NFR-07 PENDING. Phần đóng gói, health và smoke không thay cho phép đo availability.
+
 ### Phạm vi bàn giao Assignment 2
 
 **FR-12 — Should Have — NOT IMPLEMENTED / DEFERRED.** Phiên bản bàn giao xác nhận thanh toán và hiển thị mã nhận món. UC-04 tạo đơn PENDING, UC-10 ghi PAID khi thanh toán thành công. Khách có thể đọc lại vé qua API có kiểm tra chủ sở hữu. Trang chủ, Menu, lịch sử và giỏ hàng dùng chung thanh điều hướng.

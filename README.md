@@ -1,5 +1,9 @@
 # BrewLite — Hệ Thống Đặt Đồ Uống Trực Tuyến (Online Drink Ordering System)
 
+## Bản production bàn giao ngày 21/11/2026
+
+BrewLite đang phục vụ bản `7d808408` trên AWS Lightsail. Giảng viên có thể mở [Menu production](https://swe-brewlite.54-255-241-1.sslip.io/menu), xem [hướng dẫn demo và ma trận yêu cầu](docs/final-handover-report.md), rồi đối chiếu [digest, PostgreSQL và bản backup đã phục hồi](docs/deployment/final-production-acceptance-2026-11-21.md). NFR-07 đang chờ phép đo 7 ngày.
+
 [![Quality gates](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml)
 [![Continuous Delivery](https://github.com/vohuunghiaah/brewlite/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/vohuunghiaah/brewlite/actions/workflows/deploy.yml)
 [![Node.js Version](https://img.shields.io/badge/Node.js-24.x-brightgreen.svg)](https://nodejs.org/)
