@@ -97,7 +97,9 @@ jobs:
         run: node scripts/node_modules/playwright/cli.js install --with-deps chromium --only-shell
 
       - name: Deployment Tooling Verification Suite
-        run: node scripts/test-deployment-scripts.mjs
+        run: |
+          bash scripts/test-production-rollout.sh
+          node scripts/test-deployment-scripts.mjs
 
       - name: Compose & E2E Acceptance Test
         shell: bash
@@ -362,8 +364,8 @@ jobs:
           PG_USER: ${{ secrets.POSTGRES_USER }}
           PG_PASS: ${{ secrets.POSTGRES_PASSWORD }}
           JWT_SEC: ${{ secrets.JWT_SECRET }}
-          API_IMAGE_REF: ${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}
-          WEB_IMAGE_REF: ${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}
+          API_IMAGE_REF: ${{ needs.build-and-push.outputs.api_image }}@${{ needs.build-and-push.outputs.api_digest }}
+          WEB_IMAGE_REF: ${{ needs.build-and-push.outputs.web_image }}@${{ needs.build-and-push.outputs.web_digest }}
           DOMAIN: ${{ vars.DOMAIN }}
           CADDY_HOSTS: ${{ vars.CADDY_HOSTS }}
         run: |
@@ -429,7 +431,9 @@ jobs:
           $SCP_CMD -r docker-compose.prod.yml Caddyfile scripts "$SSH_USER@$HOST:/home/$SSH_USER/app/"
 
           echo "4. Executing transactional deployment pipeline on remote host (FIX-08, FIX-09, FIX-13, FIX-16)..."
-          $SSH_CMD "$SSH_USER@$HOST" "bash -s" << 'EOF'
+          evidence=$(mktemp)
+          trap 'rm -f "$evidence"' EXIT
+          $SSH_CMD "$SSH_USER@$HOST" "bash -s" << 'EOF' | tee "$evidence"
             set -eo pipefail
             cd /home/$USER/app
 
@@ -487,31 +491,13 @@ jobs:
               exit 1
             fi
 
-            # E. Safe schema migration (with rollback on failure)
-            if ! docker compose -f docker-compose.prod.yml run --rm --no-deps api node dist/prepare-database.js migrate; then
-              echo "❌ Schema migration failed! Triggering safe rollback..."
-              node scripts/rollback.mjs
-              exit 1
-            fi
-
-            # F. Rolling container update (with rollback on failure)
-            if ! docker compose -f docker-compose.prod.yml up -d --remove-orphans; then
-              echo "❌ Container update failed! Triggering safe rollback..."
-              node scripts/rollback.mjs
-              exit 1
-            fi
-
-            # G. Production Smoke Test with real configured DOMAIN (FIX-13)
-            echo "Running smoke test against configured domain: https://$DOMAIN"
-            if ! TARGET_ENV=production TARGET_URL="https://$DOMAIN" node scripts/smoke-test.mjs; then
-              echo "❌ Smoke test failed against https://$DOMAIN! Triggering automatic safe rollback..."
-              node scripts/rollback.mjs
-              exit 1
-            fi
+            bash scripts/rollout-production.sh </dev/null
           EOF
-          echo "deployed_real=true" >> $GITHUB_OUTPUT
+          bash scripts/verify-production-output.sh "$evidence"
+          echo "deployed_real=true" >> "$GITHUB_OUTPUT"
 
       - name: Record Deployment State & Audit Summary
+        if: always()
         shell: bash
         env:
           HOST: ${{ secrets.LIGHTSAIL_HOST }}
@@ -523,11 +509,10 @@ jobs:
             echo "**Target Host:** \`$HOST\`" >> $GITHUB_STEP_SUMMARY
             echo "**Verification:** Smoke test passed 100% via HTTPS." >> $GITHUB_STEP_SUMMARY
           else
-            echo "**Status:** BLOCKED / DRY-RUN (Pending AWS Lightsail VM SSH credentials & live environment)" >> $GITHUB_STEP_SUMMARY
-            echo "**Image Artifacts Verified:** GHCR Docker images built and published successfully." >> $GITHUB_STEP_SUMMARY
-            echo "**Safety:** No real production secrets leaked, schema migrations validated without destructive changes." >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** BLOCKED — production update and HTTPS smoke could not be verified." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           echo "| Component | Target Image Ref |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| API | \`${{ needs.build-and-push.outputs.api_image }}:${{ needs.build-and-push.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Web | \`${{ needs.build-and-push.outputs.web_image }}:${{ needs.build-and-push.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| API | \`${{ needs.build-and-push.outputs.api_image }}@${{ needs.build-and-push.outputs.api_digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Web | \`${{ needs.build-and-push.outputs.web_image }}@${{ needs.build-and-push.outputs.web_digest }}\` |" >> $GITHUB_STEP_SUMMARY
