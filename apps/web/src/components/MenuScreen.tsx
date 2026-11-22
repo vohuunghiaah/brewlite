@@ -185,26 +185,31 @@ export default function MenuScreen({
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Hero Banner */}
-      <div className="relative rounded-3xl overflow-hidden bg-[#3D261D] mb-8 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
+      <div className={`relative rounded-3xl overflow-hidden bg-[#3D261D] mb-8 ${isHomeView ? "p-8 sm:p-12" : "p-6 sm:p-8"} flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md transition-all`}>
         <div className="text-[#FAF6F0] z-10 max-w-xl">
           <div className="flex items-center gap-2 text-[#C28D58] text-xs font-bold uppercase tracking-widest mb-2.5">
             <Flame size={14} fill="currentColor" /> Hôm nay tại BrewLite
           </div>
-          <h1 className="text-2xl sm:text-4xl font-extrabold leading-tight mb-3">
+          <h1 className={`${isHomeView ? "text-3xl sm:text-5xl lg:text-6xl" : "text-2xl sm:text-4xl"} font-extrabold leading-tight mb-3.5 tracking-tight`}>
             Mỗi ly cà phê,<br />
             <span className="text-[#C28D58]">một khoảnh khắc.</span>
           </h1>
-          <p className="text-[#E8C99A] text-sm sm:text-base leading-relaxed mb-4">
+          <p className="text-[#E8C99A] text-sm sm:text-base leading-relaxed mb-5">
             Cashierless · Cashless · Cà phê thật ngon. Tận hưởng trải nghiệm gọi món hiện đại và thanh toán không tiền mặt.
           </p>
           {isHomeView && onExploreMenu && (
-            <button
-              onClick={onExploreMenu}
-              className="bg-[#C28D58] hover:bg-white hover:text-[#3D261D] text-white px-5 py-2.5 rounded-2xl font-bold text-sm transition-all duration-200 shadow inline-flex items-center gap-2 active:scale-95"
-            >
-              <span>Khám phá thực đơn</span>
-              <ChevronRight size={16} />
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={onExploreMenu}
+                className="bg-[#C28D58] hover:bg-white hover:text-[#3D261D] text-white px-6 py-3 rounded-2xl font-bold text-sm sm:text-base transition-all duration-200 shadow-md inline-flex items-center gap-2 active:scale-95"
+              >
+                <span>Khám phá thực đơn</span>
+                <ChevronRight size={18} />
+              </button>
+              <span className="text-xs text-[#E8C99A]/80 hidden sm:inline-block">
+                (hoặc lướt xuống để tự động vào Menu)
+              </span>
+            </div>
           )}
         </div>
 

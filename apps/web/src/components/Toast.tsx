@@ -59,7 +59,7 @@ export function ToastContainer({
   return (
     <div
       aria-label="Thông báo hệ thống"
-      className="fixed bottom-5 right-5 z-[100] flex flex-col gap-2.5 pointer-events-none max-w-md w-full px-4 sm:px-0 sm:w-auto"
+      className="fixed top-5 right-5 z-[100] flex flex-col gap-2.5 pointer-events-none max-w-md w-full px-4 sm:px-0 sm:w-auto"
     >
       {toasts.map((toast) => (
         <Toast key={toast.id} toast={toast} onDismiss={onDismiss} />

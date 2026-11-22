@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import Header from '../src/components/Header';
 import CartDrawer from '../src/components/CartDrawer';
 import CheckoutScreen from '../src/components/CheckoutScreen';
+import OrderConfirmation from '../src/components/OrderConfirmation';
 import AccountScreen from '../src/components/AccountScreen';
 import { OrderHistoryItem } from '../src/components/OrderHistory';
 import MenuScreen, { getProductImage, ProductCard, Product } from '../src/components/MenuScreen';
@@ -398,6 +399,109 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
       expect(container.querySelector('.skeleton')).not.toBeInTheDocument();
       const productTitles = screen.getAllByText('Trà Sen Vàng');
       expect(productTitles.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // UI Refinements: Toast, Cart Thumbnails, QR Simulation, Pending/Paid Labels
+  // --------------------------------------------------------------------------
+  describe('UI Refinements Verification', () => {
+    it('CartDrawer renders product thumbnail image and excludes PENDING text from order status', () => {
+      const mockItemsWithImage: CartItem[] = [
+        {
+          key: 'item-1',
+          productId: 1,
+          productName: 'Cà phê Phin Sữa Tươi',
+          imageUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80',
+          basePrice: 29000,
+          size: 'SMALL',
+          toppings: [],
+          note: '',
+          unitPrice: 29000,
+          quantity: 2,
+          subtotal: 58000,
+        },
+      ];
+
+      const { container } = render(
+        <CartDrawer
+          isOpen={true}
+          onClose={jest.fn()}
+          cartItems={mockItemsWithImage}
+          onUpdateQuantity={jest.fn()}
+          onRemoveItem={jest.fn()}
+          onClearCart={jest.fn()}
+          showCheckoutForm={false}
+          onStartCheckout={jest.fn()}
+          customerName=""
+          onCustomerNameChange={jest.fn()}
+          customerPhone=""
+          onCustomerPhoneChange={jest.fn()}
+          onProceedOrder={jest.fn()}
+          isCreatingOrder={false}
+          pendingOrder={{ id: 100, status: 'PENDING' }}
+          onOpenPaymentModal={jest.fn()}
+        />
+      );
+
+      // 1. Verify thumbnail image exists
+      const itemImg = container.querySelector('img[alt="Cà phê Phin Sữa Tươi"]');
+      expect(itemImg).toBeInTheDocument();
+
+      // 2. Verify pending order text excludes the word "PENDING"
+      const pendingBanner = screen.getByText(/Đặt hàng thành công! Mã đơn hàng: #100/i);
+      expect(pendingBanner).toBeInTheDocument();
+      expect(pendingBanner.textContent).toContain('Trạng thái: Chờ thanh toán');
+      expect(pendingBanner.textContent).not.toContain('PENDING');
+    });
+
+    it('OrderConfirmation displays "Đã thanh toán" without "(PAID)"', () => {
+      render(
+        <OrderConfirmation
+          isOpen={true}
+          onClose={jest.fn()}
+          orderId={100}
+          orderCode="BL-0100"
+          status="PAID"
+          pickupMethod="AT_COUNTER"
+          totalAmount={58000}
+          items={[]}
+          onViewHistory={jest.fn()}
+          onContinueShopping={jest.fn()}
+        />
+      );
+
+      // Verify "Đã thanh toán" is present and "(PAID)" is absent
+      const statusBadge = screen.getByText(/Đã thanh toán/i);
+      expect(statusBadge).toBeInTheDocument();
+      expect(statusBadge.textContent).not.toContain('(PAID)');
+    });
+
+    it('CheckoutScreen renders simulated QR code for cashless payment', () => {
+      const { container } = render(
+        <CheckoutScreen
+          isOpen={true}
+          onClose={jest.fn()}
+          totalAmount={58000}
+          paymentMethod="VIETQR"
+          onPaymentMethodChange={jest.fn()}
+          pickupMethod="AT_COUNTER"
+          onPickupMethodChange={jest.fn()}
+          tableNumber=""
+          onTableNumberChange={jest.fn()}
+          processing={false}
+          onConfirmPayment={jest.fn()}
+          testMode="SUCCESS"
+          onTestModeChange={jest.fn()}
+          orderId={100}
+        />
+      );
+
+      // Verify QR Code svg exists and mentions simulated Cashless
+      expect(screen.getByText(/Mã VietQR \/ Napas247 \(Mô phỏng\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Quét mã để thanh toán 58\.000\s*đ/i)).toBeInTheDocument();
+      const svg = container.querySelector('svg');
+      expect(svg).toBeInTheDocument();
     });
   });
 });

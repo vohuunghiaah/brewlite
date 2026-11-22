@@ -11,6 +11,7 @@ export interface CartItem {
   unitPrice: number;
   quantity: number;
   subtotal: number;
+  imageUrl?: string | null;
 }
 
 const storageKey = "brewlite_cart_v1";

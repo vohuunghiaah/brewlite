@@ -70,7 +70,6 @@ export default function OrderConfirmation({
   onClose,
   orderId,
   orderCode,
-  status,
   pickupMethod,
   tableNumber,
   totalAmount,
@@ -157,7 +156,7 @@ export default function OrderConfirmation({
           <div className="mt-3 flex items-center justify-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30">
               <span className="w-2 h-2 rounded-full bg-[#10B981] animate-status-pulse" />
-              Đã thanh toán ({status})
+              Đã thanh toán
             </span>
             <span className="text-xs font-semibold text-[#E8C99A]">
               {isTable ? `Bàn: ${tableNumber || "VIP"}` : "Tại quầy"}

@@ -5,6 +5,16 @@ import { X, ShoppingBag, Trash2, Tag, ArrowRight } from "lucide-react";
 import { formatVND } from "./Header";
 import { CartItem } from "../app/menu/session-cart";
 
+function getCartItemImage(item: CartItem): string {
+  if (item.imageUrl && item.imageUrl.startsWith("http")) return item.imageUrl;
+  const name = item.productName.toLowerCase();
+  if (/croissant|bánh|pastry|cake|cookie/.test(name)) return "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80";
+  if (/trà|tea|đào|cam/.test(name)) return "https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=800&q=80";
+  if (/cacao|chocolate/.test(name)) return "https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=800&q=80";
+  if (/nước|water/.test(name)) return "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=800&q=80";
+  return "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80";
+}
+
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -130,7 +140,7 @@ export default function CartDrawer({
         {/* Pending Order Banner (Section D) */}
         {pendingOrder && (
           <div role="status" className="m-4 mb-0 bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] p-3 rounded-2xl text-xs font-semibold">
-            Đặt hàng thành công! Mã đơn hàng: #{pendingOrder.id}. Trạng thái: {pendingOrder.status} ({pendingOrder.status === "PENDING" ? "Chờ thanh toán" : ""}). Giỏ hàng được giữ nguyên để tiến hành thanh toán.
+            Đặt hàng thành công! Mã đơn hàng: #{pendingOrder.id}. Trạng thái: Chờ thanh toán. Giỏ hàng được giữ nguyên để tiến hành thanh toán.
             {onNewOrder && (
               <button
                 type="button"
@@ -174,7 +184,17 @@ export default function CartDrawer({
                   key={item.key}
                   className="bg-[#FAF6F0] border border-[#EFE8DF] rounded-2xl p-3.5 space-y-2.5 transition-all hover:border-[#C28D58]/40"
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Item Thumbnail Image */}
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-[#EFE8DF] shrink-0 border border-[#EFE8DF]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={getCartItemImage(item)}
+                        alt={item.productName}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-[#3D261D] text-sm leading-tight">

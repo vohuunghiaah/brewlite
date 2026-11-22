@@ -185,6 +185,12 @@ export default function MenuPage() {
         : "#account";
     if (window.location.hash !== hash) window.history.pushState(null, "", hash);
     setActiveNav(view);
+    if (view === "home") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    if (view === "orders") {
+      setIsCartOpen(false);
+    }
   }
 
   const openAuthModal = useCallback((mode: "login" | "register" = "login", resumeCheckout = false) => {
@@ -232,6 +238,7 @@ export default function MenuPage() {
             key,
             productId: product.id,
             productName: product.name,
+            imageUrl: product.imageUrl || null,
             basePrice: Number(product.price),
             size,
             toppings: sortedToppings,
@@ -871,7 +878,10 @@ export default function MenuPage() {
     function handleLocation() {
       const hash = window.location.hash;
       if (hash === "#login") openAuthModal("login");
-      else if (hash === "#orders" || hash === "#history") setActiveNav("orders");
+      else if (hash === "#orders" || hash === "#history") {
+        setActiveNav("orders");
+        setIsCartOpen(false);
+      }
       else if (hash === "#account") setActiveNav("account");
       else if (hash === "#menu") setActiveNav("menu");
       else if (hash === "#top") setActiveNav("home");
@@ -885,6 +895,33 @@ export default function MenuPage() {
       window.removeEventListener("popstate", handleLocation);
     };
   }, [initialView, openAuthModal]);
+
+  // Auto-scroll transition: from Home to Menu when scrolling down
+  useEffect(() => {
+    if (activeNav !== "home") return;
+    let triggered = false;
+    const triggerMenu = () => {
+      if (triggered) return;
+      triggered = true;
+      navigate("menu");
+    };
+    const handleScroll = () => {
+      if (window.scrollY > 60) {
+        triggerMenu();
+      }
+    };
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY > 40) {
+        triggerMenu();
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("wheel", handleWheel);
+    };
+  }, [activeNav]);
 
   // Filter products by search and category
   const filteredProducts = useMemo(() => {

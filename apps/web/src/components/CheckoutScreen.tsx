@@ -1,6 +1,6 @@
 "use client";
 
-import { X, MapPin, Tablet, AlertCircle } from "lucide-react";
+import { X, MapPin, Tablet, AlertCircle, QrCode } from "lucide-react";
 import { formatVND } from "./Header";
 
 interface CheckoutScreenProps {
@@ -250,6 +250,91 @@ export default function CheckoutScreen({
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Simulated QR Code Payment Display */}
+          <div className="bg-[#FAF6F0] border-2 border-[#EFE8DF] rounded-2xl p-4 flex flex-col items-center text-center animate-fade-in space-y-3">
+            <div className="flex items-center justify-between w-full border-b border-[#EFE8DF] pb-2 text-xs">
+              <span className="font-extrabold text-[#3D261D] flex items-center gap-1.5">
+                <QrCode size={16} className="text-[#C28D58]" />
+                {paymentMethod === "VIETQR"
+                  ? "Mã VietQR / Napas247 (Mô phỏng)"
+                  : paymentMethod === "MOMO"
+                  ? "Mã QR Ví MoMo (Mô phỏng)"
+                  : "Cổng thanh toán thẻ (Mô phỏng)"}
+              </span>
+              <span className="text-[10px] font-bold text-[#C28D58] bg-[#EFE8DF] px-2 py-0.5 rounded-full">
+                Mô phỏng Cashless
+              </span>
+            </div>
+
+            {/* Simulated QR Image Container */}
+            <div className="relative p-3 bg-white rounded-2xl border border-[#EFE8DF] shadow-xs flex flex-col items-center justify-center">
+              <svg width="150" height="150" viewBox="0 0 150 150" fill="none" xmlns="http://www.w3.org/2000/svg" className="rounded-lg">
+                <rect width="150" height="150" fill="white" />
+                {/* Finder pattern Top-Left */}
+                <rect x="10" y="10" width="36" height="36" rx="6" fill="#3D261D" />
+                <rect x="16" y="16" width="24" height="24" rx="3" fill="white" />
+                <rect x="22" y="22" width="12" height="12" rx="2" fill="#3D261D" />
+
+                {/* Finder pattern Top-Right */}
+                <rect x="104" y="10" width="36" height="36" rx="6" fill="#3D261D" />
+                <rect x="110" y="16" width="24" height="24" rx="3" fill="white" />
+                <rect x="116" y="22" width="12" height="12" rx="2" fill="#3D261D" />
+
+                {/* Finder pattern Bottom-Left */}
+                <rect x="10" y="104" width="36" height="36" rx="6" fill="#3D261D" />
+                <rect x="16" y="110" width="24" height="24" rx="3" fill="white" />
+                <rect x="22" y="116" width="12" height="12" rx="2" fill="#3D261D" />
+
+                {/* Simulated Data Matrix dots and clusters */}
+                <rect x="54" y="14" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="70" y="14" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="86" y="14" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="54" y="30" width="8" height="8" rx="2" fill="#C28D58" />
+                <rect x="78" y="30" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="14" y="54" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="30" y="54" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="54" y="54" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="70" y="54" width="8" height="8" rx="2" fill="#C28D58" />
+                <rect x="94" y="54" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="118" y="54" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="134" y="54" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="22" y="70" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="38" y="70" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="54" y="70" width="16" height="16" rx="4" fill="#3D261D" />
+                <rect x="86" y="70" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="102" y="70" width="8" height="8" rx="2" fill="#C28D58" />
+                <rect x="126" y="70" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="54" y="94" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="78" y="94" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="110" y="94" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="126" y="94" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="54" y="110" width="8" height="8" rx="2" fill="#C28D58" />
+                <rect x="70" y="110" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="94" y="110" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="118" y="110" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="54" y="126" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="86" y="126" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="102" y="126" width="8" height="8" rx="2" fill="#3D261D" />
+                <rect x="134" y="126" width="8" height="8" rx="2" fill="#C28D58" />
+
+                {/* Center Brand Badge */}
+                <circle cx="75" cy="75" r="14" fill="#FAF6F0" stroke="#3D261D" strokeWidth="2" />
+                <text x="75" y="79" textAnchor="middle" fill="#3D261D" fontSize="9" fontWeight="900" fontFamily="sans-serif">
+                  {paymentMethod === "VIETQR" ? "QR" : paymentMethod === "MOMO" ? "MoMo" : "PAY"}
+                </text>
+              </svg>
+
+              <div className="mt-2 text-center">
+                <p className="text-[11px] font-bold text-[#3D261D]">
+                  Quét mã để thanh toán {formatVND(totalAmount)}
+                </p>
+                <p className="text-[10px] text-[#6B4235]">
+                  Chủ TK: BREWLITE COFFEE · Nội dung: Đơn #{orderId}
+                </p>
+              </div>
             </div>
           </div>
 
