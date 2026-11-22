@@ -35,7 +35,7 @@ break Yêu cầu thanh toán không hợp lệ
   API --> UI: Từ chối yêu cầu
   UI --> C: Hiển thị lỗi; giữ đơn để xử lý
 end
-API -> DB: Tra cứu khóa theo chủ sở hữu; đối chiếu\norderId, amount, method với yêu cầu đã lưu
+API -> DB: Tra cứu khóa UUID toàn cục, kiểm tra chủ sở hữu; đối chiếu\norderId, amount, method với yêu cầu đã lưu
 activate DB
 DB --> API: Kết quả kiểm tra khóa
 deactivate DB
@@ -76,7 +76,7 @@ else Yêu cầu thanh toán mới
       DB --> API: Kết quả COMMIT TX2
       deactivate DB
       alt Đã xác nhận COMMIT TX2
-        API -> API: Kết quả: 200 - Đơn đã thanh toán (PAID)
+        API -> API: Kết quả: 201 - Đơn đã thanh toán (PAID)
       else COMMIT TX2 lỗi xác định hoặc chưa rõ kết quả
         API -> API: Không trả PAID; giữ attempt và công việc đối soát\nXác minh trạng thái COMMIT trước khi áp dụng lại OCC
         API -> API: Kết quả lỗi/chưa xác định theo API Contract
@@ -138,7 +138,7 @@ else Yêu cầu thanh toán mới
     activate DB
     DB --> API: Xác nhận hoàn tất
     deactivate DB
-    API -> API: Kết quả: 202 + PENDING; HTTP kết thúc sau phản hồi
+    API -> API: Kết quả: 201 + PENDING; HTTP kết thúc sau phản hồi
   end
   end
   end
@@ -157,7 +157,7 @@ opt Mất phản hồi: client gửi lại cùng yêu cầu bằng HTTP mới
   alt Xác thực hoặc quyền sở hữu không hợp lệ
     API --> UI: 401 / 403; không trả thông tin giao dịch
   else Có quyền
-    API -> DB: Tra cứu khóa theo chủ sở hữu; đối chiếu payload
+    API -> DB: Tra cứu khóa UUID toàn cục, kiểm tra chủ sở hữu; đối chiếu payload
     activate DB
     DB --> API: Kết quả đối chiếu và trạng thái đã lưu
     deactivate DB
@@ -279,7 +279,7 @@ alt JWT thiếu / không hợp lệ / hết hạn
   API --> UI: 401 Unauthorized
   UI --> C: Yêu cầu đăng nhập lại
 else JWT hợp lệ
-  API -> DB: Kiểm tra quyền sở hữu theo userId; chỉ đọc\nOrder/Payment thuộc phạm vi truy cập được phép
+  API -> DB: Kiểm tra quyền sở hữu theo userId; chỉ đọc\nOrder + items thuộc phạm vi truy cập được phép
   activate DB
   DB --> API: Kết quả kiểm tra quyền và dữ liệu được phép / lỗi đọc
   deactivate DB
@@ -290,7 +290,7 @@ else JWT hợp lệ
     API --> UI: Lỗi theo API Contract; không trả dữ liệu đơn
     UI --> C: Không đọc được trạng thái; giữ thông tin đơn
   else Đọc thành công trong phạm vi được phép
-    API --> UI: 200 + Order/Payment đã lưu
+    API --> UI: 200 + Order và các món đã lưu
     UI --> C: Hiển thị trạng thái hiện tại; chỉ xóa giỏ khi PAID\nChỉ xác nhận hoàn tiền khi REFUNDED đã COMMIT
   end
 end

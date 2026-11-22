@@ -29,7 +29,7 @@ endif
 |Backend|
 :Yêu cầu đọc trạng thái đơn/giao dịch;
 |PostgreSQL|
-:Đọc và trả Order/Payment đã lưu;
+:Đọc và trả Order và các món đã lưu;
 |Backend|
 :Trả HTTP 200 + trạng thái hiện tại;
 |Frontend|
@@ -80,13 +80,13 @@ stop
 else ([Yêu cầu hợp lệ])
 endif
 |Backend|
-:Yêu cầu đọc giá và tồn kho;
+:BEGIN TX1 — yêu cầu đọc giá và tồn kho;
 |PostgreSQL|
 :Đọc giá và tồn kho;
 |Backend|
 :Kiểm tra khả dụng và tính lại tổng tiền;
 if () then ([Thiếu hàng])
-:Trả lỗi hết hàng;
+:ROLLBACK TX1 và trả HTTP 400;
 |Frontend|
 :Nhận lỗi, hiển thị hết hàng và giữ giỏ;
 stop
@@ -95,8 +95,7 @@ endif
 |Backend|
 :Yêu cầu lưu đơn trong TX1;
 |PostgreSQL|
-:BEGIN TX1
-Lưu Order và OrderItem ở PENDING;
+:Lưu Order và OrderItem ở PENDING;
 if () then ([Lỗi ghi đơn])
 :ROLLBACK TX1;
 |Backend|
@@ -109,7 +108,7 @@ endif
 |PostgreSQL|
 :COMMIT TX1;
 |Backend|
-:Trả 201 Created với orderId, orderCode, totalAmount và PENDING;
+:Trả 201 Created với id (số nguyên), totalAmount và PENDING;
 |Frontend|
 if () then ([Mất phản hồi sau COMMIT])
 :Giữ giỏ, thông báo kết quả chưa xác định
@@ -206,7 +205,7 @@ if () then ([PENDING / timeout])
 |PostgreSQL|
 :Giữ PENDING và lịch đối soát bền vững;
 |Backend|
-:Trả 202 + PENDING, kết thúc HTTP POST /payments;
+:Trả 201 + PENDING, kết thúc HTTP POST /payments;
 |Frontend|
 :Nhận PENDING
 Giữ đơn
