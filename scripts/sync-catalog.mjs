@@ -10,10 +10,11 @@
  * - Uses transactional execution with PostgreSQL transaction-level advisory lock
  * - Supports both DATABASE_* (Docker Compose) and POSTGRES_* environment variables
  * - Fails-closed in production if credentials are missing or default dev password is used
+ * - Durably persists deployment manifest with inserted product IDs for targeted rollback
  * - Provides clear audit summary, manifest, and diff output
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -273,7 +274,7 @@ export async function syncCatalog({
     await client.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.catalog.lock'))");
 
     // 3. Query existing catalog inside the locked transaction snapshot
-    const res = await client.query('SELECT id, name, price, stock, "isAvailable" FROM products ORDER BY id ASC');
+    const res = await client.query('SELECT id, name, price, stock, "isAvailable", version FROM products ORDER BY id ASC');
     const existingProducts = res.rows;
     const existingByName = new Map(existingProducts.map((p) => [p.name.trim().toLowerCase(), p]));
 
@@ -299,6 +300,14 @@ export async function syncCatalog({
         toInsert,
         insertedCount: 0,
         deploymentId,
+        manifest: {
+          deploymentId,
+          timestamp: new Date().toISOString(),
+          mode: 'dry-run',
+          insertedProductIds: [],
+          insertedItems: [],
+          totalInserted: 0,
+        },
       };
     }
 
@@ -317,7 +326,7 @@ export async function syncCatalog({
         const insertRes = await client.query(
           `INSERT INTO products (name, description, price, "imageUrl", "isAvailable", stock, version, "createdAt", "updatedAt")
            VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())
-           RETURNING id, name, price, stock, "isAvailable"`,
+           RETURNING id, name, price, stock, "isAvailable", version`,
           [item.name, item.description, item.price, item.imageUrl, item.isAvailable, item.stock]
         );
 
@@ -326,6 +335,7 @@ export async function syncCatalog({
           id: insertRes.rows[0].id,
           name: insertRes.rows[0].name,
           deploymentId,
+          version: insertRes.rows[0].version,
           insertedAt: new Date().toISOString(),
         });
 
@@ -334,6 +344,32 @@ export async function syncCatalog({
             `Simulated failure during catalog synchronization transaction immediately after inserting '${item.name}' (inserted ${inserted} items in transaction)`
           );
         }
+      }
+
+      // Construct durable manifest for audit, tracking, and targeted safe rollback
+      const manifest = {
+        deploymentId,
+        timestamp: new Date().toISOString(),
+        mode: 'apply',
+        insertedProductIds: insertedItems.map((item) => item.id),
+        insertedItems,
+        totalInserted: insertedItems.length,
+      };
+
+      // Durably persist manifest to disk
+      let manifestPath = null;
+      let latestPath = null;
+      try {
+        const manifestDir = path.join(__dirname, 'manifests');
+        if (!existsSync(manifestDir)) {
+          mkdirSync(manifestDir, { recursive: true });
+        }
+        manifestPath = path.join(manifestDir, `catalog-sync-${deploymentId}.json`);
+        latestPath = path.join(manifestDir, 'catalog-sync-latest.json');
+        writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+        writeFileSync(latestPath, JSON.stringify(manifest, null, 2), 'utf8');
+      } catch (err) {
+        console.warn(`⚠️ Cảnh báo: Không thể ghi file manifest (${err.message}). Manifest vẫn được bảo toàn trong kết quả trả về.`);
       }
 
       await client.query('COMMIT');
@@ -345,6 +381,9 @@ export async function syncCatalog({
         insertedCount: insertedItems.length,
         insertedItems,
         deploymentId,
+        manifest,
+        manifestPath,
+        latestPath,
       };
     }
   } catch (err) {
@@ -427,9 +466,12 @@ async function main() {
 
     if (isApply) {
       console.log(`\n🎉 ĐÃ COMMIT THÀNH CÔNG VÀO CƠ SỞ DỮ LIỆU! Đã thêm mới: ${result.insertedCount} sản phẩm.`);
-      if (result.insertedItems && result.insertedItems.length > 0) {
-        console.log('\n--- MANIFEST SẢN PHẨM MỚI BỔ SUNG (DÙNG CHO AUDIT & SAFE ROLLBACK) ---');
-        console.log(JSON.stringify(result.insertedItems, null, 2));
+      if (result.manifest && result.manifest.totalInserted > 0) {
+        console.log('\n--- MANIFEST SẢN PHẨM MỚI BỔ SUNG (LƯU BỀN VỮNG CHO AUDIT & SAFE ROLLBACK) ---');
+        console.log(`  - File: scripts/manifests/catalog-sync-${result.deploymentId}.json`);
+        console.log(`  - Latest: scripts/manifests/catalog-sync-latest.json`);
+        console.log(`  - Product IDs được cấp phát: ${result.manifest.insertedProductIds.join(', ')}`);
+        console.log(JSON.stringify(result.manifest, null, 2));
       }
     }
   } catch (err) {

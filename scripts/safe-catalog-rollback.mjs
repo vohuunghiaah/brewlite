@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * BrewLite Safe Catalog Rollback Strategy (FIX-06)
+ * BrewLite Targeted Safe Catalog Rollback Strategy (FIX-06)
  *
  * SAFETY & INTEGRITY PRINCIPLES:
- * 1. Never execute unguided or blind deletions (REPLACES "DELETE FROM products WHERE id > 4").
- * 2. Permanently protects baseline products (ID 1-4: Latte, Trà đào, Cacao sữa, Nước suối).
- * 3. Never deletes products referenced by order_items (Strict Foreign Key & Historical Receipt Preservation).
- * 4. Compensating Operation by default (--mode=compensate): marks items unavailable (isAvailable=false, stock=0),
- *    removing them from active menu without corrupting existing user orders or transaction history.
- * 5. Optional prune mode (--mode=prune): physically removes ONLY unreferenced products, requiring manual confirmation.
- * 6. Transaction-level PostgreSQL advisory lock coordinates across sync and rollback processes.
+ * 1. Targeted Manifest Rollback: Rollback MUST be targeted using a verified deployment manifest or explicit IDs.
+ *    REPLACES blind/unguided operations (NEVER "DELETE FROM products WHERE id > 4" or defaulting to all non-baseline).
+ * 2. Fail-Closed by Design: Missing, empty, or invalid manifest strictly halts execution (exit 1 / error thrown).
+ * 3. Pre-existing Product Protection: Products created before or outside the target deployment are NEVER altered or deactivated.
+ * 4. Permanently protects baseline products (ID 1-4: Latte, Trà đào, Cacao sữa, Nước suối).
+ * 5. Historical Order & Receipt Safety: Products referenced in order_items are NEVER deleted.
+ * 6. Compensating Operation by default (--mode=compensate): marks items unavailable (isAvailable=false),
+ *    preserves original stock quantity intact, and increments OCC version (version = version + 1) for concurrency safety.
+ * 7. Optional prune mode (--mode=prune): physically removes ONLY unreferenced products from the manifest, requiring --confirm.
+ * 8. Transaction-level PostgreSQL advisory lock coordinates across sync and rollback processes.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -125,21 +128,27 @@ export function resolveDatabaseConfig(overrideEnv = process.env) {
 }
 
 /**
- * Execute Safe Catalog Rollback.
+ * Execute Safe Targeted Catalog Rollback.
  *
  * @param {Object} options
  * @param {import('pg').Client} options.client Active PostgreSQL client
- * @param {'compensate'|'prune'} options.mode
- *   - 'compensate' (Default / Recommended): Soft deactivation (isAvailable=false, stock=0). Zero data loss.
- *   - 'prune': Physical deletion of ONLY unreferenced products. Products with existing orders are protected.
- * @param {number[]} [options.targetProductIds] Specific IDs to rollback (optional)
- * @param {string[]} [options.targetProductNames] Specific names to rollback (optional)
+ * @param {'compensate'|'prune'} [options.mode='compensate']
+ *   - 'compensate' (Default / Recommended): Soft deactivation (isAvailable=false, keeps stock intact, increments OCC version). Zero data loss.
+ *   - 'prune': Physical deletion of ONLY unreferenced products from manifest. Products with existing orders are protected.
+ * @param {Object} [options.manifest] Parsed manifest object from syncCatalog
+ * @param {string} [options.manifestPath] File path to manifest JSON
+ * @param {string} [options.deploymentId] Specific deployment ID to look up in scripts/manifests/
+ * @param {number[]} [options.targetProductIds] Specific numeric IDs to rollback
+ * @param {string[]} [options.targetProductNames] Specific names to rollback (e.g. for baseline exclusion test)
  * @param {boolean} options.isDryRun Dry run without committing changes
  * @param {boolean} options.isApply Commit changes to database
  */
 export async function safeCatalogRollback({
   client,
   mode = 'compensate',
+  manifest = null,
+  manifestPath = null,
+  deploymentId = null,
   targetProductIds = null,
   targetProductNames = null,
   isDryRun = false,
@@ -153,27 +162,84 @@ export async function safeCatalogRollback({
     throw new Error(`Chế độ rollback không hợp lệ: "${mode}". Chỉ hỗ trợ "compensate" hoặc "prune".`);
   }
 
+  // 1. Resolve target manifest and candidate product IDs
+  let resolvedProductIds = [];
+  let resolvedManifest = null;
+
+  if (manifest && typeof manifest === 'object') {
+    resolvedManifest = manifest;
+    if (Array.isArray(manifest.insertedProductIds)) {
+      resolvedProductIds = manifest.insertedProductIds;
+    } else if (Array.isArray(manifest.insertedItems)) {
+      resolvedProductIds = manifest.insertedItems.map((item) => item.id);
+    }
+  } else if (manifestPath) {
+    if (!existsSync(manifestPath)) {
+      throw new Error(`❌ [FAIL-CLOSED] File manifest không tồn tại: ${manifestPath}`);
+    }
+    try {
+      resolvedManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      resolvedProductIds = Array.isArray(resolvedManifest.insertedProductIds)
+        ? resolvedManifest.insertedProductIds
+        : (resolvedManifest.insertedItems || []).map((i) => i.id);
+    } catch (err) {
+      throw new Error(`❌ [FAIL-CLOSED] Lỗi phân tích file manifest (${manifestPath}): ${err.message}`);
+    }
+  } else if (deploymentId) {
+    const candidatePaths = [
+      path.join(__dirname, 'manifests', `catalog-sync-${deploymentId}.json`),
+      path.join(root, 'scripts/manifests', `catalog-sync-${deploymentId}.json`),
+      path.join(root, 'apps/api/scripts/manifests', `catalog-sync-${deploymentId}.json`),
+    ];
+    const foundPath = candidatePaths.find((p) => existsSync(p));
+    if (!foundPath) {
+      throw new Error(`❌ [FAIL-CLOSED] Không tìm thấy manifest cho deployment ID "${deploymentId}".`);
+    }
+    try {
+      resolvedManifest = JSON.parse(readFileSync(foundPath, 'utf8'));
+      resolvedProductIds = Array.isArray(resolvedManifest.insertedProductIds)
+        ? resolvedManifest.insertedProductIds
+        : (resolvedManifest.insertedItems || []).map((i) => i.id);
+    } catch (err) {
+      throw new Error(`❌ [FAIL-CLOSED] Lỗi đọc manifest của deployment "${deploymentId}": ${err.message}`);
+    }
+  } else if (Array.isArray(targetProductIds)) {
+    resolvedProductIds = targetProductIds;
+  }
+
+  // Sanitize IDs: positive integers only
+  resolvedProductIds = resolvedProductIds
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  const hasTargetNames = Array.isArray(targetProductNames) && targetProductNames.length > 0;
+
+  // 2. Strict Fail-Closed Check: Never allow unguided rollback of all products
+  if (resolvedProductIds.length === 0 && !hasTargetNames) {
+    throw new Error(
+      '❌ [FAIL-CLOSED] Rollback bị từ chối: Bắt buộc phải có manifest hợp lệ từ lần triển khai cần hoàn tác, hoặc chỉ định danh sách product ID cụ thể (--manifest, --deployment-id, --manifest-latest, hoặc --product-ids). Tuyệt đối không thực hiện rollback mặc định trên toàn bộ sản phẩm.'
+    );
+  }
+
   await client.query('BEGIN');
   try {
     // Transaction-level advisory lock serializes rollback operations
     await client.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.catalog.lock'))");
 
     // Query candidate products
-    const allRes = await client.query('SELECT id, name, price, stock, "isAvailable" FROM products ORDER BY id ASC');
+    const allRes = await client.query('SELECT id, name, price, stock, "isAvailable", version FROM products ORDER BY id ASC');
     const allProducts = allRes.rows;
 
-    // Filter candidates: strictly exclude baseline products
+    // Filter candidates: strictly exclude baseline products AND restrict to resolved IDs / names
     const candidates = allProducts.filter((p) => {
+      // Rule A: Baseline products are permanently protected
       if (BASELINE_PRODUCT_NAMES.includes(p.name) || BASELINE_PRODUCT_IDS.includes(p.id)) {
-        return false; // Permanently protected baseline
+        return false;
       }
-      if (Array.isArray(targetProductIds) && targetProductIds.length > 0) {
-        return targetProductIds.includes(p.id);
-      }
-      if (Array.isArray(targetProductNames) && targetProductNames.length > 0) {
-        return targetProductNames.includes(p.name);
-      }
-      return true; // All non-baseline expanded products
+      // Rule B: Must belong to target manifest IDs or explicit target names
+      const matchId = resolvedProductIds.includes(p.id);
+      const matchName = hasTargetNames && targetProductNames.includes(p.name);
+      return matchId || matchName;
     });
 
     // Inspect references in order_items for each candidate
@@ -192,36 +258,46 @@ export async function safeCatalogRollback({
     }
 
     if (mode === 'compensate') {
-      // Compensating Operation: Mark unavailable and zero stock
-      const toDeactivate = analyzed.filter((p) => p.isAvailable || p.stock > 0);
+      // Compensating Operation: Mark unavailable, preserve original stock, increment OCC version
+      const toDeactivate = analyzed.filter((p) => p.isAvailable);
 
       if (isDryRun) {
         await client.query('ROLLBACK');
         return {
           mode: 'compensate',
           isDryRun: true,
+          resolvedProductIds,
           totalCandidates: candidates.length,
           toDeactivateCount: toDeactivate.length,
           toDeactivateItems: toDeactivate,
-          action: 'DRY-RUN: Sẽ cập nhật isAvailable=false và stock=0 cho các sản phẩm mở rộng (bảo vệ lịch sử đơn hàng 100%)',
+          action: 'DRY-RUN: Sẽ cập nhật isAvailable=false (giữ nguyên tồn kho gốc và tăng version OCC) cho các sản phẩm trong manifest',
         };
       }
 
       if (isApply) {
+        let updatedItems = [];
         if (toDeactivate.length > 0) {
           const ids = toDeactivate.map((p) => p.id);
-          await client.query(
-            'UPDATE products SET "isAvailable" = false, stock = 0, "updatedAt" = NOW() WHERE id = ANY($1)',
+          const updateRes = await client.query(
+            `UPDATE products
+             SET "isAvailable" = false,
+                 version = version + 1,
+                 "updatedAt" = NOW()
+             WHERE id = ANY($1)
+             RETURNING id, name, "isAvailable", stock, version`,
             [ids]
           );
+          updatedItems = updateRes.rows;
         }
         await client.query('COMMIT');
         return {
           mode: 'compensate',
           isApply: true,
+          resolvedProductIds,
           totalCandidates: candidates.length,
           deactivatedCount: toDeactivate.length,
           deactivatedItems: toDeactivate,
+          updatedItems,
         };
       }
     }
@@ -236,12 +312,13 @@ export async function safeCatalogRollback({
         return {
           mode: 'prune',
           isDryRun: true,
+          resolvedProductIds,
           totalCandidates: candidates.length,
           unreferencedCount: unreferenced.length,
           unreferencedItems: unreferenced,
           protectedCount: protectedReferenced.length,
           protectedItems: protectedReferenced,
-          action: 'DRY-RUN: Chỉ xóa các sản phẩm chưa có đơn hàng nào tham chiếu. Sản phẩm đã có đơn hàng được BẢO VỆ TUYỆT ĐỐI.',
+          action: 'DRY-RUN: Chỉ xóa các sản phẩm trong manifest chưa có đơn hàng nào tham chiếu. Sản phẩm đã có đơn hàng được BẢO VỆ TUYỆT ĐỐI.',
         };
       }
 
@@ -254,6 +331,8 @@ export async function safeCatalogRollback({
         return {
           mode: 'prune',
           isApply: true,
+          resolvedProductIds,
+          totalCandidates: candidates.length,
           deletedCount: unreferenced.length,
           deletedItems: unreferenced,
           protectedCount: protectedReferenced.length,
@@ -275,11 +354,51 @@ async function main() {
 
   const mode = isPrune ? 'prune' : 'compensate';
 
+  let manifestPath = null;
+  const manifestArg = process.argv.find((a) => a.startsWith('--manifest='));
+  if (manifestArg) manifestPath = manifestArg.split('=')[1];
+
+  let deploymentId = null;
+  const deployArg = process.argv.find((a) => a.startsWith('--deployment-id='));
+  if (deployArg) deploymentId = deployArg.split('=')[1];
+
+  if (process.argv.includes('--manifest-latest')) {
+    const candidatePaths = [
+      path.join(__dirname, 'manifests', 'catalog-sync-latest.json'),
+      path.join(root, 'scripts/manifests', 'catalog-sync-latest.json'),
+      path.join(root, 'apps/api/scripts/manifests', 'catalog-sync-latest.json'),
+    ];
+    manifestPath = candidatePaths.find((p) => existsSync(p)) || candidatePaths[0];
+  }
+
+  let targetProductIds = null;
+  const pidsArg = process.argv.find((a) => a.startsWith('--product-ids='));
+  if (pidsArg) {
+    targetProductIds = pidsArg
+      .split('=')[1]
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0);
+  }
+
   if ((!isDryRun && !isApply) || (isDryRun && isApply)) {
     console.error('❌ Lỗi: Bạn phải chỉ định rõ duy nhất một chế độ thực thi:');
-    console.error('  node scripts/safe-catalog-rollback.mjs --dry-run                     (Kiểm tra đối chiếu an toàn, 0 thay đổi CSDL)');
-    console.error('  node scripts/safe-catalog-rollback.mjs --apply --mode=compensate     (Khuyến nghị: Ẩn món khỏi menu, bảo toàn lịch sử)');
-    console.error('  node scripts/safe-catalog-rollback.mjs --apply --mode=prune --confirm (Chỉ xóa các món chưa có đơn hàng tham chiếu)');
+    console.error('  node scripts/safe-catalog-rollback.mjs --dry-run --manifest-latest                  (Kiểm tra đối chiếu an toàn)');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --manifest-latest                   (Bồi hoàn an toàn theo manifest gần nhất)');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --deployment-id=<id>                 (Bồi hoàn theo deployment ID)');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --manifest=<path>                    (Bồi hoàn theo file manifest cụ thể)');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --product-ids=5,6,7                  (Bồi hoàn theo danh sách ID)');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --manifest-latest --mode=prune --confirm (Chỉ xóa món chưa có đơn hàng)');
+    process.exit(1);
+  }
+
+  if (!manifestPath && !deploymentId && (!targetProductIds || targetProductIds.length === 0)) {
+    console.error('❌ [FAIL-CLOSED] Rollback yêu cầu nguồn manifest hoặc danh sách ID cụ thể:');
+    console.error('  --manifest-latest           : Tự động dùng manifest của lần sync gần nhất');
+    console.error('  --deployment-id=<id>        : Chỉ định ID của lần sync cần hoàn tác');
+    console.error('  --manifest=<path>           : Đường dẫn tới file JSON manifest');
+    console.error('  --product-ids=5,6,7         : Danh sách ID sản phẩm cần hoàn tác');
+    console.error('  Tuyệt đối không chạy rollback mặc định lên toàn bộ bảng products.');
     process.exit(1);
   }
 
@@ -297,8 +416,8 @@ async function main() {
   }
 
   console.log('======================================================================');
-  console.log(`🛡️ BREWLITE SAFE CATALOG ROLLBACK (${isDryRun ? 'DRY-RUN' : 'APPLY'})`);
-  console.log(`📌 Chế độ: ${mode === 'compensate' ? 'COMPENSATE (Vô hiệu hóa an toàn, bảo vệ đơn hàng)' : 'PRUNE (Chỉ xóa món chưa tham chiếu)'}`);
+  console.log(`🛡️ BREWLITE SAFE TARGETED CATALOG ROLLBACK (${isDryRun ? 'DRY-RUN' : 'APPLY'})`);
+  console.log(`📌 Chế độ: ${mode === 'compensate' ? 'COMPENSATE (Vô hiệu hóa an toàn, bảo tồn stock & OCC version)' : 'PRUNE (Chỉ xóa món chưa tham chiếu)'}`);
   console.log(`🔌 Database: ${dbConfig.database} trên ${dbConfig.host}:${dbConfig.port}`);
   console.log('======================================================================\n');
 
@@ -319,15 +438,24 @@ async function main() {
   }
 
   try {
-    const result = await safeCatalogRollback({ client, mode, isDryRun, isApply });
+    const result = await safeCatalogRollback({
+      client,
+      mode,
+      manifestPath,
+      deploymentId,
+      targetProductIds,
+      isDryRun,
+      isApply,
+    });
 
     if (isDryRun) {
       console.log('✔ KẾT QUẢ KIỂM TRA ĐỐI CHIẾU (DRY-RUN):');
-      console.log(`  - Tổng số sản phẩm mở rộng: ${result.totalCandidates}`);
+      console.log(`  - Số product ID trong phạm vi manifest: ${result.resolvedProductIds.length}`);
+      console.log(`  - Tổng số sản phẩm ứng viên tìm thấy: ${result.totalCandidates}`);
       if (mode === 'compensate') {
-        console.log(`  - Sản phẩm sẽ chuyển sang hết hàng (isAvailable=false): ${result.toDeactivateCount}`);
+        console.log(`  - Sản phẩm sẽ chuyển sang hết hàng (isAvailable=false, giữ nguyên stock): ${result.toDeactivateCount}`);
         for (const item of result.toDeactivateItems) {
-          console.log(`    * [ID ${item.id}] ${item.name} (${item.orderRefCount} đơn hàng tham chiếu -> ĐƯỢC BẢO TOÀN)`);
+          console.log(`    * [ID ${item.id}] ${item.name} (Tồn kho: ${item.stock}, Version: ${item.version}, ${item.orderRefCount} đơn hàng tham chiếu -> BẢO TOÀN)`);
         }
       } else {
         console.log(`  - Sản phẩm có thể xóa (chưa từng có đơn hàng): ${result.unreferencedCount}`);
@@ -345,9 +473,14 @@ async function main() {
     if (isApply) {
       if (mode === 'compensate') {
         console.log(`🎉 HOÀN TẤT BỒI HOÀN AN TOÀN! Đã vô hiệu hóa: ${result.deactivatedCount} sản phẩm.`);
-        console.log('Tất cả lịch sử đơn hàng, hóa đơn và vé chuông điện tử vẫn nguyên vẹn 100%.');
+        console.log('Tồn kho gốc và phiên bản OCC đã được bảo toàn. Tất cả lịch sử đơn hàng nguyên vẹn 100%.');
+        if (result.updatedItems && result.updatedItems.length > 0) {
+          for (const item of result.updatedItems) {
+            console.log(`  - [ID ${item.id}] ${item.name}: isAvailable=${item.isAvailable}, stock=${item.stock}, version=${item.version}`);
+          }
+        }
       } else {
-        console.log(`🎉 HOÀN TẤT PRUNE! Đã xóa: ${result.deletedCount} sản phẩm chưa tham chiếu.`);
+        console.log(`🎉 HOÀN TẤT PRUNE! Đã xóa: ${result.deletedCount} sản phẩm chưa tham chiếu trong manifest.`);
         console.log(`Đã bảo vệ an toàn: ${result.protectedCount} sản phẩm có liên kết lịch sử đơn hàng.`);
       }
     }
