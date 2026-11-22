@@ -35,10 +35,12 @@ async function runSecurityAndExceptionsTests() {
   console.log('======================================================================\n');
 
   const results = [];
+  const catalogAdminKey = process.env.CATALOG_ADMIN_KEY || 'brewlite-dev-catalog-secret';
 
   // Separate stock for this run, including repeated runs on the same test database.
   const drink = await apiRequest('/products', {
     method: 'POST',
+    headers: { 'X-Catalog-Admin-Key': catalogAdminKey },
     body: JSON.stringify({ name: `Payment fixture ${crypto.randomUUID()}`, price: '35000', stock: 10 }),
   });
   assert.equal(drink.status, 201);
@@ -494,7 +496,9 @@ async function runSecurityAndExceptionsTests() {
 
   // Use a new fixture so a price change never alters a sample or another run's order.
   const fixture = await apiRequest('/products', {
-    method: 'POST', body: JSON.stringify({ name: `TX1-${crypto.randomUUID()}`, price: '31000', stock: 2 }),
+    method: 'POST',
+    headers: { 'X-Catalog-Admin-Key': catalogAdminKey },
+    body: JSON.stringify({ name: `TX1-${crypto.randomUUID()}`, price: '31000', stock: 2 }),
   });
   assert.equal(fixture.status, 201);
   const productId = fixture.data.id;
@@ -511,7 +515,9 @@ async function runSecurityAndExceptionsTests() {
   }
   assert.deepEqual((await history(token2)).data, []);
   const changed = await apiRequest(`/products/${productId}`, {
-    method: 'PATCH', body: JSON.stringify({ price: '32000' }),
+    method: 'PATCH',
+    headers: { 'X-Catalog-Admin-Key': catalogAdminKey },
+    body: JSON.stringify({ price: '32000' }),
   });
   assert.equal(changed.status, 200);
   const placed = await create([{ productId, quantity: 2 }]);
