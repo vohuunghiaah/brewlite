@@ -10,6 +10,7 @@ describe('MenuPage React Component Tests', () => {
     price: 45000,
     imageUrl: 'https://images.unsplash.com/photo-latte',
     isAvailable: true,
+    stock: 50,
   };
 
   beforeEach(() => {

@@ -47,7 +47,7 @@ async function verifyNavigation(page) {
   await page.getByRole('heading', { name: /Mỗi ly cà phê/ }).waitFor();
   assert.equal(await page.getByRole('searchbox').count(), 0);
   assert.equal(await nav.getByRole('link', { name: 'Trang chủ' }).getAttribute('aria-current'), 'page');
-  await page.getByRole('button', { name: 'Khám phá thực đơn' }).click();
+  await page.getByRole('button', { name: 'Khám phá thực đơn' }).first().click();
   await page.getByRole('searchbox').waitFor();
   assert.equal(await nav.getByRole('link', { name: 'Menu', exact: true }).getAttribute('aria-current'), 'page');
   for (const width of [1440, 1024, 768, 375, 320]) {

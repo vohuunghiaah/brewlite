@@ -19,6 +19,7 @@ interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
+  products?: { id: number; stock?: number; isAvailable?: boolean }[];
   onUpdateQuantity: (key: string, delta: number) => void;
   onRemoveItem: (key: string) => void;
   onClearCart: () => void;
@@ -42,6 +43,7 @@ export default function CartDrawer({
   isOpen,
   onClose,
   cartItems,
+  products = [],
   onUpdateQuantity,
   onRemoveItem,
   onClearCart,
@@ -184,6 +186,12 @@ export default function CartDrawer({
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5">
             {cartItems.map((item) => {
               const sizeBadge = item.size === "SMALL" ? "Size S" : item.size === "MEDIUM" ? "Size M" : "Size L";
+              const productInfo = products.find((p) => p.id === item.productId);
+              const totalProductInCart = cartItems
+                .filter((ci) => ci.productId === item.productId)
+                .reduce((s, ci) => s + ci.quantity, 0);
+              const isMaxStock =
+                productInfo?.stock !== undefined && totalProductInCart >= productInfo.stock;
               return (
                 <div
                   key={item.key}
@@ -262,9 +270,13 @@ export default function CartDrawer({
                       </span>
                       <button
                         type="button"
+                        disabled={isMaxStock}
                         onClick={() => onUpdateQuantity(item.key, 1)}
                         aria-label={`Tăng số lượng ${item.productName}`}
-                        className="w-6 h-6 rounded-lg bg-[#3D261D] flex items-center justify-center text-white hover:bg-[#C28D58] transition-colors text-xs font-bold leading-none select-none"
+                        title={isMaxStock ? "Đã đạt giới hạn tồn kho" : "Tăng số lượng"}
+                        className={`w-6 h-6 rounded-lg bg-[#3D261D] flex items-center justify-center text-white hover:bg-[#C28D58] transition-colors text-xs font-bold leading-none select-none ${
+                          isMaxStock ? "opacity-40 cursor-not-allowed hover:bg-[#3D261D]" : ""
+                        }`}
                       >
                         +
                       </button>

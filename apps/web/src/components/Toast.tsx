@@ -1,11 +1,11 @@
 "use client";
 
-import { CheckCircle, XCircle, Info } from "lucide-react";
+import { CheckCircle, XCircle, Info, AlertTriangle } from "lucide-react";
 
 export interface ToastItem {
   id: string;
   message: string;
-  type: "success" | "error" | "info";
+  type: "success" | "error" | "info" | "warning";
 }
 
 interface ToastProps {
@@ -23,6 +23,11 @@ export function Toast({ toast, onDismiss }: ToastProps) {
     error: {
       icon: XCircle,
       bg: "bg-[#EF4444]",
+      text: "text-white",
+    },
+    warning: {
+      icon: AlertTriangle,
+      bg: "bg-[#D97706]",
       text: "text-white",
     },
     info: {

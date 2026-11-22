@@ -20,6 +20,7 @@ import { API_URL } from "../api-url";
 
 // Modular UI Components
 import Header, { NavView } from "../../components/Header";
+import HomeScreen from "../../components/HomeScreen";
 import MenuScreen, { Product } from "../../components/MenuScreen";
 import ProductModal, { CustomizationOption } from "../../components/ProductModal";
 import CartDrawer from "../../components/CartDrawer";
@@ -95,6 +96,15 @@ export default function MenuPage() {
   const [cartItems, setCartItems] = useSessionCart();
   const [isCartOpen, setIsCartOpen] = useState(false);
 
+  // Map of total cart quantity by productId across all variations
+  const cartCountsByProductId = useMemo(() => {
+    const map: Record<number, number> = {};
+    for (const item of cartItems) {
+      map[item.productId] = (map[item.productId] || 0) + item.quantity;
+    }
+    return map;
+  }, [cartItems]);
+
   // Navigation view state
   const [activeNav, setActiveNav] = useState<NavView>(initialView);
 
@@ -117,11 +127,6 @@ export default function MenuPage() {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderError, setOrderError] = useState("");
   const [pendingOrder, setPendingOrder] = useState<PendingOrderState | null>(null);
-
-  // Auto-scroll refs
-  const lastNavTimeToHome = useRef(0);
-  const hasBeenAtTopOfHome = useRef(false);
-  const touchStartY = useRef<number | null>(null);
 
   // Cashless Payment state
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
@@ -199,8 +204,6 @@ export default function MenuPage() {
     if (window.location.hash !== hash) window.history.pushState(null, "", hash);
     setActiveNav(view);
     if (view === "home") {
-      lastNavTimeToHome.current = Date.now() + 800;
-      hasBeenAtTopOfHome.current = true;
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
       }
@@ -231,8 +234,35 @@ export default function MenuPage() {
       toppings: string[] = [],
       note: string = "",
       quantity: number = 1
-    ) => {
-      if (!product.isAvailable || quantity <= 0) return;
+    ): boolean => {
+      const stock = product.stock;
+      const isStockKnown =
+        typeof stock === "number" &&
+        !isNaN(stock) &&
+        stock >= 0;
+
+      if (!isStockKnown || typeof stock !== "number") {
+        showToast(`Thông tin tồn kho của ${product.name} chưa xác định. Vui lòng thử lại sau.`, "warning");
+        return false;
+      }
+
+      if (!product.isAvailable || stock <= 0 || quantity <= 0) {
+        showToast(`${product.name} hiện đã hết hàng.`, "warning");
+        return false;
+      }
+
+      // Check available stock across all existing items in cart for this product
+      const currentInCart = cartItems
+        .filter((item) => item.productId === product.id)
+        .reduce((sum, item) => sum + item.quantity, 0);
+
+      if (currentInCart + quantity > stock) {
+        showToast(
+          `Không thể thêm ${quantity} ly. Số lượng trong giỏ (${currentInCart} ly) sẽ vượt quá tồn kho (${stock} ly).`,
+          "warning"
+        );
+        return false;
+      }
 
       setPendingOrder(null);
       const sortedToppings = [...toppings].sort();
@@ -269,8 +299,9 @@ export default function MenuPage() {
       });
 
       setOrderError("");
+      return true;
     },
-    [setCartItems]
+    [cartItems, setCartItems, showToast]
   );
 
   const handleOpenProductModal = useCallback(
@@ -287,24 +318,29 @@ export default function MenuPage() {
   const handleAddToCartFromModal = useCallback(
     (customization: CustomizationOption) => {
       if (!selectedProduct) return;
+      const currentProduct = products.find((p) => p.id === selectedProduct.id) || selectedProduct;
       const combinedNote = combineItemNote(customization.ice, customization.sugar, customization.note);
-      addItemToCart(
-        selectedProduct,
+      const added = addItemToCart(
+        currentProduct,
         customization.size,
         customization.toppings,
         combinedNote,
         customization.quantity
       );
-      modalController.closeProductDetail();
-      showToast(`Đã thêm ${selectedProduct.name} vào giỏ hàng! ☕`, "success");
+      if (added) {
+        modalController.closeProductDetail();
+        showToast(`Đã thêm ${currentProduct.name} vào giỏ hàng! ☕`, "success");
+      }
     },
-    [selectedProduct, addItemToCart, modalController, showToast]
+    [selectedProduct, products, addItemToCart, modalController, showToast]
   );
 
   const handleQuickAdd = useCallback(
     (product: Product) => {
-      addItemToCart(product, "SMALL", [], "", 1);
-      showToast(`Đã thêm ${product.name} vào giỏ hàng ☕`, "success");
+      const added = addItemToCart(product, "SMALL", [], "", 1);
+      if (added) {
+        showToast(`Đã thêm ${product.name} vào giỏ hàng ☕`, "success");
+      }
     },
     [addItemToCart, showToast]
   );
@@ -312,6 +348,36 @@ export default function MenuPage() {
   const updateCartItemQuantity = useCallback(
     (key: string, delta: number) => {
       setPendingOrder(null);
+      if (delta > 0) {
+        const targetItem = cartItems.find((item) => item.key === key);
+        if (targetItem) {
+          const targetProduct = products.find((p) => p.id === targetItem.productId);
+          if (targetProduct) {
+            const stock = targetProduct.stock;
+            const isStockKnown =
+              typeof stock === "number" &&
+              !isNaN(stock) &&
+              stock >= 0;
+
+            if (!isStockKnown || typeof stock !== "number") {
+              showToast(`Tồn kho của ${targetItem.productName} chưa xác định.`, "warning");
+              return;
+            }
+
+            const currentTotal = cartItems
+              .filter((item) => item.productId === targetItem.productId)
+              .reduce((sum, item) => sum + item.quantity, 0);
+            if (currentTotal + delta > stock) {
+              showToast(
+                `Không thể tăng thêm. Tồn kho của ${targetItem.productName} chỉ còn ${stock} ly.`,
+                "warning"
+              );
+              return;
+            }
+          }
+        }
+      }
+
       setCartItems((prev) => {
         const next: CartItem[] = [];
         for (const item of prev) {
@@ -332,7 +398,7 @@ export default function MenuPage() {
       });
       setOrderError("");
     },
-    [setCartItems]
+    [cartItems, products, setCartItems, showToast]
   );
 
   const removeCartItem = useCallback(
@@ -475,6 +541,7 @@ export default function MenuPage() {
       }
 
       showToast(`Đã tạo đơn hàng #${orderId}! Vui lòng thanh toán.`, "success");
+      void refreshProducts();
     } catch (err) {
       console.error("Lỗi đặt hàng:", err);
       setOrderError(err instanceof Error ? err.message : "Không thể thực hiện đặt hàng.");
@@ -609,6 +676,7 @@ export default function MenuPage() {
       if (authToken) {
         void fetchOrders();
       }
+      void refreshProducts();
     } catch (err: unknown) {
       setPaymentError(
         err instanceof Error ? err.message : "Đã xảy ra sự cố trong quá trình thanh toán."
@@ -1032,8 +1100,6 @@ export default function MenuPage() {
       else if (hash === "#account") setActiveNav("account");
       else if (hash === "#menu") setActiveNav("menu");
       else if (hash === "#top") {
-        lastNavTimeToHome.current = Date.now() + 800;
-        hasBeenAtTopOfHome.current = true;
         if (typeof window !== "undefined") {
           window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
         }
@@ -1050,62 +1116,19 @@ export default function MenuPage() {
     };
   }, [initialView, openAuthModal]);
 
-  // Auto-scroll transition: from Home to Menu when scrolling down
-  useEffect(() => {
-    if (activeNav !== "home") {
-      hasBeenAtTopOfHome.current = false;
-      return;
+  // Products refresh helper
+  const refreshProducts = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await fetchProducts(API_URL);
+      setProducts(Array.isArray(data) ? data : []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách sản phẩm.");
+    } finally {
+      setLoading(false);
     }
-    let triggered = false;
-    const triggerMenu = () => {
-      if (triggered) return;
-      if (Date.now() < lastNavTimeToHome.current) return;
-      triggered = true;
-      navigate("menu");
-    };
-
-    const handleScroll = () => {
-      if (typeof window === "undefined") return;
-      if (Date.now() < lastNavTimeToHome.current) return;
-      if (window.scrollY <= 25) {
-        hasBeenAtTopOfHome.current = true;
-      }
-      if (window.scrollY > 80 && hasBeenAtTopOfHome.current) {
-        triggerMenu();
-      }
-    };
-
-    const handleWheel = (e: WheelEvent) => {
-      if (Date.now() < lastNavTimeToHome.current) return;
-      if (e.deltaY > 30) {
-        triggerMenu();
-      }
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      touchStartY.current = e.touches[0]?.clientY ?? null;
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (touchStartY.current === null || Date.now() < lastNavTimeToHome.current) return;
-      const currentY = e.touches[0]?.clientY ?? 0;
-      const deltaY = touchStartY.current - currentY;
-      if (deltaY > 45) {
-        triggerMenu();
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("wheel", handleWheel, { passive: true });
-    window.addEventListener("touchstart", handleTouchStart, { passive: true });
-    window.addEventListener("touchmove", handleTouchMove, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("wheel", handleWheel);
-      window.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchmove", handleTouchMove);
-    };
-  }, [activeNav]);
+  }, []);
 
   // Filter products by search and category
   const filteredProducts = useMemo(() => {
@@ -1115,8 +1138,12 @@ export default function MenuPage() {
         !q ||
         p.name.toLowerCase().includes(q) ||
         (p.description && p.description.toLowerCase().includes(q));
+      const cat = String(getCategory(p));
       const matchesCategory =
-        selectedCategory === "Tất cả" || getCategory(p) === selectedCategory;
+        selectedCategory === "Tất cả" ||
+        cat === selectedCategory ||
+        (selectedCategory === "Espresso & Cold Brew" && cat === "Cold Brew & Espresso") ||
+        (selectedCategory === "Cold Brew & Espresso" && cat === "Espresso & Cold Brew");
       return matchesSearch && matchesCategory;
     });
   }, [products, search, selectedCategory]);
@@ -1138,32 +1165,18 @@ export default function MenuPage() {
       {/* 2. Main Body: Switch according to activeNav */}
       <main className="flex-1">
         {activeNav === "home" && (
-          <MenuScreen
-            isHomeView={true}
-            onExploreMenu={() => navigate("menu")}
-            products={products.slice(0, 4)}
+          <HomeScreen
+            products={products}
             loading={loading}
-            error={error}
-            onRetry={() => {
-              void (async () => {
-                setLoading(true);
-                setError("");
-                try {
-                  const data = await fetchProducts(API_URL);
-                  setProducts(Array.isArray(data) ? data : []);
-                } catch (err: unknown) {
-                  setError(err instanceof Error ? err.message : "Không thể tải danh sách sản phẩm.");
-                } finally {
-                  setLoading(false);
-                }
-              })();
+            onNavigateToMenu={(category) => {
+              if (category) {
+                setSelectedCategory(category);
+              }
+              navigate("menu");
             }}
-            search=""
-            onSearchChange={() => {}}
-            selectedCategory="Tất cả"
-            onCategoryChange={() => {}}
             onOpenProduct={handleOpenProductModal}
             onQuickAdd={handleQuickAdd}
+            cartCounts={cartCountsByProductId}
           />
         )}
 
@@ -1173,26 +1186,14 @@ export default function MenuPage() {
             products={filteredProducts}
             loading={loading}
             error={error}
-            onRetry={() => {
-              void (async () => {
-                setLoading(true);
-                setError("");
-                try {
-                  const data = await fetchProducts(API_URL);
-                  setProducts(Array.isArray(data) ? data : []);
-                } catch (err: unknown) {
-                  setError(err instanceof Error ? err.message : "Không thể tải danh sách sản phẩm.");
-                } finally {
-                  setLoading(false);
-                }
-              })();
-            }}
+            onRetry={refreshProducts}
             search={search}
             onSearchChange={setSearch}
             selectedCategory={selectedCategory}
             onCategoryChange={setSelectedCategory}
             onOpenProduct={handleOpenProductModal}
             onQuickAdd={handleQuickAdd}
+            cartCounts={cartCountsByProductId}
           />
         )}
 
@@ -1230,6 +1231,7 @@ export default function MenuPage() {
         product={selectedProduct}
         loadingDetail={loadingDetail}
         detailError={detailError}
+        cartCount={selectedProduct ? cartCountsByProductId[selectedProduct.id] || 0 : 0}
         onClose={handleCloseProductModal}
         onAddToCart={handleAddToCartFromModal}
       />
@@ -1239,6 +1241,7 @@ export default function MenuPage() {
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         cartItems={cartItems}
+        products={products}
         onUpdateQuantity={updateCartItemQuantity}
         onRemoveItem={removeCartItem}
         onClearCart={handleClearCart}

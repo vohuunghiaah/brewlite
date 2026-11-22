@@ -31,6 +31,10 @@ node_modules/
 /.pnp
 .pnp.*
 
+# Tools & API clients
+.postman/
+postman/
+
 # Build and distribution outputs
 dist/
 build/
@@ -44,3 +48,10 @@ test-results/
 playwright-report/
 
 # Stack tooling rules updated for Next.js, NestJS and TypeScript
+
+# Catalog synchronization deployment manifests
+scripts/manifests/*.json
+!scripts/manifests/.gitkeep
+apps/api/scripts/manifests/*.json
+!apps/api/scripts/manifests/.gitkeep
+

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, ChevronRight, Flame, AlertCircle, RefreshCw } from "lucide-react";
+import { Search, Plus, ChevronRight, Flame, AlertCircle, RefreshCw, ShoppingBag } from "lucide-react";
 import { formatVND } from "./Header";
 
 export interface Product {
@@ -15,17 +15,19 @@ export interface Product {
   version?: number;
 }
 
-const CATEGORIES = [
+export const CATEGORIES = [
   "Tất cả",
   "Cà phê truyền thống",
-  "Cold Brew & Espresso",
+  "Espresso & Cold Brew",
+  "Matcha & Cacao",
   "Trà trái cây",
   "Bánh ngọt",
 ];
 
-const fallbackImages = {
+export const fallbackImages = {
   coffee: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80",
   tea: "https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=800&q=80",
+  matcha: "https://images.unsplash.com/photo-1536256263959-770b48d82b0a?auto=format&fit=crop&w=800&q=80",
   cacao: "https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=800&q=80",
   pastry: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80",
   water: "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=800&q=80",
@@ -36,23 +38,89 @@ export function getProductImage(product: Product): string {
     return product.imageUrl;
   }
   const details = `${product.name} ${product.description}`.toLowerCase();
+  if (/matcha|trà xanh/.test(details)) return fallbackImages.matcha;
   if (/croissant|bánh|pastry|cake|cookie/.test(details)) return fallbackImages.pastry;
-  if (/trà|tea|đào|cam/.test(details)) return fallbackImages.tea;
+  if (/trà|tea|đào|vải|chanh|cam/.test(details)) return fallbackImages.tea;
   if (/cacao|chocolate/.test(details)) return fallbackImages.cacao;
   if (/nước|water/.test(details)) return fallbackImages.water;
   return fallbackImages.coffee;
 }
 
-interface ProductCardProps {
+export interface StockBadgeInfo {
+  text: string;
+  className: string;
+  isOutOfStock: boolean;
+}
+
+/**
+ * Display logic for product inventory badges:
+ * - stock > 10 and isAvailable=true: "Còn X ly", neutral green styling.
+ * - stock from 1 to 10: "Sắp hết · Còn X ly", amber styling.
+ * - stock === 0 or isAvailable=false: "Hết hàng", red styling and subdued image.
+ * - Missing or invalid stock: show "Chưa rõ tồn kho" and do not invent an available quantity.
+ */
+export function getStockBadgeInfo(product: Product): StockBadgeInfo {
+  if (
+    product.stock === undefined ||
+    product.stock === null ||
+    typeof product.stock !== "number" ||
+    isNaN(product.stock) ||
+    product.stock < 0
+  ) {
+    return {
+      text: "Chưa rõ tồn kho",
+      className: "bg-stone-800/85 text-stone-200 border border-stone-600/40",
+      isOutOfStock: false,
+    };
+  }
+
+  if (!product.isAvailable || product.stock === 0) {
+    return {
+      text: "Hết hàng",
+      className: "bg-[#DC2626]/95 text-white border border-red-400/50",
+      isOutOfStock: true,
+    };
+  }
+
+  if (product.stock >= 1 && product.stock <= 10) {
+    return {
+      text: `Sắp hết · Còn ${product.stock} ly`,
+      className: "bg-[#D97706]/95 text-white border border-amber-400/50",
+      isOutOfStock: false,
+    };
+  }
+
+  return {
+    text: `Còn ${product.stock} ly`,
+    className: "bg-[#059669]/90 text-white border border-emerald-400/40",
+    isOutOfStock: false,
+  };
+}
+
+export interface ProductCardProps {
   product: Product;
   onOpenDetail: (product: Product) => void;
   onQuickAdd: (product: Product) => void;
+  cartCount?: number;
 }
 
-export function ProductCard({ product, onOpenDetail, onQuickAdd }: ProductCardProps) {
+export function ProductCard({
+  product,
+  onOpenDetail,
+  onQuickAdd,
+  cartCount = 0,
+}: ProductCardProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const isOutOfStock = !product.isAvailable || (product.stock !== undefined && product.stock <= 0);
+  const badgeInfo = getStockBadgeInfo(product);
+  const isOutOfStock = badgeInfo.isOutOfStock;
+  const stock = product.stock;
+  const isStockKnown =
+    typeof stock === "number" &&
+    !isNaN(stock) &&
+    stock >= 0;
+  const isMaxInCart =
+    isStockKnown && typeof stock === "number" && cartCount > 0 && cartCount >= stock;
   const imgSrc = getProductImage(product);
   const numPrice = Number(product.price);
 
@@ -85,10 +153,21 @@ export function ProductCard({ product, onOpenDetail, onQuickAdd }: ProductCardPr
             }}
           />
         )}
-        {/* Real availability badge only; no unverified favorite claims */}
-        {isOutOfStock && (
-          <span className="absolute top-2.5 left-2.5 bg-[#EF4444] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide shadow">
-            Tạm hết hàng
+
+        {/* Stock Badge - Top Left */}
+        <span
+          className={`stockBadge absolute top-2.5 left-2.5 z-10 text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow backdrop-blur-sm tracking-wide ${badgeInfo.className}`}
+        >
+          {badgeInfo.text}
+        </span>
+
+        {/* Cart Quantity Badge - Top Right (When item is in cart) */}
+        {cartCount > 0 && (
+          <span
+            className="cartBadge absolute top-2.5 right-2.5 z-10 bg-[#3D261D]/90 text-[#FAF6F0] text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-white/20 shadow backdrop-blur-sm flex items-center gap-1"
+          >
+            <ShoppingBag size={11} className="text-[#C28D58]" />
+            <span>Trong giỏ: {cartCount}</span>
           </span>
         )}
       </div>
@@ -129,15 +208,31 @@ export function ProductCard({ product, onOpenDetail, onQuickAdd }: ProductCardPr
             {/* Quick add button */}
             <button
               type="button"
-              disabled={isOutOfStock}
+              disabled={!isStockKnown || isOutOfStock || isMaxInCart}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickAdd(product);
               }}
-              title="Thêm nhanh"
-              aria-label={`Thêm nhanh ${product.name} vào giỏ`}
+              title={
+                !isStockKnown
+                  ? "Chưa rõ tồn kho"
+                  : isOutOfStock
+                  ? "Hết hàng"
+                  : isMaxInCart
+                  ? "Đã chọn tối đa số lượng tồn kho"
+                  : "Thêm nhanh"
+              }
+              aria-label={
+                !isStockKnown
+                  ? `Chưa rõ tồn kho của ${product.name}`
+                  : isOutOfStock
+                  ? `${product.name} đã hết hàng`
+                  : isMaxInCart
+                  ? `Đã đạt giới hạn tồn kho của ${product.name}`
+                  : `Thêm nhanh ${product.name} vào giỏ`
+              }
               className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 shrink-0 shadow-sm ${
-                isOutOfStock
+                !isStockKnown || isOutOfStock || isMaxInCart
                   ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                   : "bg-[#3D261D] hover:bg-[#C28D58] text-white active:scale-90"
               }`}
@@ -162,6 +257,7 @@ interface MenuScreenProps {
   onCategoryChange: (cat: string) => void;
   onOpenProduct: (product: Product) => void;
   onQuickAdd: (product: Product) => void;
+  cartCounts?: Record<number, number>;
   isHomeView?: boolean;
   onExploreMenu?: () => void;
 }
@@ -177,6 +273,7 @@ export default function MenuScreen({
   onCategoryChange,
   onOpenProduct,
   onQuickAdd,
+  cartCounts = {},
   isHomeView = false,
   onExploreMenu,
 }: MenuScreenProps) {
@@ -184,7 +281,7 @@ export default function MenuScreen({
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-      {/* Hero Banner */}
+      {/* Hero Banner (Only shown if isHomeView or as Menu header) */}
       <div className={`relative rounded-3xl overflow-hidden bg-[#3D261D] mb-8 ${isHomeView ? "p-8 sm:p-12" : "p-6 sm:p-8"} flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md transition-all`}>
         <div className="text-[#FAF6F0] z-10 max-w-xl">
           <div className="flex items-center gap-2 text-[#C28D58] text-xs font-bold uppercase tracking-widest mb-2.5">
@@ -206,14 +303,11 @@ export default function MenuScreen({
                 <span>Khám phá thực đơn</span>
                 <ChevronRight size={18} />
               </button>
-              <span className="text-xs text-[#E8C99A]/80 hidden sm:inline-block">
-                (hoặc lướt xuống để tự động vào Menu)
-              </span>
             </div>
           )}
         </div>
 
-        {/* Stat badges: Verifiable dynamic count & authentic cashless service attribute */}
+        {/* Stat badges */}
         <div className="hidden sm:flex items-center gap-4 z-10 bg-[#FAF6F0]/10 backdrop-blur-sm border border-white/10 rounded-2xl px-5 py-4">
           <div className="text-center">
             <div className="text-3xl font-black text-[#C28D58]">
@@ -233,7 +327,7 @@ export default function MenuScreen({
         <div className="absolute right-12 bottom-0 w-36 h-36 bg-[#C28D58]/10 rounded-full translate-y-1/2 pointer-events-none" />
       </div>
 
-      {/* Render Search & Filters ONLY in Menu View (Requirement for Navigation Verification) */}
+      {/* Search & Filters */}
       {!isHomeView && (
         <>
           {/* Search Bar with searchbox role */}
@@ -250,7 +344,7 @@ export default function MenuScreen({
               onChange={(e) => onSearchChange(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setIsSearchFocused(false)}
-              placeholder="Tìm cà phê, trà, bánh..."
+              placeholder="Tìm cà phê, cold brew, trà, matcha..."
               aria-label="Tìm kiếm đồ uống"
               className="w-full bg-white border border-[#EFE8DF] rounded-2xl pl-11 pr-10 py-3 text-sm text-[#3D261D] placeholder:text-[#C28D58]/60 shadow-sm focus:outline-none focus:border-[#C28D58] focus:shadow-md transition-all duration-200"
             />
@@ -347,6 +441,7 @@ export default function MenuScreen({
               product={product}
               onOpenDetail={onOpenProduct}
               onQuickAdd={onQuickAdd}
+              cartCount={cartCounts[product.id] || 0}
             />
           ))}
         </div>

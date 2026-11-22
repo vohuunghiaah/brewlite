@@ -52,6 +52,22 @@ jobs:
           POSTGRES_USER: brewlite
           POSTGRES_PASSWORD: brewlite_dev_password
           POSTGRES_DB: brewlite_test
+      - name: Mandatory Catalog Sync & Rollback Integration Tests
+        if: matrix.app == 'api'
+        run: node ../../scripts/test-sync-catalog.mjs
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '5432'
+          POSTGRES_USER: brewlite
+          POSTGRES_PASSWORD: brewlite_dev_password
+          POSTGRES_DB: brewlite_test
+          DATABASE_HOST: localhost
+          DATABASE_PORT: '5432'
+          DATABASE_USER: brewlite
+          DATABASE_PASSWORD: brewlite_dev_password
+          DATABASE_NAME: brewlite_test
+          REQUIRE_DB: 'true'
+          CI: 'true'
       - name: Build
         run: npm run build
 
