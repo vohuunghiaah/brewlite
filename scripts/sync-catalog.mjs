@@ -7,8 +7,10 @@
  * - Requires explicit execution flag: --dry-run or --apply
  * - Never alters existing product IDs, prices, stock, or historical order references
  * - Detects duplicates by exact product name
- * - Uses transactional execution with PostgreSQL advisory lock
- * - Provides clear audit summary and diff output
+ * - Uses transactional execution with PostgreSQL transaction-level advisory lock
+ * - Supports both DATABASE_* (Docker Compose) and POSTGRES_* environment variables
+ * - Fails-closed in production if credentials are missing or default dev password is used
+ * - Provides clear audit summary, manifest, and diff output
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -21,15 +23,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.resolve(__dirname, '..');
 
-// Load pg from apps/api if not locally in scripts
+// Robust PostgreSQL client resolver supporting repository root, apps/api, and container /app
 const require = createRequire(import.meta.url);
-let pg;
-try {
-  pg = require(path.join(root, 'apps/api/node_modules/pg'));
-} catch {
-  pg = require('pg');
+function resolvePgClient() {
+  const searchPaths = [
+    'pg',
+    path.join(__dirname, '../node_modules/pg'),
+    path.join(root, 'apps/api/node_modules/pg'),
+    path.join(root, 'node_modules/pg'),
+    path.join(process.cwd(), 'node_modules/pg'),
+  ];
+  for (const p of searchPaths) {
+    try {
+      const mod = require(p);
+      if (mod && mod.Client) return mod.Client;
+    } catch {}
+  }
+  throw new Error('Không thể tìm thấy thư viện "pg" (node-postgres). Vui lòng cài đặt dependencies.');
 }
-const { Client } = pg;
+const Client = resolvePgClient();
 
 // Load environment configuration safely
 let envConfig = {};
@@ -48,11 +60,64 @@ for (const p of envPaths) {
   }
 }
 
-const host = process.env.POSTGRES_HOST || envConfig.POSTGRES_HOST || 'localhost';
-const port = Number(process.env.POSTGRES_PORT || envConfig.POSTGRES_PORT || 5432);
-const user = process.env.POSTGRES_USER || envConfig.POSTGRES_USER || 'brewlite';
-const password = process.env.POSTGRES_PASSWORD || envConfig.POSTGRES_PASSWORD || 'brewlite_dev_password';
-const database = process.env.POSTGRES_DB || envConfig.POSTGRES_DB || 'brewlite';
+/**
+ * Resolve database connection configuration with support for both Compose (DATABASE_*)
+ * and traditional (POSTGRES_*) variable naming.
+ */
+export function resolveDatabaseConfig(overrideEnv = process.env) {
+  const isProduction = overrideEnv.NODE_ENV === 'production';
+
+  const host =
+    overrideEnv.DATABASE_HOST ||
+    overrideEnv.POSTGRES_HOST ||
+    envConfig.DATABASE_HOST ||
+    envConfig.POSTGRES_HOST ||
+    (isProduction ? undefined : 'localhost');
+
+  const port = Number(
+    overrideEnv.DATABASE_PORT ||
+    overrideEnv.POSTGRES_PORT ||
+    envConfig.DATABASE_PORT ||
+    envConfig.POSTGRES_PORT ||
+    5432
+  );
+
+  const user =
+    overrideEnv.DATABASE_USER ||
+    overrideEnv.POSTGRES_USER ||
+    envConfig.DATABASE_USER ||
+    envConfig.POSTGRES_USER ||
+    (isProduction ? undefined : 'brewlite');
+
+  const password =
+    overrideEnv.DATABASE_PASSWORD ||
+    overrideEnv.POSTGRES_PASSWORD ||
+    envConfig.DATABASE_PASSWORD ||
+    envConfig.POSTGRES_PASSWORD ||
+    (isProduction ? undefined : 'brewlite_dev_password');
+
+  const database =
+    overrideEnv.DATABASE_NAME ||
+    overrideEnv.POSTGRES_DB ||
+    envConfig.DATABASE_NAME ||
+    envConfig.POSTGRES_DB ||
+    (isProduction ? undefined : 'brewlite');
+
+  if (isProduction) {
+    if (!host || !user || !password || !database) {
+      throw new Error(
+        '❌ [FAIL-CLOSED] Môi trường production yêu cầu cấu hình đầy đủ biến kết nối CSDL (DATABASE_HOST/POSTGRES_HOST, DATABASE_USER/POSTGRES_USER, DATABASE_PASSWORD/POSTGRES_PASSWORD, DATABASE_NAME/POSTGRES_DB).'
+      );
+    }
+    if (password === 'brewlite_dev_password') {
+      throw new Error(
+        '❌ [FAIL-CLOSED] Phát hiện mật khẩu development mặc định ("brewlite_dev_password") trong môi trường production. Từ chối thực thi kết nối để bảo vệ an toàn hệ thống.'
+      );
+    }
+  }
+
+  return { host, port, user, password, database };
+}
 
 export const TARGET_CATALOG = [
   // 1-4: Existing baseline products
@@ -88,10 +153,10 @@ export const TARGET_CATALOG = [
     isAvailable: true,
     stock: 100,
   },
-  // 5-7: Cà phê truyền thống
+  // 5-15: Expanded products
   {
     name: 'Cà phê đen đá',
-    description: 'Cà phê Robusta Đắk Lắk pha phin truyền thống đậm đà, vị đắng thanh thoát',
+    description: 'Cà phê Robusta Đắk Lắk pha phin truyền thống đậm đà',
     price: '28000',
     imageUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
@@ -99,24 +164,23 @@ export const TARGET_CATALOG = [
   },
   {
     name: 'Cà phê sữa đá',
-    description: 'Cà phê phin đậm vị kết hợp sữa đặc ngọt béo hài hòa chuẩn gu Sài Gòn',
+    description: 'Cà phê phin đậm vị kết hợp sữa đặc ngọt béo hài hòa',
     price: '32000',
-    imageUrl: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=800&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
     stock: 50,
   },
   {
     name: 'Bạc xỉu',
-    description: 'Nhiều sữa ít cà phê, vị béo ngọt thanh nhẹ thơm lừng buổi sáng',
+    description: 'Nhiều sữa ít cà phê, béo ngọt thanh nhẹ chuẩn vị Sài Gòn',
     price: '35000',
-    imageUrl: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=800&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
     stock: 30,
   },
-  // 8-12: Espresso & Cold Brew
   {
     name: 'Espresso',
-    description: 'Chiết xuất áp suất cao từ hạt Arabica Cầu Đất nguyên chất, lớp crema sánh mịn',
+    description: 'Chiết xuất áp suất cao từ hạt Arabica Cầu Đất nguyên chất',
     price: '30000',
     imageUrl: 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
@@ -124,23 +188,23 @@ export const TARGET_CATALOG = [
   },
   {
     name: 'Americano đá',
-    description: 'Espresso đậm đà pha loãng với nước tinh khiết và đá lạnh sảng khoái',
+    description: 'Espresso đậm đà pha loãng với nước tinh khiết giải nhiệt sảng khoái',
     price: '35000',
-    imageUrl: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=800&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1551030173-122aabc4489c?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
     stock: 25,
   },
   {
     name: 'Cappuccino',
-    description: 'Tỉ lệ hoàn hảo giữa Espresso, sữa nóng và lớp bọt sữa bồng bềnh mịn màng',
+    description: 'Tỉ lệ hoàn hảo giữa Espresso, sữa nóng và lớp bọt sữa bồng bềnh',
     price: '48000',
-    imageUrl: 'https://images.unsplash.com/photo-1534778101976-62847782c213?auto=format&fit=crop&w=800&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
     stock: 20,
   },
   {
     name: 'Caramel Macchiato',
-    description: 'Cà phê Espresso hòa quyện vani ngọt dịu, sữa tươi và sốt caramel hảo hạng',
+    description: 'Cà phê Espresso hòa quyện vani ngọt dịu và sốt caramel thơm lừng',
     price: '52000',
     imageUrl: 'https://images.unsplash.com/photo-1485808191679-5f86510681a2?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
@@ -148,25 +212,23 @@ export const TARGET_CATALOG = [
   },
   {
     name: 'Cold Brew cam',
-    description: 'Cà phê ủ lạnh 16 giờ kết hợp nước cam vàng mọng nước, thanh mát sảng khoái',
+    description: 'Cà phê ủ lạnh 16 giờ kết hợp nước cam vàng mọng nước thanh tao',
     price: '49000',
-    imageUrl: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=800&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
-    stock: 8, // Demonstrates low stock
+    stock: 8, // Low-stock item
   },
-  // 13: Matcha & Cacao
   {
     name: 'Matcha Latte',
-    description: 'Bột trà xanh Uji Nhật Bản nguyên chất đánh bọt cùng sữa tươi thanh trùng',
+    description: 'Bột trà xanh Uji Nhật Bản nguyên chất đánh bọt cùng sữa tươi',
     price: '45000',
     imageUrl: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?auto=format&fit=crop&w=800&q=80',
-    isAvailable: false,
-    stock: 0, // Demonstrates out of stock
+    isAvailable: false, // Out-of-stock item
+    stock: 0,
   },
-  // 14-15: Trà trái cây
   {
     name: 'Trà vải',
-    description: 'Trà lài thơm ngát kết hợp trái vải thiều ngọt lịm mọng nước giải nhiệt',
+    description: 'Trà lài thơm ngát kết hợp trái vải thiều ngọt lịm mọng nước',
     price: '38000',
     imageUrl: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=800&q=80',
     isAvailable: true,
@@ -174,20 +236,19 @@ export const TARGET_CATALOG = [
   },
   {
     name: 'Trà chanh mật ong',
-    description: 'Trà đen ủ ấm pha cùng chanh tươi và mật ong hoa rừng ngọt dịu thanh cổ họng',
+    description: 'Trà đen ủ ấm pha cùng chanh tươi và mật ong hoa rừng nguyên chất',
     price: '32000',
-    imageUrl: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=800&q=80',
-    isAvailable: false,
-    stock: 0, // Demonstrates out of stock
+    imageUrl: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=800&q=80',
+    isAvailable: false, // Out-of-stock item
+    stock: 0,
   },
 ];
 
 /**
  * Execute catalog synchronization with transaction-level advisory locking.
- * Transaction-level locking guarantees automatic lock release upon COMMIT or ROLLBACK,
- * preventing any lingering session locks while strictly serializing concurrent workers.
+ * Transaction-level locking guarantees automatic lock release upon COMMIT or ROLLBACK.
  *
- * Docker production execution example (no public DB port needed):
+ * Docker production execution example:
  *   docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --dry-run
  *   docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --apply
  */
@@ -197,6 +258,8 @@ export async function syncCatalog({
   isApply = false,
   targetCatalog = TARGET_CATALOG,
   simulateError = false,
+  failAfterInsertCount = 1,
+  deploymentId = `sync-${Date.now()}`,
 }) {
   if (!isDryRun && !isApply) {
     throw new Error('Chế độ thực thi không hợp lệ: phải chọn --dry-run hoặc --apply');
@@ -206,7 +269,7 @@ export async function syncCatalog({
   await client.query('BEGIN');
 
   try {
-    // 2. Standardized transaction-level advisory lock coordinates across seed and sync
+    // 2. Standardized transaction-level advisory lock coordinates across seed, sync and rollback
     await client.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.catalog.lock'))");
 
     // 3. Query existing catalog inside the locked transaction snapshot
@@ -235,19 +298,40 @@ export async function syncCatalog({
         preserved,
         toInsert,
         insertedCount: 0,
+        deploymentId,
       };
     }
 
     if (isApply) {
-      if (toInsert.length > 0) {
-        for (const item of toInsert) {
-          if (simulateError) {
-            throw new Error('Simulated failure during catalog synchronization transaction');
-          }
-          await client.query(
-            `INSERT INTO products (name, description, price, "imageUrl", "isAvailable", stock, version, "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())`,
-            [item.name, item.description, item.price, item.imageUrl, item.isAvailable, item.stock]
+      const insertedItems = [];
+      let inserted = 0;
+
+      for (const item of toInsert) {
+        // Multi-item atomic rollback injection: simulate error after inserting N items
+        if (simulateError && inserted >= failAfterInsertCount) {
+          throw new Error(
+            `Simulated failure during catalog synchronization transaction before inserting '${item.name}' (already inserted ${inserted} items in transaction)`
+          );
+        }
+
+        const insertRes = await client.query(
+          `INSERT INTO products (name, description, price, "imageUrl", "isAvailable", stock, version, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())
+           RETURNING id, name, price, stock, "isAvailable"`,
+          [item.name, item.description, item.price, item.imageUrl, item.isAvailable, item.stock]
+        );
+
+        inserted++;
+        insertedItems.push({
+          id: insertRes.rows[0].id,
+          name: insertRes.rows[0].name,
+          deploymentId,
+          insertedAt: new Date().toISOString(),
+        });
+
+        if (simulateError && inserted >= failAfterInsertCount) {
+          throw new Error(
+            `Simulated failure during catalog synchronization transaction immediately after inserting '${item.name}' (inserted ${inserted} items in transaction)`
           );
         }
       }
@@ -258,7 +342,9 @@ export async function syncCatalog({
         existingProducts,
         preserved,
         toInsert,
-        insertedCount: toInsert.length,
+        insertedCount: insertedItems.length,
+        insertedItems,
+        deploymentId,
       };
     }
   } catch (err) {
@@ -271,74 +357,93 @@ async function main() {
   const isDryRun = process.argv.includes('--dry-run');
   const isApply = process.argv.includes('--apply');
 
-  if (!isDryRun && !isApply) {
-    console.error('Lỗi: Bạn phải chỉ định rõ chế độ thực thi:');
-    console.error('  node scripts/sync-catalog.mjs --dry-run  (Kiểm tra đối chiếu không thay đổi dữ liệu)');
-    console.error('  node scripts/sync-catalog.mjs --apply    (Thực hiện đồng bộ vào cơ sở dữ liệu)');
+  if ((!isDryRun && !isApply) || (isDryRun && isApply)) {
+    console.error('❌ Lỗi: Bạn phải chỉ định rõ duy nhất một chế độ thực thi:');
+    console.error('  node scripts/sync-catalog.mjs --dry-run  (Kiểm tra đối chiếu an toàn, 0 thay đổi CSDL)');
+    console.error('  node scripts/sync-catalog.mjs --apply    (Thực hiện đồng bộ bổ sung vào CSDL)');
     console.error('\nĐường dẫn chạy an toàn trong môi trường Docker production (mạng nội bộ, không mở cổng DB):');
     console.error('  docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --dry-run');
     console.error('  docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --apply');
     process.exit(1);
   }
 
-  console.log(`\n======================================================`);
-  console.log(` BREWLITE CATALOG SYNCHRONIZATION (${isDryRun ? 'DRY-RUN' : 'APPLY'})`);
-  console.log(` Target DB: ${database} @ ${host}:${port}`);
-  console.log(`======================================================\n`);
+  let dbConfig;
+  try {
+    dbConfig = resolveDatabaseConfig();
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
+
+  console.log('======================================================================');
+  console.log(`☕ BREWLITE CATALOG SYNCHRONIZATION (${isDryRun ? 'DRY-RUN' : 'APPLY'})`);
+  console.log(`🔌 Database: ${dbConfig.database} trên ${dbConfig.host}:${dbConfig.port}`);
+  console.log('======================================================================\n');
 
   const client = new Client({
-    host,
-    port,
-    user,
-    password,
-    database,
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    password: dbConfig.password,
+    database: dbConfig.database,
     connectionTimeoutMillis: 5000,
   });
 
   try {
     await client.connect();
   } catch (err) {
-    console.error(`Không thể kết nối đến PostgreSQL (${host}:${port}/${database}):`, err.message);
+    console.error(`❌ Không thể kết nối cơ sở dữ liệu: ${err.message}`);
     process.exit(1);
   }
 
   try {
-    const result = await syncCatalog({ client, isDryRun, isApply });
+    const deploymentId = `catalog-sync-${Date.now()}`;
+    const result = await syncCatalog({ client, isDryRun, isApply, deploymentId });
 
-    console.log(`Số lượng sản phẩm hiện có trong CSDL: ${result.existingProducts.length}`);
-    result.existingProducts.forEach((p) => {
-      console.log(`  - [ID ${p.id}] ${p.name}: ${Number(p.price).toLocaleString('vi-VN')} đ | Tồn kho: ${p.stock} | Có sẵn: ${p.isAvailable}`);
-    });
+    console.log(`✔ Chế độ: ${result.mode.toUpperCase()}`);
+    console.log(`✔ Mã triển khai: ${result.deploymentId}`);
+    console.log(`✔ Sản phẩm hiện có trong CSDL: ${result.existingProducts.length}`);
+    console.log(`✔ Sản phẩm giữ nguyên không đổi: ${result.preserved.length}`);
+    console.log(`✔ Sản phẩm cần bổ sung mới: ${result.toInsert.length}`);
 
-    console.log(`\n--- KẾT QUẢ ĐỐI CHIẾU ---`);
-    console.log(`Bảo toàn nguyên vẹn: ${result.preserved.length} sản phẩm`);
-    result.preserved.forEach(({ existing }) => {
-      console.log(`  ✔ [Giữ nguyên ID ${existing.id}] ${existing.name}`);
-    });
+    if (result.preserved.length > 0) {
+      console.log('\n--- CÁC SẢN PHẨM HIỆN CÓ ĐƯỢC BẢO TOÀN (ID & DỮ LIỆU KHÔNG ĐỔI) ---');
+      for (const item of result.preserved) {
+        console.log(`  [ID ${item.existing.id}] ${item.existing.name} — ${item.existing.price} đ (Tồn kho: ${item.existing.stock})`);
+      }
+    }
 
-    console.log(`Cần bổ sung mới:     ${result.toInsert.length} sản phẩm`);
-    result.toInsert.forEach((item) => {
-      console.log(`  + [Bổ sung] ${item.name} (${Number(item.price).toLocaleString('vi-VN')} đ, tồn kho: ${item.stock}, có sẵn: ${item.isAvailable})`);
-    });
+    if (result.toInsert.length > 0) {
+      console.log('\n--- CÁC SẢN PHẨM MỚI ---');
+      for (const item of result.toInsert) {
+        console.log(`  + [${item.isAvailable ? 'Còn hàng' : 'Hết hàng'}] ${item.name} — ${item.price} đ (Tồn kho: ${item.stock})`);
+      }
+    }
 
     if (isDryRun) {
-      console.log(`\n[DRY-RUN HOÀN TẤT] Không có thay đổi nào được ghi vào cơ sở dữ liệu.`);
-      console.log(`Nếu muốn thực thi, hãy chạy lệnh với cờ --apply.\n`);
-    } else if (isApply) {
-      if (result.insertedCount === 0) {
-        console.log(`\n[APPLY] Tất cả sản phẩm mục tiêu đã tồn tại. Không có dữ liệu nào cần thêm.`);
-      } else {
-        console.log(`\n[APPLY THÀNH CÔNG] Đã thêm mới ${result.insertedCount} sản phẩm vào cơ sở dữ liệu!`);
+      console.log('\n🛡️ KẾT QUẢ DRY-RUN: Giao dịch đã được ROLLBACK an toàn. Không có bất kỳ thay đổi nào được ghi vào CSDL.');
+      console.log('Để áp dụng các thay đổi trên, hãy chạy lại lệnh với cờ --apply.');
+    }
+
+    if (isApply) {
+      console.log(`\n🎉 ĐÃ COMMIT THÀNH CÔNG VÀO CƠ SỞ DỮ LIỆU! Đã thêm mới: ${result.insertedCount} sản phẩm.`);
+      if (result.insertedItems && result.insertedItems.length > 0) {
+        console.log('\n--- MANIFEST SẢN PHẨM MỚI BỔ SUNG (DÙNG CHO AUDIT & SAFE ROLLBACK) ---');
+        console.log(JSON.stringify(result.insertedItems, null, 2));
       }
     }
   } catch (err) {
-    console.error('Lỗi trong quá trình đồng bộ danh mục:', err.message);
+    console.error(`❌ Lỗi trong quá trình đồng bộ: ${err.message}`);
     process.exit(1);
   } finally {
-    await client.end();
+    await client.end().catch(() => {});
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  main();
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error('Lỗi nghiêm trọng:', err);
+    process.exit(1);
+  });
 }
