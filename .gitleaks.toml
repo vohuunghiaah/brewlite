@@ -1,22 +1,2 @@
-# Gitleaks Configuration for BrewLite
-title = "BrewLite Gitleaks Configuration"
-
 [extend]
-# Extend standard Gitleaks rules
 useDefault = true
-
-[allowlist]
-description = "Known non-secret development fixtures, starter badges, and UUID HTTP idempotency keys (least privilege)"
-regexes = [
-  '''c73a21b4-921a-4d7a-b5a8-2081f2df9841''',
-  '''[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
-  '''abc123def456''',
-  '''brewlite_dev_password''',
-  '''super_secure_pg_pw''',
-  '''sim_secure_db_password''',
-  '''jwt_secret_for_integration_testing''',
-  '''jwt_testing_secret_key_12345''',
-  '''jwt_testing_secret_key_second_12345''',
-  '''p@\$\$w0rd!''',
-  '''replace_with_strong_production_secret'''
-]

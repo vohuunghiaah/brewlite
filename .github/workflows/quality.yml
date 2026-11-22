@@ -16,14 +16,38 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - name: Run Gitleaks Scanner (PR Commit Scope)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.8
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_SUMMARY: "true"
-      - name: Full Repository Git History Audit (All Commits)
+      - name: Install verified Gitleaks 8.24.3
         run: |
-          docker run --rm -v "${{ github.workspace }}:/path" zricethezav/gitleaks:latest detect --source="/path" --config="/path/.gitleaks.toml" --verbose --redact
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --output "$archive" https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
+          echo "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c  $archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+
+      - name: Verify detection with a synthetic fixture
+        run: |
+          set -euo pipefail
+          fixture=$(mktemp -d)
+          printf 'token = "ghp_%s"\n' "$(printf brewlite-synthetic-scanner-control | sha256sum | cut -c1-36)" > "$fixture/sample.txt"
+          rc=0
+          "$RUNNER_TEMP/gitleaks" dir "$fixture" --config=.gitleaks.toml --redact=100 --exit-code=17 --report-path="$RUNNER_TEMP/control.json" || rc=$?
+          test "$rc" = 17
+          jq -e 'any(.[]; .RuleID == "github-pat")' "$RUNNER_TEMP/control.json" >/dev/null
+
+      - name: Scan pull request commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          "$RUNNER_TEMP/gitleaks" git . --config=.gitleaks.toml --redact=100 --log-opts="$BASE_SHA..$HEAD_SHA --full-history --diff-merges=first-parent"
+
+      - name: Scan fetched branches, tags and merge changes
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git rev-list --all --count
+          "$RUNNER_TEMP/gitleaks" git . --config=.gitleaks.toml --redact=100 --log-opts="--all --full-history --diff-merges=first-parent"
 
   quality:
     name: ${{ matrix.app }} lint, test, build
