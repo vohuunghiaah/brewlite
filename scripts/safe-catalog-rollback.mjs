@@ -1,18 +1,22 @@
 #!/usr/bin/env node
 /**
- * BrewLite Targeted Safe Catalog Rollback Strategy (FIX-06)
+ * BrewLite Production-Safe Catalog Rollback Strategy (FIX-11)
  *
  * SAFETY & INTEGRITY PRINCIPLES:
- * 1. Targeted Manifest Rollback: Rollback MUST be targeted using a verified deployment manifest or explicit IDs.
- *    REPLACES blind/unguided operations (NEVER "DELETE FROM products WHERE id > 4" or defaulting to all non-baseline).
- * 2. Fail-Closed by Design: Missing, empty, or invalid manifest strictly halts execution (exit 1 / error thrown).
- * 3. Pre-existing Product Protection: Products created before or outside the target deployment are NEVER altered or deactivated.
- * 4. Permanently protects baseline products (ID 1-4: Latte, Trà đào, Cacao sữa, Nước suối).
- * 5. Historical Order & Receipt Safety: Products referenced in order_items are NEVER deleted.
- * 6. Compensating Operation by default (--mode=compensate): marks items unavailable (isAvailable=false),
+ * 1. Authoritative PostgreSQL Audit Manifest: Rollback resolves deployment records directly from
+ *    PostgreSQL table `catalog_deployments` (locked with FOR UPDATE within transaction).
+ *    Container filesystem (or read-only mounts) is NEVER used as an authoritative source of truth.
+ * 2. Fail-Closed by Design: Missing deployment ID, unverified deployments, or invalid metadata strictly
+ *    halt execution (exit 1 / error thrown).
+ * 3. Production Safeguard: In production, arbitrary --product-ids are prohibited; --manifest-latest requires
+ *    explicit verification with --confirm-deployment=<id>.
+ * 4. Pre-existing Product Protection: Products created before or outside the target deployment are NEVER altered or deactivated.
+ * 5. Permanently protects baseline products (ID 1-4: Latte, Trà đào, Cacao sữa, Nước suối).
+ * 6. Historical Order & Receipt Safety: Products referenced in order_items are NEVER deleted.
+ * 7. Compensating Operation by default (--mode=compensate): marks items unavailable (isAvailable=false),
  *    preserves original stock quantity intact, and increments OCC version (version = version + 1) for concurrency safety.
- * 7. Optional prune mode (--mode=prune): physically removes ONLY unreferenced products from the manifest, requiring --confirm.
- * 8. Transaction-level PostgreSQL advisory lock coordinates across sync and rollback processes.
+ * 8. Status Tracking: Updates deployment status to 'ROLLED_BACK' in the same transaction upon successful rollback.
+ * 9. Transaction-level PostgreSQL advisory lock coordinates across sync and rollback processes.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -20,6 +24,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { parseEnv } from './safe-env.mjs';
+import { ensureCatalogAuditTable } from './sync-catalog.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -128,17 +133,19 @@ export function resolveDatabaseConfig(overrideEnv = process.env) {
 }
 
 /**
- * Execute Safe Targeted Catalog Rollback.
+ * Execute Safe Targeted Catalog Rollback with Authoritative PostgreSQL Audit.
  *
  * @param {Object} options
  * @param {import('pg').Client} options.client Active PostgreSQL client
  * @param {'compensate'|'prune'} [options.mode='compensate']
  *   - 'compensate' (Default / Recommended): Soft deactivation (isAvailable=false, keeps stock intact, increments OCC version). Zero data loss.
  *   - 'prune': Physical deletion of ONLY unreferenced products from manifest. Products with existing orders are protected.
- * @param {Object} [options.manifest] Parsed manifest object from syncCatalog
- * @param {string} [options.manifestPath] File path to manifest JSON
- * @param {string} [options.deploymentId] Specific deployment ID to look up in scripts/manifests/
- * @param {number[]} [options.targetProductIds] Specific numeric IDs to rollback
+ * @param {string} [options.deploymentId] Specific deployment ID to look up in catalog_deployments
+ * @param {boolean} [options.isLatest=false] Look up latest APPLIED deployment from catalog_deployments
+ * @param {string} [options.confirmDeployment] Explicit confirmation of the deployment ID when using latest
+ * @param {Object} [options.manifest] In-memory manifest object (used in tests)
+ * @param {string} [options.manifestPath] File path to manifest JSON (non-production fallback)
+ * @param {number[]} [options.targetProductIds] Specific numeric IDs (non-production only)
  * @param {string[]} [options.targetProductNames] Specific names to rollback (e.g. for baseline exclusion test)
  * @param {boolean} options.isDryRun Dry run without committing changes
  * @param {boolean} options.isApply Commit changes to database
@@ -146,9 +153,11 @@ export function resolveDatabaseConfig(overrideEnv = process.env) {
 export async function safeCatalogRollback({
   client,
   mode = 'compensate',
+  deploymentId = null,
+  isLatest = false,
+  confirmDeployment = null,
   manifest = null,
   manifestPath = null,
-  deploymentId = null,
   targetProductIds = null,
   targetProductNames = null,
   isDryRun = false,
@@ -162,81 +171,134 @@ export async function safeCatalogRollback({
     throw new Error(`Chế độ rollback không hợp lệ: "${mode}". Chỉ hỗ trợ "compensate" hoặc "prune".`);
   }
 
-  // 1. Resolve target manifest and candidate product IDs
-  let resolvedProductIds = [];
-  let resolvedManifest = null;
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  if (manifest && typeof manifest === 'object') {
-    resolvedManifest = manifest;
-    if (Array.isArray(manifest.insertedProductIds)) {
-      resolvedProductIds = manifest.insertedProductIds;
-    } else if (Array.isArray(manifest.insertedItems)) {
-      resolvedProductIds = manifest.insertedItems.map((item) => item.id);
+  // Production safeguard: Reject arbitrary product-ids bypass without verified deployment
+  if (isProduction) {
+    if (targetProductIds && !deploymentId) {
+      throw new Error(
+        '❌ [FAIL-CLOSED] Môi trường production từ chối cờ --product-ids tự do nhằm bảo vệ tính toàn vẹn audit. Bắt buộc phải chỉ định --deployment-id đã được kiểm chứng.'
+      );
     }
-  } else if (manifestPath) {
-    if (!existsSync(manifestPath)) {
-      throw new Error(`❌ [FAIL-CLOSED] File manifest không tồn tại: ${manifestPath}`);
+    if (isLatest && !confirmDeployment && !deploymentId) {
+      throw new Error(
+        '❌ [FAIL-CLOSED] Môi trường production từ chối rollback tự động bằng --manifest-latest nếu thiếu xác nhận --confirm-deployment=<id> khớp với deployment đích.'
+      );
     }
-    try {
-      resolvedManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      resolvedProductIds = Array.isArray(resolvedManifest.insertedProductIds)
-        ? resolvedManifest.insertedProductIds
-        : (resolvedManifest.insertedItems || []).map((i) => i.id);
-    } catch (err) {
-      throw new Error(`❌ [FAIL-CLOSED] Lỗi phân tích file manifest (${manifestPath}): ${err.message}`);
-    }
-  } else if (deploymentId) {
-    const candidatePaths = [
-      path.join(__dirname, 'manifests', `catalog-sync-${deploymentId}.json`),
-      path.join(root, 'scripts/manifests', `catalog-sync-${deploymentId}.json`),
-      path.join(root, 'apps/api/scripts/manifests', `catalog-sync-${deploymentId}.json`),
-    ];
-    const foundPath = candidatePaths.find((p) => existsSync(p));
-    if (!foundPath) {
-      throw new Error(`❌ [FAIL-CLOSED] Không tìm thấy manifest cho deployment ID "${deploymentId}".`);
-    }
-    try {
-      resolvedManifest = JSON.parse(readFileSync(foundPath, 'utf8'));
-      resolvedProductIds = Array.isArray(resolvedManifest.insertedProductIds)
-        ? resolvedManifest.insertedProductIds
-        : (resolvedManifest.insertedItems || []).map((i) => i.id);
-    } catch (err) {
-      throw new Error(`❌ [FAIL-CLOSED] Lỗi đọc manifest của deployment "${deploymentId}": ${err.message}`);
-    }
-  } else if (Array.isArray(targetProductIds)) {
-    resolvedProductIds = targetProductIds;
-  }
-
-  // Sanitize IDs: positive integers only
-  resolvedProductIds = resolvedProductIds
-    .map(Number)
-    .filter((id) => Number.isInteger(id) && id > 0);
-
-  const hasTargetNames = Array.isArray(targetProductNames) && targetProductNames.length > 0;
-
-  // 2. Strict Fail-Closed Check: Never allow unguided rollback of all products
-  if (resolvedProductIds.length === 0 && !hasTargetNames) {
-    throw new Error(
-      '❌ [FAIL-CLOSED] Rollback bị từ chối: Bắt buộc phải có manifest hợp lệ từ lần triển khai cần hoàn tác, hoặc chỉ định danh sách product ID cụ thể (--manifest, --deployment-id, --manifest-latest, hoặc --product-ids). Tuyệt đối không thực hiện rollback mặc định trên toàn bộ sản phẩm.'
-    );
   }
 
   await client.query('BEGIN');
   try {
-    // Transaction-level advisory lock serializes rollback operations
+    // 1. Transaction-level advisory lock coordinates across sync and rollback
     await client.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.catalog.lock'))");
 
-    // Query candidate products
+    // 2. Ensure catalog_deployments audit table exists
+    await ensureCatalogAuditTable(client);
+
+    let resolvedProductIds = [];
+    let authoritativeDeployment = null;
+
+    // 3. Resolve deployment record authoritatively from PostgreSQL
+    if (deploymentId) {
+      const depRes = await client.query(
+        `SELECT id, "deploymentId", mode, "insertedProductIds", "insertedItems", "totalInserted", status, metadata, "createdAt"
+         FROM catalog_deployments
+         WHERE "deploymentId" = $1
+         FOR UPDATE`,
+        [deploymentId]
+      );
+
+      if (depRes.rows.length === 0) {
+        // Fallback for offline tests or non-production if manifest is passed directly
+        if (!isProduction && (manifest || manifestPath)) {
+          // Allowed only in non-production
+        } else {
+          throw new Error(`❌ [FAIL-CLOSED] Không tìm thấy bản ghi deployment ID "${deploymentId}" trong bảng audit catalog_deployments.`);
+        }
+      } else {
+        authoritativeDeployment = depRes.rows[0];
+      }
+    } else if (isLatest) {
+      const latestRes = await client.query(
+        `SELECT id, "deploymentId", mode, "insertedProductIds", "insertedItems", "totalInserted", status, metadata, "createdAt"
+         FROM catalog_deployments
+         WHERE status = 'APPLIED'
+         ORDER BY id DESC
+         LIMIT 1
+         FOR UPDATE`
+      );
+
+      if (latestRes.rows.length === 0) {
+        throw new Error('❌ [FAIL-CLOSED] Không tìm thấy bất kỳ deployment nào có trạng thái APPLIED trong bảng catalog_deployments.');
+      }
+
+      authoritativeDeployment = latestRes.rows[0];
+
+      if (confirmDeployment && authoritativeDeployment.deploymentId !== confirmDeployment) {
+        throw new Error(
+          `❌ [FAIL-CLOSED] Deployment gần nhất ("${authoritativeDeployment.deploymentId}") không khớp với mã xác nhận cung cấp ("${confirmDeployment}"). Hủy bỏ thao tác.`
+        );
+      }
+    }
+
+    // 4. Resolve candidate product IDs from authoritative record or non-production options
+    if (authoritativeDeployment) {
+      if (authoritativeDeployment.status === 'ROLLED_BACK') {
+        throw new Error(
+          `❌ [FAIL-CLOSED] Deployment "${authoritativeDeployment.deploymentId}" đã được hoàn tác trước đó (trạng thái: ROLLED_BACK). Không thể hoàn tác lặp lại.`
+        );
+      }
+
+      const rawIds = authoritativeDeployment.insertedProductIds;
+      if (Array.isArray(rawIds)) {
+        resolvedProductIds = rawIds;
+      } else if (typeof rawIds === 'string') {
+        try {
+          resolvedProductIds = JSON.parse(rawIds);
+        } catch {
+          resolvedProductIds = [];
+        }
+      }
+    } else if (manifest && typeof manifest === 'object') {
+      if (Array.isArray(manifest.insertedProductIds)) {
+        resolvedProductIds = manifest.insertedProductIds;
+      } else if (Array.isArray(manifest.insertedItems)) {
+        resolvedProductIds = manifest.insertedItems.map((item) => item.id);
+      }
+    } else if (manifestPath && !isProduction) {
+      if (!existsSync(manifestPath)) {
+        throw new Error(`❌ [FAIL-CLOSED] File manifest không tồn tại: ${manifestPath}`);
+      }
+      const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      resolvedProductIds = parsed.insertedProductIds || (parsed.insertedItems || []).map((i) => i.id);
+    } else if (Array.isArray(targetProductIds) && !isProduction) {
+      resolvedProductIds = targetProductIds;
+    }
+
+    resolvedProductIds = resolvedProductIds
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    const hasTargetNames = Array.isArray(targetProductNames) && targetProductNames.length > 0;
+
+    // Fail-Closed Guard: Refuse unguided rollback
+    if (resolvedProductIds.length === 0 && !hasTargetNames) {
+      throw new Error(
+        '❌ [FAIL-CLOSED] Rollback bị từ chối: Bắt buộc phải có deployment ID hợp lệ đã được ghi nhận trong audit CSDL, hoặc danh sách ID được xác minh. Không được phép rollback mù.'
+      );
+    }
+
+    // 5. Query candidate products from products table
     const allRes = await client.query('SELECT id, name, price, stock, "isAvailable", version FROM products ORDER BY id ASC');
     const allProducts = allRes.rows;
 
-    // Filter candidates: strictly exclude baseline products AND restrict to resolved IDs / names
+    // Filter candidates: strictly exclude baseline products AND restrict to target deployment
     const candidates = allProducts.filter((p) => {
       // Rule A: Baseline products are permanently protected
       if (BASELINE_PRODUCT_NAMES.includes(p.name) || BASELINE_PRODUCT_IDS.includes(p.id)) {
         return false;
       }
-      // Rule B: Must belong to target manifest IDs or explicit target names
+      // Rule B: Must belong to target deployment IDs or target names
       const matchId = resolvedProductIds.includes(p.id);
       const matchName = hasTargetNames && targetProductNames.includes(p.name);
       return matchId || matchName;
@@ -266,11 +328,12 @@ export async function safeCatalogRollback({
         return {
           mode: 'compensate',
           isDryRun: true,
+          deploymentId: authoritativeDeployment?.deploymentId || deploymentId,
           resolvedProductIds,
           totalCandidates: candidates.length,
           toDeactivateCount: toDeactivate.length,
           toDeactivateItems: toDeactivate,
-          action: 'DRY-RUN: Sẽ cập nhật isAvailable=false (giữ nguyên tồn kho gốc và tăng version OCC) cho các sản phẩm trong manifest',
+          action: 'DRY-RUN: Sẽ cập nhật isAvailable=false (giữ nguyên tồn kho gốc và tăng version OCC) cho các sản phẩm trong deployment',
         };
       }
 
@@ -289,10 +352,31 @@ export async function safeCatalogRollback({
           );
           updatedItems = updateRes.rows;
         }
+
+        // Update audit record status in PostgreSQL
+        if (authoritativeDeployment) {
+          await client.query(
+            `UPDATE catalog_deployments
+             SET status = 'ROLLED_BACK',
+                 metadata = metadata || $1::jsonb,
+                 "updatedAt" = NOW()
+             WHERE "deploymentId" = $2`,
+            [
+              JSON.stringify({
+                rolledBackAt: new Date().toISOString(),
+                rollbackMode: 'compensate',
+                deactivatedCount: toDeactivate.length,
+              }),
+              authoritativeDeployment.deploymentId,
+            ]
+          );
+        }
+
         await client.query('COMMIT');
         return {
           mode: 'compensate',
           isApply: true,
+          deploymentId: authoritativeDeployment?.deploymentId || deploymentId,
           resolvedProductIds,
           totalCandidates: candidates.length,
           deactivatedCount: toDeactivate.length,
@@ -312,13 +396,14 @@ export async function safeCatalogRollback({
         return {
           mode: 'prune',
           isDryRun: true,
+          deploymentId: authoritativeDeployment?.deploymentId || deploymentId,
           resolvedProductIds,
           totalCandidates: candidates.length,
           unreferencedCount: unreferenced.length,
           unreferencedItems: unreferenced,
           protectedCount: protectedReferenced.length,
           protectedItems: protectedReferenced,
-          action: 'DRY-RUN: Chỉ xóa các sản phẩm trong manifest chưa có đơn hàng nào tham chiếu. Sản phẩm đã có đơn hàng được BẢO VỆ TUYỆT ĐỐI.',
+          action: 'DRY-RUN: Chỉ xóa các sản phẩm trong deployment chưa có đơn hàng nào tham chiếu. Sản phẩm đã có đơn hàng được BẢO VỆ TUYỆT ĐỐI.',
         };
       }
 
@@ -327,10 +412,32 @@ export async function safeCatalogRollback({
           const idsToDelete = unreferenced.map((p) => p.id);
           await client.query('DELETE FROM products WHERE id = ANY($1)', [idsToDelete]);
         }
+
+        // Update audit record status in PostgreSQL only if items were pruned
+        if (authoritativeDeployment && unreferenced.length > 0) {
+          await client.query(
+            `UPDATE catalog_deployments
+             SET status = 'ROLLED_BACK',
+                 metadata = metadata || $1::jsonb,
+                 "updatedAt" = NOW()
+             WHERE "deploymentId" = $2`,
+            [
+              JSON.stringify({
+                rolledBackAt: new Date().toISOString(),
+                rollbackMode: 'prune',
+                deletedCount: unreferenced.length,
+                protectedCount: protectedReferenced.length,
+              }),
+              authoritativeDeployment.deploymentId,
+            ]
+          );
+        }
+
         await client.query('COMMIT');
         return {
           mode: 'prune',
           isApply: true,
+          deploymentId: authoritativeDeployment?.deploymentId || deploymentId,
           resolvedProductIds,
           totalCandidates: candidates.length,
           deletedCount: unreferenced.length,
@@ -351,25 +458,21 @@ async function main() {
   const isApply = process.argv.includes('--apply');
   const isPrune = process.argv.includes('--mode=prune');
   const isConfirmed = process.argv.includes('--confirm');
+  const isLatest = process.argv.includes('--manifest-latest');
 
   const mode = isPrune ? 'prune' : 'compensate';
-
-  let manifestPath = null;
-  const manifestArg = process.argv.find((a) => a.startsWith('--manifest='));
-  if (manifestArg) manifestPath = manifestArg.split('=')[1];
 
   let deploymentId = null;
   const deployArg = process.argv.find((a) => a.startsWith('--deployment-id='));
   if (deployArg) deploymentId = deployArg.split('=')[1];
 
-  if (process.argv.includes('--manifest-latest')) {
-    const candidatePaths = [
-      path.join(__dirname, 'manifests', 'catalog-sync-latest.json'),
-      path.join(root, 'scripts/manifests', 'catalog-sync-latest.json'),
-      path.join(root, 'apps/api/scripts/manifests', 'catalog-sync-latest.json'),
-    ];
-    manifestPath = candidatePaths.find((p) => existsSync(p)) || candidatePaths[0];
-  }
+  let confirmDeployment = null;
+  const confirmArg = process.argv.find((a) => a.startsWith('--confirm-deployment='));
+  if (confirmArg) confirmDeployment = confirmArg.split('=')[1];
+
+  let manifestPath = null;
+  const manifestArg = process.argv.find((a) => a.startsWith('--manifest='));
+  if (manifestArg) manifestPath = manifestArg.split('=')[1];
 
   let targetProductIds = null;
   const pidsArg = process.argv.find((a) => a.startsWith('--product-ids='));
@@ -383,22 +486,17 @@ async function main() {
 
   if ((!isDryRun && !isApply) || (isDryRun && isApply)) {
     console.error('❌ Lỗi: Bạn phải chỉ định rõ duy nhất một chế độ thực thi:');
-    console.error('  node scripts/safe-catalog-rollback.mjs --dry-run --manifest-latest                  (Kiểm tra đối chiếu an toàn)');
-    console.error('  node scripts/safe-catalog-rollback.mjs --apply --manifest-latest                   (Bồi hoàn an toàn theo manifest gần nhất)');
-    console.error('  node scripts/safe-catalog-rollback.mjs --apply --deployment-id=<id>                 (Bồi hoàn theo deployment ID)');
-    console.error('  node scripts/safe-catalog-rollback.mjs --apply --manifest=<path>                    (Bồi hoàn theo file manifest cụ thể)');
-    console.error('  node scripts/safe-catalog-rollback.mjs --apply --product-ids=5,6,7                  (Bồi hoàn theo danh sách ID)');
-    console.error('  node scripts/safe-catalog-rollback.mjs --apply --manifest-latest --mode=prune --confirm (Chỉ xóa món chưa có đơn hàng)');
+    console.error('  node scripts/safe-catalog-rollback.mjs --dry-run --deployment-id=<id>');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --deployment-id=<id>');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --manifest-latest --confirm-deployment=<id>');
+    console.error('  node scripts/safe-catalog-rollback.mjs --apply --deployment-id=<id> --mode=prune --confirm');
     process.exit(1);
   }
 
-  if (!manifestPath && !deploymentId && (!targetProductIds || targetProductIds.length === 0)) {
-    console.error('❌ [FAIL-CLOSED] Rollback yêu cầu nguồn manifest hoặc danh sách ID cụ thể:');
-    console.error('  --manifest-latest           : Tự động dùng manifest của lần sync gần nhất');
-    console.error('  --deployment-id=<id>        : Chỉ định ID của lần sync cần hoàn tác');
-    console.error('  --manifest=<path>           : Đường dẫn tới file JSON manifest');
-    console.error('  --product-ids=5,6,7         : Danh sách ID sản phẩm cần hoàn tác');
-    console.error('  Tuyệt đối không chạy rollback mặc định lên toàn bộ bảng products.');
+  if (!deploymentId && !isLatest && (!targetProductIds || targetProductIds.length === 0)) {
+    console.error('❌ [FAIL-CLOSED] Rollback yêu cầu mã deployment ID cụ thể từ bảng audit CSDL:');
+    console.error('  --deployment-id=<id>                        : Mã lần triển khai cần hoàn tác (authoritative trong CSDL)');
+    console.error('  --manifest-latest --confirm-deployment=<id> : Hoàn tác đợt sync gần nhất có xác nhận mã ID');
     process.exit(1);
   }
 
@@ -441,8 +539,10 @@ async function main() {
     const result = await safeCatalogRollback({
       client,
       mode,
-      manifestPath,
       deploymentId,
+      isLatest,
+      confirmDeployment,
+      manifestPath,
       targetProductIds,
       isDryRun,
       isApply,
@@ -450,6 +550,7 @@ async function main() {
 
     if (isDryRun) {
       console.log('✔ KẾT QUẢ KIỂM TRA ĐỐI CHIẾU (DRY-RUN):');
+      console.log(`  - Deployment ID: ${result.deploymentId}`);
       console.log(`  - Số product ID trong phạm vi manifest: ${result.resolvedProductIds.length}`);
       console.log(`  - Tổng số sản phẩm ứng viên tìm thấy: ${result.totalCandidates}`);
       if (mode === 'compensate') {
@@ -473,6 +574,7 @@ async function main() {
     if (isApply) {
       if (mode === 'compensate') {
         console.log(`🎉 HOÀN TẤT BỒI HOÀN AN TOÀN! Đã vô hiệu hóa: ${result.deactivatedCount} sản phẩm.`);
+        console.log(`Trạng thái deployment "${result.deploymentId}" trong bảng catalog_deployments đã chuyển sang: ROLLED_BACK.`);
         console.log('Tồn kho gốc và phiên bản OCC đã được bảo toàn. Tất cả lịch sử đơn hàng nguyên vẹn 100%.');
         if (result.updatedItems && result.updatedItems.length > 0) {
           for (const item of result.updatedItems) {
@@ -481,6 +583,7 @@ async function main() {
         }
       } else {
         console.log(`🎉 HOÀN TẤT PRUNE! Đã xóa: ${result.deletedCount} sản phẩm chưa tham chiếu trong manifest.`);
+        console.log(`Trạng thái deployment "${result.deploymentId}" trong bảng catalog_deployments đã chuyển sang: ROLLED_BACK.`);
         console.log(`Đã bảo vệ an toàn: ${result.protectedCount} sản phẩm có liên kết lịch sử đơn hàng.`);
       }
     }

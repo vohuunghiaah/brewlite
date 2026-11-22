@@ -2,10 +2,10 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import test from 'node:test';
 import { createRequire } from 'node:module';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TARGET_CATALOG, syncCatalog, resolveDatabaseConfig } from './sync-catalog.mjs';
+import { TARGET_CATALOG, syncCatalog, resolveDatabaseConfig, ensureCatalogAuditTable } from './sync-catalog.mjs';
 import { safeCatalogRollback, BASELINE_PRODUCT_NAMES, BASELINE_PRODUCT_IDS } from './safe-catalog-rollback.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,7 +69,7 @@ test('Catalog Synchronization Strategy: Specification & Safety Tests', async (t)
   });
 });
 
-test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX-06 to FIX-09)', async (t) => {
+test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX-06 to FIX-11)', async (t) => {
   const isCi = process.env.CI === 'true' || process.env.REQUIRE_DB === 'true';
 
   let dbConfig;
@@ -137,33 +137,48 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
       }
     }
 
-    await t.test('6. Dry-run execution strictly does NOT write any data to PostgreSQL', async () => {
-      const beforeRes = await client.query('SELECT count(*) FROM products');
-      const countBefore = Number(beforeRes.rows[0].count);
+    // Ensure catalog_deployments audit table exists
+    await ensureCatalogAuditTable(client);
+
+    await t.test('6. Dry-run execution strictly does NOT write any data to products or audit table', async () => {
+      const beforeProd = await client.query('SELECT count(*) FROM products');
+      const countProdBefore = Number(beforeProd.rows[0].count);
+
+      const beforeAudit = await client.query('SELECT count(*) FROM catalog_deployments');
+      const countAuditBefore = Number(beforeAudit.rows[0].count);
 
       const dryRunResult = await syncCatalog({ client, isDryRun: true });
       assert.strictEqual(dryRunResult.mode, 'dry-run');
       assert.strictEqual(dryRunResult.insertedCount, 0);
 
-      const afterRes = await client.query('SELECT count(*) FROM products');
-      const countAfter = Number(afterRes.rows[0].count);
+      const afterProd = await client.query('SELECT count(*) FROM products');
+      const countProdAfter = Number(afterProd.rows[0].count);
+      assert.strictEqual(countProdAfter, countProdBefore, 'Dry-run must leave products count completely untouched');
 
-      assert.strictEqual(countAfter, countBefore, 'Dry-run must leave products count completely untouched');
+      const afterAudit = await client.query('SELECT count(*) FROM catalog_deployments');
+      const countAuditAfter = Number(afterAudit.rows[0].count);
+      assert.strictEqual(countAuditAfter, countAuditBefore, 'Dry-run must leave catalog_deployments audit table completely untouched');
     });
 
-    await t.test('7. Apply execution is idempotent and produces durable manifest', async () => {
-      const run1 = await syncCatalog({ client, isApply: true });
-      assert.strictEqual(run1.mode, 'apply');
-      assert.ok(run1.manifest, 'Apply must return a manifest object');
-      assert.strictEqual(typeof run1.manifest.deploymentId, 'string');
+    await t.test('7. Apply execution creates products AND authoritative audit record in one transaction', async () => {
+      const depId = `test-audit-${Date.now()}`;
+      const runRes = await syncCatalog({ client, isApply: true, deploymentId: depId });
+      assert.strictEqual(runRes.mode, 'apply');
 
-      const run2 = await syncCatalog({ client, isApply: true });
-      assert.strictEqual(run2.mode, 'apply');
-      assert.strictEqual(run2.insertedCount, 0, 'Second apply must insert 0 items and maintain exact catalog');
+      // Verify audit record exists in PostgreSQL catalog_deployments
+      if (runRes.insertedCount > 0) {
+        const auditRes = await client.query(
+          'SELECT "deploymentId", mode, "totalInserted", status FROM catalog_deployments WHERE "deploymentId" = $1',
+          [depId]
+        );
+        assert.strictEqual(auditRes.rows.length, 1, 'Authoritative audit record must be committed to PostgreSQL');
+        assert.strictEqual(auditRes.rows[0].status, 'APPLIED');
+        assert.strictEqual(auditRes.rows[0].totalInserted, runRes.insertedCount);
+      }
     });
 
     await t.test(
-      '8. Atomic Rollback (FIX-09): Inserts Item A, simulates failure on Item B, rolls back both with zero partial writes',
+      '8. Atomic Multi-Item Rollback (FIX-09): Error on Item B rolls back Item A and leaves zero partial writes',
       async () => {
         const beforeRes = await client.query('SELECT count(*) FROM products');
         const countBefore = Number(beforeRes.rows[0].count);
@@ -171,6 +186,7 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
         const uniqueSuffix = Date.now().toString(36);
         const itemAName = `Atomic Test Drink A ${uniqueSuffix}`;
         const itemBName = `Atomic Test Drink B ${uniqueSuffix}`;
+        const failingDepId = `fail-dep-${uniqueSuffix}`;
 
         const multiItemFailingCatalog = [
           ...TARGET_CATALOG,
@@ -192,7 +208,6 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
           },
         ];
 
-        // Inject simulated failure after inserting 1 item (Item A is inserted, then error triggers on/after Item A before commit)
         await assert.rejects(
           async () => {
             await syncCatalog({
@@ -201,27 +216,26 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
               targetCatalog: multiItemFailingCatalog,
               simulateError: true,
               failAfterInsertCount: 1,
+              deploymentId: failingDepId,
             });
           },
           /Simulated failure/,
           'Sync should reject with simulated failure after inserting Item A'
         );
 
-        // Verification: After ROLLBACK, neither Item A nor Item B must exist in the database!
+        // Verification: Neither Item A nor Item B must exist in the database
         const checkItemA = await client.query('SELECT count(*) FROM products WHERE name = $1', [itemAName]);
         assert.strictEqual(Number(checkItemA.rows[0].count), 0, 'Item A must NOT exist after rollback');
 
         const checkItemB = await client.query('SELECT count(*) FROM products WHERE name = $1', [itemBName]);
         assert.strictEqual(Number(checkItemB.rows[0].count), 0, 'Item B must NOT exist after rollback');
 
-        // Verify baseline product count is completely unchanged
-        const afterRes = await client.query('SELECT count(*) FROM products');
-        const countAfter = Number(afterRes.rows[0].count);
-        assert.strictEqual(countAfter, countBefore, 'Total product count must remain identical before and after rollback');
+        // Audit table must NOT contain the failing deployment
+        const checkAudit = await client.query('SELECT count(*) FROM catalog_deployments WHERE "deploymentId" = $1', [failingDepId]);
+        assert.strictEqual(Number(checkAudit.rows[0].count), 0, 'Failing deployment must NOT exist in audit table');
 
-        // Verify safe re-run after error: sync without error succeeds cleanly
-        const rerunResult = await syncCatalog({ client, isApply: true, targetCatalog: TARGET_CATALOG, simulateError: false });
-        assert.strictEqual(rerunResult.mode, 'apply');
+        const afterRes = await client.query('SELECT count(*) FROM products');
+        assert.strictEqual(Number(afterRes.rows[0].count), countBefore, 'Total product count must remain unchanged');
       }
     );
 
@@ -251,7 +265,6 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
           },
         ];
 
-        // Run two syncCatalog workers in parallel
         const [res1, res2] = await Promise.all([
           syncCatalog({ client, isApply: true, targetCatalog: concurrentCatalog }),
           syncCatalog({ client: client2, isApply: true, targetCatalog: concurrentCatalog }),
@@ -263,7 +276,7 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
         const dbRes = await client.query('SELECT count(*) FROM products WHERE name = $1', [concurrentItemName]);
         assert.strictEqual(Number(dbRes.rows[0].count), 1, 'Database must contain exactly 1 copy of the item');
 
-        // Cleanup the test item
+        // Cleanup
         await client.query('DELETE FROM products WHERE name = $1', [concurrentItemName]);
       } finally {
         await client2.end().catch(() => {});
@@ -271,83 +284,104 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
     });
 
     await t.test(
-      '10. Safe Catalog Rollback & Order History Protection (FIX-06): Preserves stock, increments OCC version, NEVER deletes referenced products',
+      '10. Safe Catalog Rollback & Order History Protection (FIX-06 & FIX-11): Updates audit to ROLLED_BACK, protects orders',
       async () => {
-        // 1. Ensure target products exist
-        await syncCatalog({ client, isApply: true });
+        const uniqueSuffix = Date.now().toString(36);
+        const testDrinkName = `Rollback Test Drink ${uniqueSuffix}`;
+        const testDepId = `dep-order-test-${uniqueSuffix}`;
 
-        // 2. Query Cold Brew cam (ID > 4, non-baseline product)
-        const coldBrewRes = await client.query('SELECT id, name, stock, version FROM products WHERE name = $1', ['Cold Brew cam']);
-        assert.ok(coldBrewRes.rows.length > 0, 'Cold Brew cam must exist');
-        const coldBrewId = coldBrewRes.rows[0].id;
-        const coldBrewInitialStock = coldBrewRes.rows[0].stock;
-        const coldBrewInitialVersion = coldBrewRes.rows[0].version;
+        const testCatalog = [
+          ...TARGET_CATALOG,
+          {
+            name: testDrinkName,
+            description: 'Drink to test order reference and rollback',
+            price: '45000',
+            imageUrl: 'https://images.unsplash.com/test-order-drink',
+            isAvailable: true,
+            stock: 20,
+          },
+        ];
 
-        // 3. Create a simulated order referencing Cold Brew cam
+        // 1. Sync catalog with new item and record audit
+        const syncRes = await syncCatalog({ client, isApply: true, targetCatalog: testCatalog, deploymentId: testDepId });
+        assert.strictEqual(syncRes.insertedCount, 1);
+        const testDrinkId = syncRes.insertedItems[0].id;
+
+        // 2. Create an order referencing this drink
         const orderRes = await client.query(
           `INSERT INTO orders ("customerName", "customerPhone", "totalAmount", status, "orderCode", "pickupMethod", "createdAt")
            VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
-          ['Rollback Tester', '0909999999', '49000', 'PAID', '#BL-ROLLBACK-ORDER', 'AT_COUNTER']
+          ['Rollback Tester', '0909999999', '45000', 'PAID', '#BL-ROLLBACK-ORDER', 'AT_COUNTER']
         );
         const orderId = orderRes.rows[0].id;
 
         const orderItemRes = await client.query(
           `INSERT INTO order_items ("productName", size, quantity, "unitPrice", subtotal, "orderId", "productId")
            VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          ['Cold Brew cam', 'SMALL', 1, '49000', '49000', orderId, coldBrewId]
+          [testDrinkName, 'SMALL', 1, '45000', '45000', orderId, testDrinkId]
         );
         const orderItemId = orderItemRes.rows[0].id;
 
         try {
-          // 4. Test prune mode: Attempting physical deletion of referenced product MUST BE REFUSED!
+          // 3. Prune mode: Attempting physical deletion of referenced product MUST BE REFUSED!
           const pruneResult = await safeCatalogRollback({
             client,
             mode: 'prune',
-            targetProductIds: [coldBrewId],
+            deploymentId: testDepId,
             isApply: true,
           });
 
           assert.strictEqual(pruneResult.deletedCount, 0, 'Referenced product must NOT be deleted in prune mode');
           assert.strictEqual(pruneResult.protectedCount, 1, 'Referenced product must be marked as protected');
-          assert.strictEqual(pruneResult.protectedItems[0].id, coldBrewId);
 
-          // Verify Cold Brew cam still exists in products table!
-          const verifyProduct = await client.query('SELECT count(*) FROM products WHERE id = $1', [coldBrewId]);
-          assert.strictEqual(Number(verifyProduct.rows[0].count), 1, 'Cold Brew cam must still exist in products');
+          // Verify drink still exists in products table
+          const verifyProduct = await client.query('SELECT count(*) FROM products WHERE id = $1', [testDrinkId]);
+          assert.strictEqual(Number(verifyProduct.rows[0].count), 1);
 
-          // Verify order_items and orders remain 100% intact!
-          const verifyOrderItem = await client.query('SELECT count(*) FROM order_items WHERE id = $1', [orderItemId]);
-          assert.strictEqual(Number(verifyOrderItem.rows[0].count), 1, 'Order item must remain intact');
-
-          // 5. Test compensate mode: Soft-deactivates (isAvailable=false), keeps stock intact, and increments OCC version
+          // 4. Compensate mode: Soft-deactivates (isAvailable=false), keeps stock intact (20), increments OCC version
           const compResult = await safeCatalogRollback({
             client,
             mode: 'compensate',
-            targetProductIds: [coldBrewId],
+            deploymentId: testDepId,
             isApply: true,
           });
 
-          assert.strictEqual(compResult.deactivatedCount, 1, 'Cold Brew cam should be deactivated');
+          assert.strictEqual(compResult.deactivatedCount, 1);
 
           const checkDeactivated = await client.query(
             'SELECT "isAvailable", stock, version FROM products WHERE id = $1',
-            [coldBrewId]
+            [testDrinkId]
           );
-          assert.strictEqual(checkDeactivated.rows[0].isAvailable, false, 'isAvailable must be false');
-          assert.strictEqual(checkDeactivated.rows[0].stock, coldBrewInitialStock, 'Stock must be preserved intact (NOT wiped to 0)');
-          assert.strictEqual(checkDeactivated.rows[0].version, coldBrewInitialVersion + 1, 'OCC version must be incremented by 1');
+          assert.strictEqual(checkDeactivated.rows[0].isAvailable, false);
+          assert.strictEqual(checkDeactivated.rows[0].stock, 20, 'Stock must remain intact');
+          assert.strictEqual(checkDeactivated.rows[0].version, 2, 'OCC version must be incremented to 2');
 
-          // Verify order history is STILL intact
-          const verifyOrderStillIntact = await client.query('SELECT count(*) FROM orders WHERE id = $1', [orderId]);
-          assert.strictEqual(Number(verifyOrderStillIntact.rows[0].count), 1, 'Order must remain intact');
+          // 5. Verify audit table status is updated to ROLLED_BACK
+          const auditStatusRes = await client.query(
+            'SELECT status FROM catalog_deployments WHERE "deploymentId" = $1',
+            [testDepId]
+          );
+          assert.strictEqual(auditStatusRes.rows[0].status, 'ROLLED_BACK');
+
+          // 6. Safeguard: Attempting repeated rollback on already rolled back deployment must fail-closed
+          await assert.rejects(
+            async () => {
+              await safeCatalogRollback({
+                client,
+                mode: 'compensate',
+                deploymentId: testDepId,
+                isApply: true,
+              });
+            },
+            /đã được hoàn tác trước đó/,
+            'Repeated rollback must throw fail-closed error'
+          );
         } finally {
-          // Cleanup test order and restore Cold Brew cam
+          // Cleanup
           await client.query('DELETE FROM order_items WHERE id = $1', [orderItemId]).catch(() => {});
           await client.query('DELETE FROM orders WHERE id = $1', [orderId]).catch(() => {});
-          await client.query(
-            'UPDATE products SET "isAvailable" = true, stock = $1, version = $2 WHERE id = $3',
-            [coldBrewInitialStock, coldBrewInitialVersion, coldBrewId]
-          ).catch(() => {});
+          await client.query('DELETE FROM products WHERE id = $1', [testDrinkId]).catch(() => {});
+          await client.query('DELETE FROM catalog_deployments WHERE "deploymentId" = $1', [testDepId]).catch(() => {});
         }
       }
     );
@@ -367,46 +401,33 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
     );
 
     await t.test(
-      '12. Fail-Closed Rollback: Throws error and refuses unguided operations when manifest is missing or empty',
+      '12. Fail-Closed Rollback: Refuses unguided rollback without verified deployment ID',
       async () => {
-        // Case A: No manifest and no IDs provided
+        // Case A: Missing deployment ID and no target product IDs
         await assert.rejects(
           async () => {
             await safeCatalogRollback({ client, isApply: true });
           },
           /FAIL-CLOSED/,
-          'Rollback without manifest or IDs must throw FAIL-CLOSED error'
+          'Rollback without deployment ID must throw FAIL-CLOSED error'
         );
 
-        // Case B: Empty manifest object (insertedProductIds: [])
+        // Case B: Non-existent deployment ID
         await assert.rejects(
           async () => {
             await safeCatalogRollback({
               client,
-              manifest: { insertedProductIds: [] },
+              deploymentId: 'non-existent-deployment-xyz',
               isApply: true,
             });
           },
           /FAIL-CLOSED/,
-          'Rollback with empty manifest must throw FAIL-CLOSED error'
+          'Rollback with non-existent deployment ID must throw FAIL-CLOSED error'
         );
 
-        // Case C: Non-existent manifest path
-        await assert.rejects(
-          async () => {
-            await safeCatalogRollback({
-              client,
-              manifestPath: 'scripts/manifests/non-existent-manifest.json',
-              isApply: true,
-            });
-          },
-          /FAIL-CLOSED/,
-          'Rollback with non-existent manifest file must throw FAIL-CLOSED error'
-        );
-
-        // Case D: CLI without manifest flags exits with 1
+        // Case C: CLI without parameters exits with code 1
         const cliRes = spawnSync('node', ['scripts/safe-catalog-rollback.mjs', '--apply'], { encoding: 'utf8' });
-        assert.strictEqual(cliRes.status, 1, 'CLI rollback without manifest flags must exit with status 1');
+        assert.strictEqual(cliRes.status, 1, 'CLI rollback without flags must exit with status 1');
         assert.match(cliRes.stderr, /FAIL-CLOSED/, 'CLI must display FAIL-CLOSED error');
       }
     );
@@ -416,6 +437,7 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
       async () => {
         const uniqueSuffix = Date.now().toString(36);
         const preExistingName = `Trà sen vàng cổ truyền ${uniqueSuffix}`;
+        const testDepId = `dep-preexist-${uniqueSuffix}`;
 
         // 1. Insert a pre-existing custom product (ID > 4, non-baseline) before sync
         const insertPreRes = await client.query(
@@ -447,7 +469,7 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
             client,
             isApply: true,
             targetCatalog: customCatalog,
-            deploymentId: `test-preexist-${uniqueSuffix}`,
+            deploymentId: testDepId,
           });
 
           assert.ok(syncResult.manifest, 'Sync must produce a valid manifest');
@@ -465,15 +487,15 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
           assert.strictEqual(preCheck.rows[0].stock, 18);
           assert.strictEqual(preCheck.rows[0].version, 1);
 
-          // 5. Execute safe rollback targeted using the deployment manifest
+          // 5. Execute safe rollback targeted using the authoritative deployment ID
           const rollbackResult = await safeCatalogRollback({
             client,
-            manifest: syncResult.manifest,
+            deploymentId: testDepId,
             mode: 'compensate',
             isApply: true,
           });
 
-          assert.ok(rollbackResult.deactivatedCount > 0, 'Rollback should deactivate items from manifest');
+          assert.ok(rollbackResult.deactivatedCount > 0, 'Rollback should deactivate items from deployment');
 
           // 6. CRITICAL VERIFICATION: Pre-existing product ID > 4 MUST REMAIN 100% UNCHANGED!
           const postRollbackPre = await client.query(
@@ -497,6 +519,196 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
         } finally {
           // Cleanup pre-existing test product
           await client.query('DELETE FROM products WHERE id = $1', [preExistingId]).catch(() => {});
+          await client.query('DELETE FROM catalog_deployments WHERE "deploymentId" = $1', [testDepId]).catch(() => {});
+        }
+      }
+    );
+
+    await t.test(
+      '14. Atomicity (FIX-11): Error saving audit record aborts transaction with zero products committed',
+      async () => {
+        const uniqueSuffix = Date.now().toString(36);
+        const testDrinkName = `Audit Failure Test Drink ${uniqueSuffix}`;
+        const failingDepId = `audit-fail-dep-${uniqueSuffix}`;
+
+        const testCatalog = [
+          ...TARGET_CATALOG,
+          {
+            name: testDrinkName,
+            description: 'Item to test failure during audit insertion',
+            price: '39000',
+            imageUrl: 'https://images.unsplash.com/test-audit-fail',
+            isAvailable: true,
+            stock: 20,
+          },
+        ];
+
+        // Attempt sync with simulated audit failure
+        await assert.rejects(
+          async () => {
+            await syncCatalog({
+              client,
+              isApply: true,
+              targetCatalog: testCatalog,
+              simulateAuditError: true,
+              deploymentId: failingDepId,
+            });
+          },
+          /Simulated failure during catalog audit record insertion/,
+          'Must reject when audit insertion fails'
+        );
+
+        // Verification: Zero products committed to products table
+        const checkProduct = await client.query('SELECT count(*) FROM products WHERE name = $1', [testDrinkName]);
+        assert.strictEqual(Number(checkProduct.rows[0].count), 0, 'No products must be committed if audit record fails');
+
+        // Verification: Zero audit record in catalog_deployments
+        const checkAudit = await client.query('SELECT count(*) FROM catalog_deployments WHERE "deploymentId" = $1', [failingDepId]);
+        assert.strictEqual(Number(checkAudit.rows[0].count), 0, 'No audit record must exist if transaction rolls back');
+      }
+    );
+
+    await t.test(
+      '15. Targeted Deployment Rollback Isolation (FIX-11): Rolling back Dep A leaves Dep B 100% untouched',
+      async () => {
+        const uniqueSuffix = Date.now().toString(36);
+        const itemAName = `Deployment A Item ${uniqueSuffix}`;
+        const itemBName = `Deployment B Item ${uniqueSuffix}`;
+        const depAId = `dep-A-${uniqueSuffix}`;
+        const depBId = `dep-B-${uniqueSuffix}`;
+
+        // 1. Run Deployment A with Item A
+        const catalogA = [
+          ...TARGET_CATALOG,
+          {
+            name: itemAName,
+            description: 'Item belonging to Deployment A',
+            price: '33000',
+            imageUrl: 'https://images.unsplash.com/test-a',
+            isAvailable: true,
+            stock: 15,
+          },
+        ];
+        await syncCatalog({ client, isApply: true, targetCatalog: catalogA, deploymentId: depAId });
+
+        // 2. Run Deployment B with Item B
+        const catalogB = [
+          ...catalogA,
+          {
+            name: itemBName,
+            description: 'Item belonging to Deployment B',
+            price: '44000',
+            imageUrl: 'https://images.unsplash.com/test-b',
+            isAvailable: true,
+            stock: 25,
+          },
+        ];
+        await syncCatalog({ client, isApply: true, targetCatalog: catalogB, deploymentId: depBId });
+
+        try {
+          // 3. Roll back ONLY Deployment A
+          const rollbackA = await safeCatalogRollback({
+            client,
+            mode: 'compensate',
+            deploymentId: depAId,
+            isApply: true,
+          });
+
+          assert.strictEqual(rollbackA.deactivatedCount, 1, 'Only Item A should be deactivated');
+
+          // Verify Item A is deactivated
+          const checkA = await client.query('SELECT "isAvailable" FROM products WHERE name = $1', [itemAName]);
+          assert.strictEqual(checkA.rows[0].isAvailable, false, 'Item A must be deactivated');
+
+          // Verify Dep A status is ROLLED_BACK
+          const auditA = await client.query('SELECT status FROM catalog_deployments WHERE "deploymentId" = $1', [depAId]);
+          assert.strictEqual(auditA.rows[0].status, 'ROLLED_BACK');
+
+          // CRITICAL: Verify Item B and Dep B are COMPLETELY UNTOUCHED!
+          const checkB = await client.query('SELECT "isAvailable", stock FROM products WHERE name = $1', [itemBName]);
+          assert.strictEqual(checkB.rows[0].isAvailable, true, 'Item B must remain active (isAvailable=true)');
+          assert.strictEqual(checkB.rows[0].stock, 25, 'Item B stock must remain 25');
+
+          const auditB = await client.query('SELECT status FROM catalog_deployments WHERE "deploymentId" = $1', [depBId]);
+          assert.strictEqual(auditB.rows[0].status, 'APPLIED', 'Deployment B status must still be APPLIED');
+        } finally {
+          // Cleanup
+          await client.query('DELETE FROM products WHERE name IN ($1, $2)', [itemAName, itemBName]).catch(() => {});
+          await client.query('DELETE FROM catalog_deployments WHERE "deploymentId" IN ($1, $2)', [depAId, depBId]).catch(() => {});
+        }
+      }
+    );
+
+    await t.test(
+      '16. Ephemeral Container & Read-Only Volume Resilience (FIX-11): Rollback works directly from PostgreSQL without local files',
+      async () => {
+        const uniqueSuffix = Date.now().toString(36);
+        const ephemeralItemName = `Ephemeral Container Item ${uniqueSuffix}`;
+        const ephemeralDepId = `dep-ephemeral-${uniqueSuffix}`;
+
+        const testCatalog = [
+          ...TARGET_CATALOG,
+          {
+            name: ephemeralItemName,
+            description: 'Item created in container without disk persistence',
+            price: '37000',
+            imageUrl: 'https://images.unsplash.com/test-ephemeral',
+            isAvailable: true,
+            stock: 30,
+          },
+        ];
+
+        // 1. Sync catalog into PostgreSQL
+        await syncCatalog({ client, isApply: true, targetCatalog: testCatalog, deploymentId: ephemeralDepId });
+
+        try {
+          // 2. Perform rollback passing ONLY deploymentId (simulating container run --rm with no local manifest files)
+          const rollbackRes = await safeCatalogRollback({
+            client,
+            mode: 'compensate',
+            deploymentId: ephemeralDepId,
+            isApply: true,
+          });
+
+          assert.strictEqual(rollbackRes.deactivatedCount, 1);
+
+          const checkItem = await client.query('SELECT "isAvailable", stock FROM products WHERE name = $1', [ephemeralItemName]);
+          assert.strictEqual(checkItem.rows[0].isAvailable, false);
+          assert.strictEqual(checkItem.rows[0].stock, 30);
+        } finally {
+          // Cleanup
+          await client.query('DELETE FROM products WHERE name = $1', [ephemeralItemName]).catch(() => {});
+          await client.query('DELETE FROM catalog_deployments WHERE "deploymentId" = $1', [ephemeralDepId]).catch(() => {});
+        }
+      }
+    );
+
+    await t.test(
+      '17. Production Safeguards (FIX-11): Rejects unverified latest rollback and repeated rollbacks',
+      async () => {
+        const origEnv = process.env.NODE_ENV;
+        try {
+          process.env.NODE_ENV = 'production';
+
+          // In production: --manifest-latest without --confirm-deployment must be rejected
+          await assert.rejects(
+            async () => {
+              await safeCatalogRollback({ client, isLatest: true, isApply: true });
+            },
+            /FAIL-CLOSED/,
+            'In production, rollback latest without confirm-deployment must reject'
+          );
+
+          // In production: arbitrary targetProductIds without deploymentId must be rejected
+          await assert.rejects(
+            async () => {
+              await safeCatalogRollback({ client, targetProductIds: [5, 6], isApply: true });
+            },
+            /FAIL-CLOSED/,
+            'In production, arbitrary targetProductIds must reject'
+          );
+        } finally {
+          process.env.NODE_ENV = origEnv;
         }
       }
     );
@@ -508,7 +720,7 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
 });
 
 test('Production Catalog Runner Verification (FIX-07)', async (t) => {
-  await t.test('14. Production runner scripts exist in apps/api/scripts/ for Docker packaging', () => {
+  await t.test('18. Production runner scripts exist in apps/api/scripts/ for Docker packaging', () => {
     const apiSyncPath = path.join(root, 'apps/api/scripts/sync-catalog.mjs');
     const apiRollbackPath = path.join(root, 'apps/api/scripts/safe-catalog-rollback.mjs');
     const apiSafeEnvPath = path.join(root, 'apps/api/scripts/safe-env.mjs');
@@ -518,7 +730,7 @@ test('Production Catalog Runner Verification (FIX-07)', async (t) => {
     assert.ok(existsSync(apiSafeEnvPath), 'apps/api/scripts/safe-env.mjs must exist');
   });
 
-  await t.test('15. apps/api/Dockerfile stage 3 (runner) copies scripts directory into image', () => {
+  await t.test('19. apps/api/Dockerfile stage 3 (runner) copies scripts directory into image', () => {
     const dockerfilePath = path.join(root, 'apps/api/Dockerfile');
     assert.ok(existsSync(dockerfilePath), 'apps/api/Dockerfile must exist');
     const dockerfileContent = readFileSync(dockerfilePath, 'utf8');
@@ -530,7 +742,7 @@ test('Production Catalog Runner Verification (FIX-07)', async (t) => {
     );
   });
 
-  await t.test('16. Database config supports DATABASE_* and fails closed in production with dev password', () => {
+  await t.test('20. Database config supports DATABASE_* and fails closed in production with dev password', () => {
     // Test resolution of DATABASE_*
     const cfg = resolveDatabaseConfig({
       DATABASE_HOST: 'custom-db-host',

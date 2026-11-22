@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * BrewLite Idempotent Catalog Synchronization Strategy
+ * BrewLite Idempotent Catalog Synchronization Strategy (FIX-11)
  * Controlled provisioning script for expanding the drink catalog to 15 items.
  *
  * SAFETY & INTEGRITY:
@@ -10,8 +10,10 @@
  * - Uses transactional execution with PostgreSQL transaction-level advisory lock
  * - Supports both DATABASE_* (Docker Compose) and POSTGRES_* environment variables
  * - Fails-closed in production if credentials are missing or default dev password is used
- * - Durably persists deployment manifest with inserted product IDs for targeted rollback
- * - Provides clear audit summary, manifest, and diff output
+ * - Production-Safe Manifest Persistence (FIX-11): Persists deployment audit record directly into
+ *   PostgreSQL table `catalog_deployments` in the EXACT SAME transaction as products INSERT.
+ * - Strict Atomicity: COMMIT guarantees both products and audit exist; ROLLBACK guarantees zero partial writes.
+ * - Resilient to read-only container volumes (/app/scripts:ro) because PostgreSQL is the authoritative store.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -118,6 +120,29 @@ export function resolveDatabaseConfig(overrideEnv = process.env) {
   }
 
   return { host, port, user, password, database };
+}
+
+/**
+ * Ensures the catalog_deployments table exists inside PostgreSQL.
+ * Transactional DDL execution guarantees that audit storage is always available.
+ */
+export async function ensureCatalogAuditTable(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS catalog_deployments (
+      id SERIAL PRIMARY KEY,
+      "deploymentId" VARCHAR(255) UNIQUE NOT NULL,
+      mode VARCHAR(50) NOT NULL,
+      "insertedProductIds" JSONB NOT NULL,
+      "insertedItems" JSONB NOT NULL,
+      "totalInserted" INTEGER NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'APPLIED',
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS "IDX_catalog_deployments_deploymentId" ON catalog_deployments ("deploymentId");
+    CREATE INDEX IF NOT EXISTS "IDX_catalog_deployments_status" ON catalog_deployments (status);
+  `);
 }
 
 export const TARGET_CATALOG = [
@@ -246,8 +271,8 @@ export const TARGET_CATALOG = [
 ];
 
 /**
- * Execute catalog synchronization with transaction-level advisory locking.
- * Transaction-level locking guarantees automatic lock release upon COMMIT or ROLLBACK.
+ * Execute catalog synchronization with transaction-level advisory locking and
+ * PostgreSQL-authoritative audit persistence (FIX-11).
  *
  * Docker production execution example:
  *   docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --dry-run
@@ -260,7 +285,9 @@ export async function syncCatalog({
   targetCatalog = TARGET_CATALOG,
   simulateError = false,
   failAfterInsertCount = 1,
+  simulateAuditError = false,
   deploymentId = `sync-${Date.now()}`,
+  metadata = {},
 }) {
   if (!isDryRun && !isApply) {
     throw new Error('Chế độ thực thi không hợp lệ: phải chọn --dry-run hoặc --apply');
@@ -273,7 +300,10 @@ export async function syncCatalog({
     // 2. Standardized transaction-level advisory lock coordinates across seed, sync and rollback
     await client.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.catalog.lock'))");
 
-    // 3. Query existing catalog inside the locked transaction snapshot
+    // 3. Ensure authoritative catalog_deployments audit table exists
+    await ensureCatalogAuditTable(client);
+
+    // 4. Query existing catalog inside the locked transaction snapshot
     const res = await client.query('SELECT id, name, price, stock, "isAvailable", version FROM products ORDER BY id ASC');
     const existingProducts = res.rows;
     const existingByName = new Map(existingProducts.map((p) => [p.name.trim().toLowerCase(), p]));
@@ -291,7 +321,7 @@ export async function syncCatalog({
     }
 
     if (isDryRun) {
-      // In dry-run mode, safely ROLLBACK so absolutely zero changes are committed
+      // In dry-run mode, safely ROLLBACK so absolutely zero changes or audit records are committed
       await client.query('ROLLBACK');
       return {
         mode: 'dry-run',
@@ -346,17 +376,50 @@ export async function syncCatalog({
         }
       }
 
-      // Construct durable manifest for audit, tracking, and targeted safe rollback
+      const insertedProductIds = insertedItems.map((item) => item.id);
+
+      // Build authoritative manifest data
       const manifest = {
         deploymentId,
         timestamp: new Date().toISOString(),
         mode: 'apply',
-        insertedProductIds: insertedItems.map((item) => item.id),
+        insertedProductIds,
         insertedItems,
         totalInserted: insertedItems.length,
+        status: 'APPLIED',
+        metadata: {
+          ...metadata,
+          preservedCount: preserved.length,
+          toInsertCount: toInsert.length,
+          nodeEnv: process.env.NODE_ENV || 'development',
+        },
       };
 
-      // Durably persist manifest to disk
+      // ATOMIC AUDIT PERSISTENCE (FIX-11): Insert audit record into PostgreSQL in the same transaction
+      if (simulateAuditError) {
+        throw new Error('Simulated failure during catalog audit record insertion into PostgreSQL');
+      }
+
+      let auditRecord = null;
+      if (insertedItems.length > 0) {
+        const auditRes = await client.query(
+          `INSERT INTO catalog_deployments (
+             "deploymentId", mode, "insertedProductIds", "insertedItems", "totalInserted", status, metadata, "createdAt", "updatedAt"
+           ) VALUES ($1, $2, $3, $4, $5, 'APPLIED', $6, NOW(), NOW())
+           RETURNING id, "deploymentId", "insertedProductIds", status, "createdAt"`,
+          [
+            deploymentId,
+            'apply',
+            JSON.stringify(insertedProductIds),
+            JSON.stringify(insertedItems),
+            insertedItems.length,
+            JSON.stringify(manifest.metadata),
+          ]
+        );
+        auditRecord = auditRes.rows[0];
+      }
+
+      // Optional secondary disk export (Non-authoritative copy; never fails transaction if filesystem is read-only)
       let manifestPath = null;
       let latestPath = null;
       try {
@@ -368,11 +431,13 @@ export async function syncCatalog({
         latestPath = path.join(manifestDir, 'catalog-sync-latest.json');
         writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
         writeFileSync(latestPath, JSON.stringify(manifest, null, 2), 'utf8');
-      } catch (err) {
-        console.warn(`⚠️ Cảnh báo: Không thể ghi file manifest (${err.message}). Manifest vẫn được bảo toàn trong kết quả trả về.`);
+      } catch (fileErr) {
+        // Expected and tolerated when running in production container with /app/scripts:ro
       }
 
+      // 5. Commit atomic transaction: products AND audit record are committed together
       await client.query('COMMIT');
+
       return {
         mode: 'apply',
         existingProducts,
@@ -382,6 +447,7 @@ export async function syncCatalog({
         insertedItems,
         deploymentId,
         manifest,
+        auditRecord,
         manifestPath,
         latestPath,
       };
@@ -460,16 +526,16 @@ async function main() {
     }
 
     if (isDryRun) {
-      console.log('\n🛡️ KẾT QUẢ DRY-RUN: Giao dịch đã được ROLLBACK an toàn. Không có bất kỳ thay đổi nào được ghi vào CSDL.');
+      console.log('\n🛡️ KẾT QUẢ DRY-RUN: Giao dịch đã được ROLLBACK an toàn. Không có bất kỳ thay đổi nào được ghi vào CSDL hay bảng audit.');
       console.log('Để áp dụng các thay đổi trên, hãy chạy lại lệnh với cờ --apply.');
     }
 
     if (isApply) {
       console.log(`\n🎉 ĐÃ COMMIT THÀNH CÔNG VÀO CƠ SỞ DỮ LIỆU! Đã thêm mới: ${result.insertedCount} sản phẩm.`);
       if (result.manifest && result.manifest.totalInserted > 0) {
-        console.log('\n--- MANIFEST SẢN PHẨM MỚI BỔ SUNG (LƯU BỀN VỮNG CHO AUDIT & SAFE ROLLBACK) ---');
-        console.log(`  - File: scripts/manifests/catalog-sync-${result.deploymentId}.json`);
-        console.log(`  - Latest: scripts/manifests/catalog-sync-latest.json`);
+        console.log('\n--- BẢN GHI AUDIT ĐÃ ĐƯỢC LƯU BỀN VỮNG TRONG POSTGRESQL (BẢNG catalog_deployments) ---');
+        console.log(`  - Deployment ID: ${result.deploymentId}`);
+        console.log(`  - Bảng Audit: catalog_deployments (Trạng thái: APPLIED)`);
         console.log(`  - Product IDs được cấp phát: ${result.manifest.insertedProductIds.join(', ')}`);
         console.log(JSON.stringify(result.manifest, null, 2));
       }
