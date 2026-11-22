@@ -366,3 +366,7 @@ Nhằm đảm bảo tính minh bạch, trung thực học thuật và truy vết
 - **GAP-05 (Mất phản hồi sau COMMIT tạo đơn):** `POST /orders` chưa có cơ chế Idempotency chống tạo đơn trùng khi gặp sự cố mạng sau khi database đã lưu đơn `PENDING`.
 
 *(Chi tiết phân tích kỹ thuật và kế hoạch khắc phục được trình bày tại [Báo cáo kiểm toán GAP](docs/audits/task2-to-task3-gap-audit.md)).*
+
+## LOCAL và Postman
+
+[Hướng dẫn Docker Desktop, API và Collection Runner](docs/testing/postman-local-guide.md). Project brewlite-local dùng loopback 3000, 3001, 5432. Lightsail dùng workflow production và Compose riêng. [Vận hành production](docs/deployment/production-release-runbook.md) · [Rollback](docs/deployment/rollback-guide.md).
