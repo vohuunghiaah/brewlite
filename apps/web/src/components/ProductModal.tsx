@@ -72,11 +72,15 @@ function ProductModalInner({
 
   const badgeInfo = getStockBadgeInfo(product);
   const isOutOfStock = badgeInfo.isOutOfStock;
-  const availableToAdd =
-    product.stock !== undefined
-      ? Math.max(0, product.stock - cartCount)
-      : 999;
-  const isMaxInCart = product.stock !== undefined && cartCount >= product.stock;
+  const stock = product.stock;
+  const isStockKnown =
+    typeof stock === "number" &&
+    !isNaN(stock) &&
+    stock >= 0;
+  const availableToAdd = isStockKnown && typeof stock === "number"
+    ? Math.max(0, stock - cartCount)
+    : 0;
+  const isMaxInCart = isStockKnown && typeof stock === "number" && cartCount >= stock;
 
   const basePrice = Number(product.price);
   const sizeSurcharge = SIZES.find((s) => s.id === size)?.surcharge || 0;
@@ -94,7 +98,7 @@ function ProductModalInner({
   };
 
   const handleAdd = () => {
-    if (isOutOfStock || isMaxInCart || availableToAdd <= 0) return;
+    if (!isStockKnown || isOutOfStock || isMaxInCart || availableToAdd <= 0) return;
     onAddToCart({
       size,
       toppings,
@@ -103,7 +107,6 @@ function ProductModalInner({
       note,
       quantity: Math.min(qty, availableToAdd),
     });
-    onClose();
   };
 
   return (
@@ -353,7 +356,7 @@ function ProductModalInner({
               </span>
               <button
                 type="button"
-                disabled={isOutOfStock || isMaxInCart || qty >= availableToAdd}
+                disabled={!isStockKnown || isOutOfStock || isMaxInCart || qty >= availableToAdd}
                 onClick={() => setQty((q) => Math.min(availableToAdd, q + 1))}
                 aria-label="Tăng số lượng"
                 className="w-8 h-8 rounded-xl bg-[#3D261D] text-white flex items-center justify-center hover:bg-[#C28D58] transition-colors text-sm font-bold leading-none select-none disabled:opacity-40 disabled:cursor-not-allowed"
@@ -365,17 +368,19 @@ function ProductModalInner({
             {/* Add to cart action button */}
             <button
               type="button"
-              disabled={isOutOfStock || isMaxInCart || availableToAdd <= 0}
+              disabled={!isStockKnown || isOutOfStock || isMaxInCart || availableToAdd <= 0}
               onClick={handleAdd}
               className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
-                isOutOfStock || isMaxInCart || availableToAdd <= 0
+                !isStockKnown || isOutOfStock || isMaxInCart || availableToAdd <= 0
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-[#C28D58] hover:bg-[#3D261D] text-white active:scale-95"
               }`}
             >
               <Plus size={16} strokeWidth={2.5} />
               <span>
-                {isOutOfStock
+                {!isStockKnown
+                  ? "Chưa rõ tồn kho"
+                  : isOutOfStock
                   ? "Hết hàng"
                   : isMaxInCart || availableToAdd <= 0
                   ? "Đã đạt giới hạn tồn kho"

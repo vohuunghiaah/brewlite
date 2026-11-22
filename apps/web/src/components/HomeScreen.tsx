@@ -163,8 +163,8 @@ export default function HomeScreen({
                 <span className="text-[11px] text-[#FAF6F0]/70 font-medium">Cashless & Chuông số</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-2xl sm:text-3xl font-black text-[#C28D58]">0 ly</span>
-                <span className="text-[11px] text-[#FAF6F0]/70 font-medium">Tồn kho minh bạch</span>
+                <span className="text-2xl sm:text-3xl font-black text-[#C28D58]">4</span>
+                <span className="text-[11px] text-[#FAF6F0]/70 font-medium">Nhóm hương vị chọn lọc</span>
               </div>
             </div>
           </div>

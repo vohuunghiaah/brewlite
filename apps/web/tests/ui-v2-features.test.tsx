@@ -412,6 +412,63 @@ describe("UI-01: Product Stock Badges and Availability Logic", () => {
     fireEvent.click(plusBtn);
     expect(onUpdateQuantity).not.toHaveBeenCalled();
   });
+
+  it("1.10. ProductModal disables Add to Cart when stock is missing or invalid ('Chưa rõ tồn kho')", () => {
+    const unknownStockProduct: Product = {
+      id: 99,
+      name: "Trà thảo mộc",
+      description: "Thử nghiệm",
+      price: 40000,
+      isAvailable: true,
+      stock: undefined,
+    };
+
+    const onAddToCart = jest.fn();
+    render(
+      <ProductModal
+        isOpen={true}
+        product={unknownStockProduct}
+        onClose={jest.fn()}
+        onAddToCart={onAddToCart}
+        cartCount={0}
+      />
+    );
+
+    const addBtn = screen.getByRole("button", { name: /chưa rõ tồn kho/i });
+    expect(addBtn).toBeDisabled();
+    fireEvent.click(addBtn);
+    expect(onAddToCart).not.toHaveBeenCalled();
+  });
+
+  it("1.11. ProductModal calls onAddToCart without calling onClose internally so parent controls modal state", () => {
+    const inStockProduct: Product = {
+      id: 1,
+      name: "Cà phê Latte",
+      description: "Espresso sữa tươi",
+      price: 45000,
+      isAvailable: true,
+      stock: 50,
+    };
+
+    const onAddToCart = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <ProductModal
+        isOpen={true}
+        product={inStockProduct}
+        onClose={onClose}
+        onAddToCart={onAddToCart}
+        cartCount={0}
+      />
+    );
+
+    const addBtn = screen.getByRole("button", { name: /thêm vào giỏ hàng/i });
+    expect(addBtn).not.toBeDisabled();
+    fireEvent.click(addBtn);
+
+    expect(onAddToCart).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
 
 describe("UI-02: Category Categorization for Expanded 15 Drinks", () => {
@@ -480,6 +537,7 @@ describe("UI-03: Premium BrewLite HomeScreen Component", () => {
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/mỗi ly cà phê,/i);
     expect(screen.getByText("một khoảnh khắc.")).toBeInTheDocument();
+    expect(screen.getByText("Nhóm hương vị chọn lọc")).toBeInTheDocument();
 
     const exploreBtn = screen.getAllByRole("button", { name: /khám phá thực đơn/i })[0];
     fireEvent.click(exploreBtn);

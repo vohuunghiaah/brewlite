@@ -234,10 +234,21 @@ export default function MenuPage() {
       toppings: string[] = [],
       note: string = "",
       quantity: number = 1
-    ) => {
-      if (!product.isAvailable || (product.stock !== undefined && product.stock <= 0) || quantity <= 0) {
+    ): boolean => {
+      const stock = product.stock;
+      const isStockKnown =
+        typeof stock === "number" &&
+        !isNaN(stock) &&
+        stock >= 0;
+
+      if (!isStockKnown || typeof stock !== "number") {
+        showToast(`Thông tin tồn kho của ${product.name} chưa xác định. Vui lòng thử lại sau.`, "warning");
+        return false;
+      }
+
+      if (!product.isAvailable || stock <= 0 || quantity <= 0) {
         showToast(`${product.name} hiện đã hết hàng.`, "warning");
-        return;
+        return false;
       }
 
       // Check available stock across all existing items in cart for this product
@@ -245,12 +256,12 @@ export default function MenuPage() {
         .filter((item) => item.productId === product.id)
         .reduce((sum, item) => sum + item.quantity, 0);
 
-      if (product.stock !== undefined && currentInCart + quantity > product.stock) {
+      if (currentInCart + quantity > stock) {
         showToast(
-          `Không thể thêm ${quantity} ly. Số lượng trong giỏ (${currentInCart} ly) sẽ vượt quá tồn kho (${product.stock} ly).`,
+          `Không thể thêm ${quantity} ly. Số lượng trong giỏ (${currentInCart} ly) sẽ vượt quá tồn kho (${stock} ly).`,
           "warning"
         );
-        return;
+        return false;
       }
 
       setPendingOrder(null);
@@ -288,6 +299,7 @@ export default function MenuPage() {
       });
 
       setOrderError("");
+      return true;
     },
     [cartItems, setCartItems, showToast]
   );
@@ -306,24 +318,29 @@ export default function MenuPage() {
   const handleAddToCartFromModal = useCallback(
     (customization: CustomizationOption) => {
       if (!selectedProduct) return;
+      const currentProduct = products.find((p) => p.id === selectedProduct.id) || selectedProduct;
       const combinedNote = combineItemNote(customization.ice, customization.sugar, customization.note);
-      addItemToCart(
-        selectedProduct,
+      const added = addItemToCart(
+        currentProduct,
         customization.size,
         customization.toppings,
         combinedNote,
         customization.quantity
       );
-      modalController.closeProductDetail();
-      showToast(`Đã thêm ${selectedProduct.name} vào giỏ hàng! ☕`, "success");
+      if (added) {
+        modalController.closeProductDetail();
+        showToast(`Đã thêm ${currentProduct.name} vào giỏ hàng! ☕`, "success");
+      }
     },
-    [selectedProduct, addItemToCart, modalController, showToast]
+    [selectedProduct, products, addItemToCart, modalController, showToast]
   );
 
   const handleQuickAdd = useCallback(
     (product: Product) => {
-      addItemToCart(product, "SMALL", [], "", 1);
-      showToast(`Đã thêm ${product.name} vào giỏ hàng ☕`, "success");
+      const added = addItemToCart(product, "SMALL", [], "", 1);
+      if (added) {
+        showToast(`Đã thêm ${product.name} vào giỏ hàng ☕`, "success");
+      }
     },
     [addItemToCart, showToast]
   );
@@ -335,13 +352,24 @@ export default function MenuPage() {
         const targetItem = cartItems.find((item) => item.key === key);
         if (targetItem) {
           const targetProduct = products.find((p) => p.id === targetItem.productId);
-          if (targetProduct && targetProduct.stock !== undefined) {
+          if (targetProduct) {
+            const stock = targetProduct.stock;
+            const isStockKnown =
+              typeof stock === "number" &&
+              !isNaN(stock) &&
+              stock >= 0;
+
+            if (!isStockKnown || typeof stock !== "number") {
+              showToast(`Tồn kho của ${targetItem.productName} chưa xác định.`, "warning");
+              return;
+            }
+
             const currentTotal = cartItems
               .filter((item) => item.productId === targetItem.productId)
               .reduce((sum, item) => sum + item.quantity, 0);
-            if (currentTotal + delta > targetProduct.stock) {
+            if (currentTotal + delta > stock) {
               showToast(
-                `Không thể tăng thêm. Tồn kho của ${targetItem.productName} chỉ còn ${targetProduct.stock} ly.`,
+                `Không thể tăng thêm. Tồn kho của ${targetItem.productName} chỉ còn ${stock} ly.`,
                 "warning"
               );
               return;

@@ -80,6 +80,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
       FRONTEND_URL: ${FRONTEND_URL:-https://${DOMAIN:-localhost}}
+      CATALOG_ADMIN_KEY: ${CATALOG_ADMIN_KEY:-}
     networks:
       - brewlite-internal
     # No public port exposed; internal access only

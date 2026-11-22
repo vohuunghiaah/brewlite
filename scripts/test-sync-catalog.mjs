@@ -1,7 +1,23 @@
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import test from 'node:test';
-import { TARGET_CATALOG } from './sync-catalog.mjs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { TARGET_CATALOG, syncCatalog } from './sync-catalog.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, '..');
+const require = createRequire(import.meta.url);
+
+let pg;
+try {
+  pg = require(path.join(root, 'apps/api/node_modules/pg'));
+} catch {
+  pg = require('pg');
+}
+const { Client } = pg;
 
 test('Catalog Synchronization Strategy: Specification & Safety Tests', async (t) => {
   await t.test('1. Fails safe when run without --dry-run or --apply flag', () => {
@@ -49,4 +65,130 @@ test('Catalog Synchronization Strategy: Specification & Safety Tests', async (t)
     const uniqueNames = new Set(names);
     assert.strictEqual(names.length, uniqueNames.size, 'Every product name in target catalog must be unique');
   });
+});
+
+test('Catalog Synchronization: PostgreSQL Integration Tests (FIX-02)', async (t) => {
+  const host = process.env.POSTGRES_HOST || 'localhost';
+  const port = Number(process.env.POSTGRES_PORT || 5432);
+  const user = process.env.POSTGRES_USER || 'brewlite';
+  const password = process.env.POSTGRES_PASSWORD || 'brewlite_dev_password';
+  const database = process.env.POSTGRES_DB || 'brewlite';
+
+  const client = new Client({
+    host,
+    port,
+    user,
+    password,
+    database,
+    connectionTimeoutMillis: 3000,
+  });
+
+  let isConnected = false;
+  try {
+    await client.connect();
+    isConnected = true;
+  } catch (err) {
+    console.log(`[SKIPPED] PostgreSQL không khả dụng (${err.message}) - bỏ qua integration tests.`);
+    return;
+  }
+
+  try {
+    await t.test('6. Dry-run execution strictly does NOT write any data to PostgreSQL', async () => {
+      const beforeRes = await client.query('SELECT count(*) FROM products');
+      const countBefore = Number(beforeRes.rows[0].count);
+
+      const dryRunResult = await syncCatalog({ client, isDryRun: true });
+      assert.strictEqual(dryRunResult.mode, 'dry-run');
+      assert.strictEqual(dryRunResult.insertedCount, 0);
+
+      const afterRes = await client.query('SELECT count(*) FROM products');
+      const countAfter = Number(afterRes.rows[0].count);
+
+      assert.strictEqual(countAfter, countBefore, 'Dry-run must leave products count completely untouched');
+    });
+
+    await t.test('7. Apply execution is idempotent: repeated runs insert 0 duplicate items', async () => {
+      const run1 = await syncCatalog({ client, isApply: true });
+      assert.strictEqual(run1.mode, 'apply');
+
+      const run2 = await syncCatalog({ client, isApply: true });
+      assert.strictEqual(run2.mode, 'apply');
+      assert.strictEqual(run2.insertedCount, 0, 'Second apply must insert 0 items and maintain exact catalog');
+    });
+
+    await t.test('8. Atomic Rollback: Error during apply rolls back all insertions without partial writes', async () => {
+      const uniqueSuffix = Date.now().toString(36);
+      const testItemName = `Rollback Test Item ${uniqueSuffix}`;
+      const failingCatalog = [
+        ...TARGET_CATALOG,
+        {
+          name: testItemName,
+          description: 'Will be rolled back',
+          price: '30000',
+          imageUrl: 'https://images.unsplash.com/test',
+          isAvailable: true,
+          stock: 10,
+        },
+      ];
+
+      await assert.rejects(
+        async () => {
+          await syncCatalog({
+            client,
+            isApply: true,
+            targetCatalog: failingCatalog,
+            simulateError: true,
+          });
+        },
+        /Simulated failure/,
+        'Sync should reject with simulated failure'
+      );
+
+      // Verify the item was rolled back
+      const checkRes = await client.query('SELECT count(*) FROM products WHERE name = $1', [testItemName]);
+      assert.strictEqual(Number(checkRes.rows[0].count), 0, 'Item must NOT be inserted after rollback');
+    });
+
+    await t.test('9. Concurrent apply execution: Serialized by transaction advisory lock without collision', async () => {
+      const client2 = new Client({ host, port, user, password, database, connectionTimeoutMillis: 3000 });
+      await client2.connect();
+
+      try {
+        const uniqueSuffix = Date.now().toString(36);
+        const concurrentItemName = `Concurrent Drink ${uniqueSuffix}`;
+        const concurrentCatalog = [
+          ...TARGET_CATALOG,
+          {
+            name: concurrentItemName,
+            description: 'Concurrent race test item',
+            price: '35000',
+            imageUrl: 'https://images.unsplash.com/test',
+            isAvailable: true,
+            stock: 12,
+          },
+        ];
+
+        // Run two syncCatalog in parallel
+        const [res1, res2] = await Promise.all([
+          syncCatalog({ client, isApply: true, targetCatalog: concurrentCatalog }),
+          syncCatalog({ client: client2, isApply: true, targetCatalog: concurrentCatalog }),
+        ]);
+
+        const totalInserted = res1.insertedCount + res2.insertedCount;
+        assert.strictEqual(totalInserted, 1, 'Exactly one concurrent worker must insert the item; the second inserts 0');
+
+        const dbRes = await client.query('SELECT count(*) FROM products WHERE name = $1', [concurrentItemName]);
+        assert.strictEqual(Number(dbRes.rows[0].count), 1, 'Database must contain exactly 1 copy of the item');
+
+        // Cleanup the test item
+        await client.query('DELETE FROM products WHERE name = $1', [concurrentItemName]);
+      } finally {
+        await client2.end();
+      }
+    });
+  } finally {
+    if (isConnected) {
+      await client.end();
+    }
+  }
 });

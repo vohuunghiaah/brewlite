@@ -114,8 +114,13 @@ export function ProductCard({
   const [imgError, setImgError] = useState(false);
   const badgeInfo = getStockBadgeInfo(product);
   const isOutOfStock = badgeInfo.isOutOfStock;
+  const stock = product.stock;
+  const isStockKnown =
+    typeof stock === "number" &&
+    !isNaN(stock) &&
+    stock >= 0;
   const isMaxInCart =
-    product.stock !== undefined && cartCount > 0 && cartCount >= product.stock;
+    isStockKnown && typeof stock === "number" && cartCount > 0 && cartCount >= stock;
   const imgSrc = getProductImage(product);
   const numPrice = Number(product.price);
 
@@ -203,27 +208,31 @@ export function ProductCard({
             {/* Quick add button */}
             <button
               type="button"
-              disabled={isOutOfStock || isMaxInCart}
+              disabled={!isStockKnown || isOutOfStock || isMaxInCart}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickAdd(product);
               }}
               title={
-                isOutOfStock
+                !isStockKnown
+                  ? "Chưa rõ tồn kho"
+                  : isOutOfStock
                   ? "Hết hàng"
                   : isMaxInCart
                   ? "Đã chọn tối đa số lượng tồn kho"
                   : "Thêm nhanh"
               }
               aria-label={
-                isOutOfStock
+                !isStockKnown
+                  ? `Chưa rõ tồn kho của ${product.name}`
+                  : isOutOfStock
                   ? `${product.name} đã hết hàng`
                   : isMaxInCart
                   ? `Đã đạt giới hạn tồn kho của ${product.name}`
                   : `Thêm nhanh ${product.name} vào giỏ`
               }
               className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 shrink-0 shadow-sm ${
-                isOutOfStock || isMaxInCart
+                !isStockKnown || isOutOfStock || isMaxInCart
                   ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                   : "bg-[#3D261D] hover:bg-[#C28D58] text-white active:scale-90"
               }`}

@@ -182,6 +182,91 @@ export const TARGET_CATALOG = [
   },
 ];
 
+/**
+ * Execute catalog synchronization with transaction-level advisory locking.
+ * Transaction-level locking guarantees automatic lock release upon COMMIT or ROLLBACK,
+ * preventing any lingering session locks while strictly serializing concurrent workers.
+ *
+ * Docker production execution example (no public DB port needed):
+ *   docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --dry-run
+ *   docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --apply
+ */
+export async function syncCatalog({
+  client,
+  isDryRun = false,
+  isApply = false,
+  targetCatalog = TARGET_CATALOG,
+  simulateError = false,
+}) {
+  if (!isDryRun && !isApply) {
+    throw new Error('Chế độ thực thi không hợp lệ: phải chọn --dry-run hoặc --apply');
+  }
+
+  // 1. Begin atomic transaction
+  await client.query('BEGIN');
+
+  try {
+    // 2. Standardized transaction-level advisory lock coordinates across seed and sync
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.catalog.lock'))");
+
+    // 3. Query existing catalog inside the locked transaction snapshot
+    const res = await client.query('SELECT id, name, price, stock, "isAvailable" FROM products ORDER BY id ASC');
+    const existingProducts = res.rows;
+    const existingByName = new Map(existingProducts.map((p) => [p.name.trim().toLowerCase(), p]));
+
+    const toInsert = [];
+    const preserved = [];
+
+    for (const item of targetCatalog) {
+      const match = existingByName.get(item.name.trim().toLowerCase());
+      if (match) {
+        preserved.push({ target: item, existing: match });
+      } else {
+        toInsert.push(item);
+      }
+    }
+
+    if (isDryRun) {
+      // In dry-run mode, safely ROLLBACK so absolutely zero changes are committed
+      await client.query('ROLLBACK');
+      return {
+        mode: 'dry-run',
+        existingProducts,
+        preserved,
+        toInsert,
+        insertedCount: 0,
+      };
+    }
+
+    if (isApply) {
+      if (toInsert.length > 0) {
+        for (const item of toInsert) {
+          if (simulateError) {
+            throw new Error('Simulated failure during catalog synchronization transaction');
+          }
+          await client.query(
+            `INSERT INTO products (name, description, price, "imageUrl", "isAvailable", stock, version, "createdAt", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())`,
+            [item.name, item.description, item.price, item.imageUrl, item.isAvailable, item.stock]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return {
+        mode: 'apply',
+        existingProducts,
+        preserved,
+        toInsert,
+        insertedCount: toInsert.length,
+      };
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  }
+}
+
 async function main() {
   const isDryRun = process.argv.includes('--dry-run');
   const isApply = process.argv.includes('--apply');
@@ -190,6 +275,9 @@ async function main() {
     console.error('Lỗi: Bạn phải chỉ định rõ chế độ thực thi:');
     console.error('  node scripts/sync-catalog.mjs --dry-run  (Kiểm tra đối chiếu không thay đổi dữ liệu)');
     console.error('  node scripts/sync-catalog.mjs --apply    (Thực hiện đồng bộ vào cơ sở dữ liệu)');
+    console.error('\nĐường dẫn chạy an toàn trong môi trường Docker production (mạng nội bộ, không mở cổng DB):');
+    console.error('  docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --dry-run');
+    console.error('  docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --apply');
     process.exit(1);
   }
 
@@ -215,73 +303,38 @@ async function main() {
   }
 
   try {
-    // Acquire advisory lock
-    await client.query("SELECT pg_advisory_lock(hashtext('brewlite.sync.catalog'))");
+    const result = await syncCatalog({ client, isDryRun, isApply });
 
-    // Query existing products
-    const res = await client.query('SELECT id, name, price, stock, "isAvailable" FROM products ORDER BY id ASC');
-    const existingProducts = res.rows;
-    const existingByName = new Map(existingProducts.map((p) => [p.name.trim().toLowerCase(), p]));
-
-    console.log(`Số lượng sản phẩm hiện có trong CSDL: ${existingProducts.length}`);
-    existingProducts.forEach((p) => {
+    console.log(`Số lượng sản phẩm hiện có trong CSDL: ${result.existingProducts.length}`);
+    result.existingProducts.forEach((p) => {
       console.log(`  - [ID ${p.id}] ${p.name}: ${Number(p.price).toLocaleString('vi-VN')} đ | Tồn kho: ${p.stock} | Có sẵn: ${p.isAvailable}`);
     });
 
-    const toInsert = [];
-    const preserved = [];
-
-    for (const item of TARGET_CATALOG) {
-      const match = existingByName.get(item.name.trim().toLowerCase());
-      if (match) {
-        preserved.push({ target: item, existing: match });
-      } else {
-        toInsert.push(item);
-      }
-    }
-
     console.log(`\n--- KẾT QUẢ ĐỐI CHIẾU ---`);
-    console.log(`Bảo toàn nguyên vẹn: ${preserved.length} sản phẩm`);
-    preserved.forEach(({ existing }) => {
+    console.log(`Bảo toàn nguyên vẹn: ${result.preserved.length} sản phẩm`);
+    result.preserved.forEach(({ existing }) => {
       console.log(`  ✔ [Giữ nguyên ID ${existing.id}] ${existing.name}`);
     });
 
-    console.log(`Cần bổ sung mới:     ${toInsert.length} sản phẩm`);
-    toInsert.forEach((item) => {
+    console.log(`Cần bổ sung mới:     ${result.toInsert.length} sản phẩm`);
+    result.toInsert.forEach((item) => {
       console.log(`  + [Bổ sung] ${item.name} (${Number(item.price).toLocaleString('vi-VN')} đ, tồn kho: ${item.stock}, có sẵn: ${item.isAvailable})`);
     });
 
     if (isDryRun) {
       console.log(`\n[DRY-RUN HOÀN TẤT] Không có thay đổi nào được ghi vào cơ sở dữ liệu.`);
       console.log(`Nếu muốn thực thi, hãy chạy lệnh với cờ --apply.\n`);
-      return;
-    }
-
-    if (isApply) {
-      if (toInsert.length === 0) {
+    } else if (isApply) {
+      if (result.insertedCount === 0) {
         console.log(`\n[APPLY] Tất cả sản phẩm mục tiêu đã tồn tại. Không có dữ liệu nào cần thêm.`);
-        return;
+      } else {
+        console.log(`\n[APPLY THÀNH CÔNG] Đã thêm mới ${result.insertedCount} sản phẩm vào cơ sở dữ liệu!`);
       }
-
-      await client.query('BEGIN');
-      for (const item of toInsert) {
-        await client.query(
-          `INSERT INTO products (name, description, price, "imageUrl", "isAvailable", stock, version, "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())`,
-          [item.name, item.description, item.price, item.imageUrl, item.isAvailable, item.stock]
-        );
-      }
-      await client.query('COMMIT');
-      console.log(`\n[APPLY THÀNH CÔNG] Đã thêm mới ${toInsert.length} sản phẩm vào cơ sở dữ liệu!`);
     }
   } catch (err) {
-    if (isApply) {
-      await client.query('ROLLBACK').catch(() => {});
-    }
-    console.error('Lỗi trong quá trình đồng bộ danh mục:', err);
+    console.error('Lỗi trong quá trình đồng bộ danh mục:', err.message);
     process.exit(1);
   } finally {
-    await client.query("SELECT pg_advisory_unlock(hashtext('brewlite.sync.catalog'))").catch(() => {});
     await client.end();
   }
 }

@@ -133,8 +133,8 @@ export async function seedProducts(
   dataSource: DataSource,
 ): Promise<void> {
   await dataSource.transaction(async manager => {
-    // Serialize simultaneous bootstraps without imposing uniqueness on catalog names.
-    await manager.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.seed.products'))");
+    // Standardized transaction-level advisory lock coordinates across seed and sync-catalog operations.
+    await manager.query("SELECT pg_advisory_xact_lock(hashtext('brewlite.catalog.lock'))");
     const productRepository = manager.getRepository(Product);
     for (const item of DEMO_PRODUCTS) {
       const existingProduct = await productRepository.findOne({

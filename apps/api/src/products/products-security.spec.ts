@@ -157,4 +157,47 @@ describe('ProductsController Security & Authorization Guard', () => {
       expect(res.body).toBeDefined();
     });
   });
+
+  describe('5. Production Fail-Closed Behavior & Zero Secret Leakage (FIX-01)', () => {
+    let originalEnv: string | undefined;
+    let originalKey: string | undefined;
+
+    beforeAll(() => {
+      originalEnv = process.env.NODE_ENV;
+      originalKey = process.env.CATALOG_ADMIN_KEY;
+    });
+
+    afterAll(() => {
+      process.env.NODE_ENV = originalEnv;
+      if (originalKey) {
+        process.env.CATALOG_ADMIN_KEY = originalKey;
+      } else {
+        delete process.env.CATALOG_ADMIN_KEY;
+      }
+    });
+
+    it('In production with missing CATALOG_ADMIN_KEY, mutation endpoints fail-closed (403 Forbidden)', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.CATALOG_ADMIN_KEY;
+
+      const res = await request(app.getHttpServer())
+        .post('/products')
+        .set('X-Catalog-Admin-Key', 'any-attempted-key')
+        .send({ name: 'Blocked Drink', price: '30000', stock: 10 })
+        .expect(403);
+
+      expect(res.body.message).toContain('Catalog mutation endpoints are disabled because CATALOG_ADMIN_KEY is not configured (fail-closed)');
+      // Secret value must never be logged or echoed in response body
+      expect(JSON.stringify(res.body)).not.toContain('test-secret-catalog-key-12345');
+    });
+
+    it('Public GET /products remains completely functional in production when CATALOG_ADMIN_KEY is missing', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.CATALOG_ADMIN_KEY;
+
+      const res = await request(app.getHttpServer()).get('/products').expect(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBeGreaterThan(0);
+    });
+  });
 });
