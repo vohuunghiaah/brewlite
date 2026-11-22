@@ -48,13 +48,13 @@ Trong trường hợp hạ tầng AWS Lightsail hoặc Secrets chưa được ng
 
 ## 3. Danh sách GitHub Actions Variables (Không bảo mật)
 
-Truy cập `Settings -> Secrets and variables -> Actions -> Variables`:
+Đặt các biến tại `Settings → Environments → production → Environment variables`. Mỗi lần triển khai, workflow ghi lại `.env` trên Lightsail từ cấu hình này.
 
-| Tên Variable | Giá trị mẫu | Mục đích |
+| Tên biến | Giá trị | Mục đích |
 |---|---|---|
-| `DOMAIN` | `brewlite.vn` hoặc `localhost` | Tên miền phục vụ reverse proxy Caddy và cấp phát HTTPS tự động |
-| `ACME_EMAIL` | `admin@brewlite.vn` | Địa chỉ email đăng ký chứng chỉ SSL/TLS Let's Encrypt |
-| `FRONTEND_URL` | `https://brewlite.vn` | Domain cấu hình CORS backend cho phép kết nối |
+| `DOMAIN` | Một hostname, không kèm giao thức | Tên chính cho HTTPS và smoke test. Compose suy ra `FRONTEND_URL=https://${DOMAIN}` cho NestJS. |
+| `CADDY_HOSTS` | Tên chính cùng các alias đã xác minh, cách nhau bằng dấu phẩy và khoảng trắng | Caddy phục vụ tất cả các tên trong danh sách. |
+| `ACME_EMAIL` | Hộp thư thực do chủ dự án quản lý | Preflight yêu cầu một địa chỉ liên hệ trước khi kết nối SSH. Workflow chuyển giá trị này vào Caddy để dùng với ACME. |
 | `PRODUCTION_APPROVAL_CONFIGURED` | `true` | Cờ xác nhận quản trị (Administrative Confirmation): Khẳng định quản trị viên đã cấu hình GitHub Environment 'production' với Required Reviewers (FIX-14, FIX-16) |
 
 ---
