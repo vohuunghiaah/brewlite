@@ -270,6 +270,7 @@ jobs:
           INPUT_JWT_SEC: ${{ secrets.JWT_SECRET }}
           INPUT_DOMAIN: ${{ vars.DOMAIN }}
           INPUT_CADDY_HOSTS: ${{ vars.CADDY_HOSTS }}
+          INPUT_ACME_EMAIL: ${{ vars.ACME_EMAIL }}
           INPUT_APPROVAL_CONF: ${{ vars.PRODUCTION_APPROVAL_CONFIGURED }}
         run: |
           set -eo pipefail
@@ -298,6 +299,13 @@ jobs:
           check_var "$INPUT_JWT_SEC" "JWT_SECRET"
           check_var "$INPUT_DOMAIN" "DOMAIN (variable)"
           check_var "$INPUT_CADDY_HOSTS" "CADDY_HOSTS (variable)"
+
+          # Caddy expands this value into one Caddyfile argument.
+          if [[ ! "$INPUT_ACME_EMAIL" =~ ^[[:alnum:]_.%+-]+@[[:alnum:]-]+(\.[[:alnum:]-]+)+$ ]]; then
+            HAS_HOST=false
+            MISSING_SECRETS="$MISSING_SECRETS ACME_EMAIL_INVALID_OR_MISSING"
+            echo "Set ACME_EMAIL to the project contact mailbox in the production environment."
+          fi
 
           # FIX-5.4.1: Enforce that DOMAIN is a single hostname, not a comma list or URL
           if [ -n "$INPUT_DOMAIN" ]; then
@@ -351,6 +359,16 @@ jobs:
           docker compose -f docker-compose.prod.yml config -q
           echo "✔ Compose configuration syntax is valid (zero secrets dumped)."
 
+      - name: Validate production hostnames with Caddy
+        if: steps.check-prereqs.outputs.has_host == 'true'
+        env:
+          CADDY_HOSTS: ${{ vars.CADDY_HOSTS }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+        run: |
+          docker run --rm --network none -e CADDY_HOSTS -e ACME_EMAIL \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
       - name: Hardened Remote Deployment Execution (FIX-07 to FIX-16)
         if: steps.check-prereqs.outputs.has_host == 'true'
         id: remote-deploy
@@ -368,6 +386,7 @@ jobs:
           WEB_IMAGE_REF: ${{ needs.build-and-push.outputs.web_image }}@${{ needs.build-and-push.outputs.web_digest }}
           DOMAIN: ${{ vars.DOMAIN }}
           CADDY_HOSTS: ${{ vars.CADDY_HOSTS }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
         run: |
           set -eo pipefail
 
@@ -405,6 +424,7 @@ jobs:
                 JWT_SECRET: process.env.JWT_SEC,
                 DOMAIN: process.env.DOMAIN,
                 CADDY_HOSTS: process.env.CADDY_HOSTS,
+                ACME_EMAIL: process.env.ACME_EMAIL,
                 API_IMAGE_REF: process.env.API_IMAGE_REF,
                 WEB_IMAGE_REF: process.env.WEB_IMAGE_REF,
                 NODE_ENV: "production"
