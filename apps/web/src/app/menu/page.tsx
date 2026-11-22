@@ -506,12 +506,20 @@ export default function MenuPage() {
       setPaymentIdempotencyKey(key);
     }
 
-    const paymentAmount =
-      pendingOrder.totalAmount !== undefined
-        ? pendingOrder.totalAmount
-        : pendingOrder.isHistorical
-        ? 0
-        : totalCartPrice;
+    if (
+      pendingOrder.isHistorical &&
+      (pendingOrder.totalAmount === undefined ||
+        !Number.isFinite(pendingOrder.totalAmount) ||
+        pendingOrder.totalAmount <= 0)
+    ) {
+      setPaymentError("Số tiền thanh toán cho đơn hàng lịch sử không hợp lệ.");
+      setPaying(false);
+      return;
+    }
+
+    const paymentAmount = pendingOrder.isHistorical
+      ? pendingOrder.totalAmount!
+      : (pendingOrder.totalAmount ?? totalCartPrice);
 
     try {
       const res = await fetch(`${API_URL}/payments`, {
@@ -570,10 +578,11 @@ export default function MenuPage() {
         throw new Error("Không nhận được mã chuông định danh hợp lệ từ máy chủ.");
       }
 
-      const ticketItems =
-        pendingOrder.isHistorical && pendingOrder.items && pendingOrder.items.length > 0
-          ? pendingOrder.items
-          : [...cartItems];
+      // PATCH-B: When pendingOrder.isHistorical === true, use only items from that order.
+      // Never fall back to cartItems, including when the historical order has zero or missing items.
+      const ticketItems = pendingOrder.isHistorical
+        ? (pendingOrder.items ?? [])
+        : [...cartItems];
 
       setBuzzerTicket({
         orderId: pendingOrder.id,
@@ -782,7 +791,7 @@ export default function MenuPage() {
     setIsBuzzerOpen(true);
   }
 
-  async function handlePayHistoricalOrder(orderId: number, expectedAmount?: number) {
+  async function handlePayHistoricalOrder(orderId: number) {
     if (!authToken) {
       openAuthModal("login", false);
       return;
@@ -818,25 +827,48 @@ export default function MenuPage() {
         return;
       }
 
-      const mappedItems: CartItem[] = (freshOrder.items || []).map((i) => ({
-        key: `hist-pay-${freshOrder.id}-${i.id}`,
-        productId: i.productId,
-        productName: i.productName,
-        basePrice: Number(i.unitPrice),
-        size: i.size,
-        toppings: i.toppings || [],
-        note: i.note || "",
-        unitPrice: Number(i.unitPrice),
-        quantity: i.quantity,
-        subtotal: Number(i.subtotal),
-      }));
+      // PATCH-A: Historical Order Amount Must Fail Closed
+      // Refreshed backend amount must be finite, within valid payable range (> 0), conforming to backend contract.
+      // Remove fallback from freshOrder.totalAmount to expectedAmount or zero.
+      const rawAmount = freshOrder.totalAmount;
+      const parsedAmount = typeof rawAmount === "number" ? rawAmount : Number(rawAmount);
 
-      const authoritativeAmount = Number(freshOrder.totalAmount) || expectedAmount || 0;
+      if (
+        rawAmount === null ||
+        rawAmount === undefined ||
+        typeof rawAmount === "boolean" ||
+        !Number.isFinite(parsedAmount) ||
+        Number.isNaN(parsedAmount) ||
+        parsedAmount <= 0
+      ) {
+        showToast(
+          `Đơn hàng #${orderId} có số tiền thanh toán không hợp lệ từ máy chủ. Không thể thanh toán.`,
+          "error"
+        );
+        return;
+      }
+
+      // PATCH-B: Historical Ticket Items Must Never Use Current Cart
+      // Use only items from the backend order. If missing or invalid, map to an empty array.
+      const mappedItems: CartItem[] = Array.isArray(freshOrder.items)
+        ? freshOrder.items.map((i) => ({
+            key: `hist-pay-${freshOrder.id}-${i.id}`,
+            productId: i.productId,
+            productName: i.productName || `Món #${i.productId}`,
+            basePrice: Number(i.unitPrice) || 0,
+            size: i.size || "SMALL",
+            toppings: Array.isArray(i.toppings) ? i.toppings : [],
+            note: i.note || "",
+            unitPrice: Number(i.unitPrice) || 0,
+            quantity: Number(i.quantity) || 1,
+            subtotal: Number(i.subtotal) || (Number(i.unitPrice) || 0) * (Number(i.quantity) || 1),
+          }))
+        : [];
 
       setPendingOrder({
         id: freshOrder.id,
         status: freshOrder.status,
-        totalAmount: authoritativeAmount,
+        totalAmount: parsedAmount,
         items: mappedItems,
         isHistorical: true,
       });
@@ -1174,7 +1206,7 @@ export default function MenuPage() {
             onOpenLogin={() => openAuthModal("login")}
             onReorder={handleReorder}
             onViewConfirmationTicket={openOrderTicket}
-            onPayOrder={(order) => void handlePayHistoricalOrder(order.id, Number(order.totalAmount))}
+            onPayOrder={(order) => void handlePayHistoricalOrder(order.id)}
             reorderNotice={reorderNotice}
             onGoMenu={() => navigate("menu")}
           />
@@ -1292,8 +1324,8 @@ export default function MenuPage() {
             setIsCartOpen(false);
             navigate("menu");
           }}
-          onPayPendingOrder={(orderId, amount) => {
-            void handlePayHistoricalOrder(orderId, amount);
+          onPayPendingOrder={(orderId) => {
+            void handlePayHistoricalOrder(orderId);
           }}
         />
       )}

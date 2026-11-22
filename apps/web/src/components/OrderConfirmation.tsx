@@ -223,7 +223,7 @@ export default function OrderConfirmation({
         {/* Order Details Body */}
         <div className="p-5 sm:p-6 bg-white space-y-4">
           {/* Items Summary */}
-          {items && items.length > 0 && (
+          {items && items.length > 0 ? (
             <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
               {items.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center text-xs">
@@ -235,6 +235,10 @@ export default function OrderConfirmation({
                   </span>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="py-2.5 px-3 bg-[#FAF6F0] rounded-xl text-center text-xs text-[#6B4235] border border-[#EFE8DF]">
+              Chi tiết các món được ghi nhận theo mã đơn #{orderId}
             </div>
           )}
 

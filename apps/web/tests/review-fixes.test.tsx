@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Header from '../src/components/Header';
 import CartDrawer from '../src/components/CartDrawer';
 import CheckoutScreen from '../src/components/CheckoutScreen';
@@ -7,6 +7,7 @@ import OrderConfirmation from '../src/components/OrderConfirmation';
 import AccountScreen from '../src/components/AccountScreen';
 import OrderHistory, { OrderHistoryItem } from '../src/components/OrderHistory';
 import MenuScreen, { getProductImage, ProductCard, Product } from '../src/components/MenuScreen';
+import MenuPage from '../src/app/menu/page';
 import { CartItem } from '../src/app/menu/session-cart';
 
 describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () => {
@@ -925,6 +926,335 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
       expect(confirmBtn).toBeInTheDocument();
       fireEvent.click(confirmBtn);
       expect(handleConfirm).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // PATCH-A & PATCH-B: Final Data Integrity & Fail-Closed Regression Suite
+  // --------------------------------------------------------------------------
+  describe('PATCH-A & PATCH-B: Historical Order Data Integrity & Cart Isolation', () => {
+    const mockProduct = {
+      id: 1,
+      name: 'Cà phê Phin Sữa Tươi',
+      description: 'Cà phê sữa tươi thơm ngon',
+      price: 35000,
+      imageUrl: 'https://images.unsplash.com/photo-phin',
+      isAvailable: true,
+      stock: 20,
+    };
+
+    beforeEach(() => {
+      sessionStorage.clear();
+      localStorage.clear();
+      localStorage.setItem('brewlite_access_token', 'mock_jwt_token_123');
+      localStorage.setItem('brewlite_user', JSON.stringify({ id: 1, email: 'user@brewlite.vn' }));
+      window.history.replaceState(null, '', '/menu#orders');
+    });
+
+    it('1. Valid historical order amount and items opens checkout with authoritative amount', async () => {
+      const mockHistoricalOrder: OrderHistoryItem = {
+        id: 701,
+        orderCode: '#BL-0701',
+        pickupMethod: 'AT_COUNTER',
+        tableNumber: null,
+        userId: 1,
+        customerName: 'Khách Hàng A',
+        customerPhone: '0901234567',
+        note: null,
+        totalAmount: 70000,
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+        items: [
+          {
+            id: 10,
+            productId: 1,
+            productName: 'Cà phê Phin Sữa Tươi',
+            size: 'SMALL',
+            toppings: [],
+            note: null,
+            quantity: 2,
+            unitPrice: 35000,
+            subtotal: 70000,
+          },
+        ],
+      };
+
+      global.fetch = jest.fn((url: RequestInfo | URL) => {
+        const urlStr = String(url);
+        if (urlStr.endsWith('/products')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [mockProduct] } as Response);
+        }
+        if (urlStr.endsWith('/orders/me')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [mockHistoricalOrder] } as Response);
+        }
+        if (urlStr.endsWith('/orders/701')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => mockHistoricalOrder } as Response);
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+      });
+
+      render(<MenuPage />);
+
+      // Order card appears in order history
+      const payBtn = await screen.findByRole('button', { name: /^Thanh toán$/i });
+      expect(payBtn).toBeInTheDocument();
+      fireEvent.click(payBtn);
+
+      // Checkout screen opens displaying the backend-authoritative amount 70.000 đ
+      await screen.findByRole('dialog', { name: /thanh toán đơn #701/i });
+      expect(screen.getAllByText('70.000 đ').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Mã QR mô phỏng thanh toán cashless · Đơn #701/i)).toBeInTheDocument();
+    });
+
+    it('2. Missing, NaN or invalid backend amount fails closed and displays error', async () => {
+      const staleHistoricalOrder: OrderHistoryItem = {
+        id: 702,
+        orderCode: '#BL-0702',
+        pickupMethod: 'AT_COUNTER',
+        tableNumber: null,
+        userId: 1,
+        customerName: 'Khách Hàng B',
+        customerPhone: '0901234567',
+        note: null,
+        totalAmount: 50000, // Stale amount in list
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+        items: [],
+      };
+
+      // Backend returns invalid amount (NaN / null / <= 0)
+      const corruptedBackendOrder = {
+        ...staleHistoricalOrder,
+        totalAmount: 'NaN', // Invalid amount from backend
+      };
+
+      global.fetch = jest.fn((url: RequestInfo | URL) => {
+        const urlStr = String(url);
+        if (urlStr.endsWith('/products')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [mockProduct] } as Response);
+        }
+        if (urlStr.endsWith('/orders/me')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [staleHistoricalOrder] } as Response);
+        }
+        if (urlStr.endsWith('/orders/702')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => corruptedBackendOrder } as Response);
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+      });
+
+      render(<MenuPage />);
+
+      const payBtn = await screen.findByRole('button', { name: /^Thanh toán$/i });
+      fireEvent.click(payBtn);
+
+      // Fails closed: Checkout dialog must NOT open
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: /thanh toán đơn #702/i })).not.toBeInTheDocument();
+      });
+
+      // Error toast is shown informing customer of invalid amount from server
+      await screen.findByText(/có số tiền thanh toán không hợp lệ từ máy chủ/i);
+    });
+
+    it('3. Empty historical items alongside a non-empty current cart never shows current cart on ticket', () => {
+      // Direct component test of OrderConfirmation to verify PATCH-B explicit empty items handling
+      render(
+        <OrderConfirmation
+          isOpen={true}
+          onClose={jest.fn()}
+          orderId={703}
+          orderCode="#BL-0703"
+          status="PAID"
+          pickupMethod="AT_COUNTER"
+          totalAmount={45000}
+          items={[]} // Empty historical items
+          onViewHistory={jest.fn()}
+          onContinueShopping={jest.fn()}
+        />
+      );
+
+      // Verify that no current cart items (e.g., Cà phê Phin Sữa Tươi) are rendered
+      expect(screen.queryByText(/Cà phê Phin Sữa Tươi/i)).not.toBeInTheDocument();
+      // Verify explicit fallback line is displayed
+      expect(screen.getByText(/Chi tiết các món được ghi nhận theo mã đơn #703/i)).toBeInTheDocument();
+      expect(screen.getByText('45.000 đ')).toBeInTheDocument();
+    });
+
+    it('4. Valid payment of a historical order leaves current cart items completely unchanged', async () => {
+      window.history.replaceState(null, '', '/menu');
+
+      const mockHistoricalOrder: OrderHistoryItem = {
+        id: 704,
+        orderCode: '#BL-0704',
+        pickupMethod: 'AT_COUNTER',
+        tableNumber: null,
+        userId: 1,
+        customerName: 'Khách Hàng D',
+        customerPhone: '0901234567',
+        note: null,
+        totalAmount: 35000,
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+        items: [
+          {
+            id: 20,
+            productId: 1,
+            productName: 'Cà phê Phin Sữa Tươi',
+            size: 'SMALL',
+            toppings: [],
+            note: null,
+            quantity: 1,
+            unitPrice: 35000,
+            subtotal: 35000,
+          },
+        ],
+      };
+
+      global.fetch = jest.fn((url: RequestInfo | URL, options?: RequestInit) => {
+        const urlStr = String(url);
+        if (urlStr.endsWith('/products')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [mockProduct] } as Response);
+        }
+        if (urlStr.endsWith('/orders/me')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [mockHistoricalOrder] } as Response);
+        }
+        if (urlStr.endsWith('/orders/704')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => mockHistoricalOrder } as Response);
+        }
+        if (urlStr.endsWith('/payments') && options?.method === 'POST') {
+          return Promise.resolve({
+            ok: true,
+            status: 201,
+            json: async () => ({
+              success: true,
+              status: 'SUCCESS',
+              order: {
+                id: 704,
+                status: 'PAID',
+                orderCode: '#BL-0704',
+                pickupMethod: 'AT_COUNTER',
+              },
+            }),
+          } as Response);
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+      });
+
+      render(<MenuPage />);
+
+      // Add item to cart first from Menu
+      const addBtn = await screen.findByRole('button', { name: /thêm nhanh/i });
+      fireEvent.click(addBtn);
+
+      // Verify cart now has 1 item
+      const cartBtn = await screen.findByRole('button', { name: /giỏ hàng: 1 món/i });
+      expect(cartBtn).toBeInTheDocument();
+
+      // Navigate to order history tab
+      const historyTab = screen.getByRole('link', { name: /Lịch sử/i });
+      fireEvent.click(historyTab);
+
+      // Proceed to pay historical order #704
+      const payBtn = await screen.findByRole('button', { name: /^Thanh toán$/i });
+      fireEvent.click(payBtn);
+
+      await screen.findByRole('dialog', { name: /thanh toán đơn #704/i });
+      const confirmPayBtn = screen.getByRole('button', { name: /xác nhận thanh toán/i });
+      fireEvent.click(confirmPayBtn);
+
+      // Buzzer dialog appears for historical order
+      await screen.findByRole('dialog', { name: /#BL-0704/i });
+
+      // Dismiss buzzer ticket
+      const closeBuzzerBtns = screen.getAllByRole('button', { name: /đóng vé chuông/i });
+      fireEvent.click(closeBuzzerBtns[0]);
+
+      // Verify that current cart STILL has 1 item (NOT cleared!)
+      expect(screen.getByRole('button', { name: /giỏ hàng: 1 món/i })).toBeInTheDocument();
+      const rawStoredCart = sessionStorage.getItem('brewlite_cart_v1');
+      expect(rawStoredCart).not.toBeNull();
+      const storedCart = JSON.parse(rawStoredCart!);
+      expect(storedCart.length).toBe(1);
+    });
+
+    it('5. Normal new-order checkout clears current cart upon successful payment', async () => {
+      window.history.replaceState(null, '', '/menu');
+
+      global.fetch = jest.fn((url: RequestInfo | URL, options?: RequestInit) => {
+        const urlStr = String(url);
+        if (urlStr.endsWith('/products')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [mockProduct] } as Response);
+        }
+        if (urlStr.endsWith('/orders') && options?.method === 'POST') {
+          return Promise.resolve({
+            ok: true,
+            status: 201,
+            text: async () => JSON.stringify({ id: 888, status: 'PENDING' }),
+            json: async () => ({ id: 888, status: 'PENDING' }),
+          } as Response);
+        }
+        if (urlStr.endsWith('/payments') && options?.method === 'POST') {
+          return Promise.resolve({
+            ok: true,
+            status: 201,
+            json: async () => ({
+              success: true,
+              status: 'SUCCESS',
+              order: {
+                id: 888,
+                status: 'PAID',
+                orderCode: '#BL-0888',
+                pickupMethod: 'AT_COUNTER',
+              },
+            }),
+          } as Response);
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
+      });
+
+      render(<MenuPage />);
+
+      // Add item to cart
+      const addBtn = await screen.findByRole('button', { name: /thêm nhanh/i });
+      fireEvent.click(addBtn);
+
+      // Open cart
+      const cartBtn = screen.getByRole('button', { name: /giỏ hàng: 1 món/i });
+      fireEvent.click(cartBtn);
+
+      // Proceed to checkout
+      const orderBtn = screen.getByRole('button', { name: /tiếp tục đặt hàng/i });
+      fireEvent.click(orderBtn);
+
+      const nameInput = screen.getByLabelText(/tên khách hàng/i);
+      const phoneInput = screen.getByLabelText(/số điện thoại/i);
+      fireEvent.change(nameInput, { target: { value: 'New Customer' } });
+      fireEvent.change(phoneInput, { target: { value: '0901112222' } });
+
+      const placeOrderBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
+      fireEvent.click(placeOrderBtn);
+
+      // Pay for newly created order #888
+      const payNowBtn = await screen.findByRole('button', { name: /tiếp tục thanh toán đơn #888/i });
+      fireEvent.click(payNowBtn);
+
+      await screen.findByRole('dialog', { name: /thanh toán đơn #888/i });
+      const confirmPayBtn = screen.getByRole('button', { name: /xác nhận thanh toán/i });
+      fireEvent.click(confirmPayBtn);
+
+      // Digital Buzzer opens for #BL-0888
+      await screen.findByRole('dialog', { name: /#BL-0888/i });
+
+      // Dismiss buzzer ticket
+      const closeBuzzerBtns = screen.getAllByRole('button', { name: /đóng vé chuông/i });
+      fireEvent.click(closeBuzzerBtns[0]);
+
+      // Normal order payment strictly clears the active cart (0 items)
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /giỏ hàng: 0 món/i })).toBeInTheDocument();
+      });
+      const rawStoredCart = sessionStorage.getItem('brewlite_cart_v1');
+      expect(rawStoredCart === null || JSON.parse(rawStoredCart).length === 0).toBe(true);
     });
   });
 });
