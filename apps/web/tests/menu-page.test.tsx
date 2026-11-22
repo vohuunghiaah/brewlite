@@ -263,10 +263,10 @@ describe('MenuPage React Component Tests', () => {
     const confirmBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
     fireEvent.click(confirmBtn);
 
-    // Expect success message with Order ID #101 and status PENDING (awaiting payment)
+    // Expect success message with Order ID #101 and status awaiting payment (Chờ thanh toán)
     await waitFor(() => {
       expect(
-        screen.getByText(/đặt hàng thành công! mã đơn hàng: #101\. trạng thái: PENDING \(chờ thanh toán\)\. giỏ hàng được giữ nguyên/i)
+        screen.getByText(/đặt hàng thành công! mã đơn hàng: #101\. trạng thái: chờ thanh toán\. giỏ hàng được giữ nguyên/i)
       ).toBeInTheDocument();
     });
 
@@ -360,13 +360,13 @@ describe('MenuPage React Component Tests', () => {
     fireEvent.change(nameInput, { target: { value: 'Tran Thi B' } });
     fireEvent.change(phoneInput, { target: { value: '0987654321' } });
 
-    // 7. First order submission -> Success with PENDING
+    // 7. First order submission -> Success with awaiting payment
     const confirmBtn = screen.getByRole('button', { name: /xác nhận đặt hàng/i });
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(
-        screen.getByText(/đặt hàng thành công! mã đơn hàng: #101\. trạng thái: PENDING/i)
+        screen.getByText(/đặt hàng thành công! mã đơn hàng: #101\. trạng thái: chờ thanh toán/i)
       ).toBeInTheDocument();
     });
 
