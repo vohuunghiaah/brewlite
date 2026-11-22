@@ -1,5 +1,9 @@
 # Ma Trận Truy Vết Yêu Cầu (Requirements Traceability Matrix - RTM)
 
+### Nghiệm thu ASM2 ngày 23/11/2026
+
+[Đối chiếu hiện hành cho từng FR/NFR, use case, UML, frontend, API, schema và test](audits/asm2-cross-layer-consistency.md) · [Quyết định phạm vi C1–C4](audits/asm2-gap-register.md) · [Kết quả theo Task](audits/ASM2-FINAL-ACCEPTANCE-REPORT.md). Các bảng ghi ngày cũ bên dưới là lịch sử.
+
 ### Kết quả ở release `7d808408` · 21/11/2026
 
 [Ma trận hiện hành theo từng Task, FR-01–13 và NFR-01–07](final-handover-report.md) kết nối SRS và UC với source, test, khoảng trống và người xử lý. [Biên bản AWS](deployment/final-production-acceptance-2026-11-21.md) xác nhận cổng phê duyệt, rollout, digest, migration, restore và smoke.
