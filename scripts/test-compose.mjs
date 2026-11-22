@@ -71,7 +71,7 @@ try {
   setup('db:migrate');
   setup('db:seed');
   assert.equal(sql('SELECT count(*) FROM migrations'), '4');
-  assert.equal(sql('SELECT count(*) FROM products'), '4');
+  assert.equal(sql('SELECT count(*) FROM products'), '15');
   assert.equal(sql("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='role'"), '0');
   // Simulate an inventory correction. A second seed must preserve it.
   sql('UPDATE products SET stock = stock + 1 WHERE id = (SELECT min(id) FROM products)');
@@ -80,7 +80,7 @@ try {
   setup('db:seed');
   assert.equal(sql('SELECT count(*) FROM migrations'), '4');
   assert.equal(snapshot(), before);
-  console.log('Repeated setup preserved four migrations and catalog rows:\n' + before);
+  console.log('Repeated setup preserved migrations and 15 catalog rows:\n' + before);
 
   if (process.argv.includes('--quality')) {
     // The legacy concurrency suite clears gateway fixtures. Give it its own database.
