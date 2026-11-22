@@ -193,7 +193,7 @@ Tiêu chí kiểm chứng: hai khách mua sản phẩm cuối cùng tạo một 
 | **ALT-03** | Khách hàng đặt món tiêu chuẩn không có topping | Cho phép tạo đơn với danh sách topping rỗng (`toppings: []`), đơn giá tính theo size niêm yết. |
 | **ALT-04** | Khách hàng chưa đăng nhập khi nhấn đặt hàng | Tại Bước 4, hệ thống phát hiện chưa có JWT Token; client tạm lưu giỏ hàng vào `localStorage`, chuyển hướng sang Đăng nhập (`UC-08`); sau khi đăng nhập thành công, tự động điều hướng quay lại và tiếp tục từ Bước 5. |
 | **ALT-05** | Khách hàng thực hiện thanh toán lại cho đơn hàng chưa thanh toán | Thuộc UC-10 độc lập: chọn đơn PENDING hoặc PAYMENT_FAILED và kiểm tra giao dịch cũ trước khi thanh toán. Lần thanh toán mới sau FAILED đã xác minh dùng khóa mới; gửi lại cùng yêu cầu dùng khóa cũ. |
-| **ALT-06** | Tích lũy điểm thưởng thành viên (Quy tắc nghiệp vụ FR-10 / BR-LOYALTY-01 - Should Have) | Khi `UC-10` chuyển đơn sang `PAID`, hệ thống tự động ghi nhận điểm tích lũy vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Khách hàng có thể tra cứu số dư điểm qua `UC-11: Tra cứu điểm Loyalty`. (Lưu ý: Tỷ lệ quy đổi đang chờ phê duyệt tại `GAP-03`; việc tách biệt transaction thanh toán và tích điểm là định hướng kỹ thuật mong muốn). |
+| **ALT-06** | Tích lũy điểm thưởng thành viên (Quy tắc nghiệp vụ FR-10 / BR-LOYALTY-01 - Should Have) | Khi `UC-10` chuyển đơn sang `PAID`, hệ thống tự động ghi nhận điểm tích lũy vào bảng `LoyaltyTransaction` theo quy tắc `BR-LOYALTY-01`. Khách hàng có thể tra cứu số dư điểm qua `UC-11: Tra cứu điểm Loyalty`. (Lưu ý: PO đã duyệt 10.000 VNĐ thực thanh toán = 1 điểm, làm tròn xuống; ALT-06 hoãn theo C3; việc tách biệt transaction thanh toán và tích điểm là định hướng kỹ thuật mong muốn). |
 
 ---
 
@@ -284,4 +284,4 @@ Scenario: Xử lý khi thanh toán thất bại trong quy trình đặt hàng
 
 Activity tương ứng: `ActivityDiagram.puml` (Sẽ hoàn thiện ở Task 2) và `ActivityDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2).
 
-GAP-03 (tỷ lệ Loyalty) thuộc FR-10 Should Have, chờ PO phê duyệt; không chặn nghiệm thu phạm vi Must Have của UC-04/UC-10.
+GAP-03 (tỷ lệ Loyalty) đã chốt; FR-10 Should Have vẫn hoãn triển khai; không chặn nghiệm thu phạm vi Must Have của UC-04/UC-10.

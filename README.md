@@ -20,7 +20,7 @@ Import [Collection](postman/BrewLite-ASM2-Local.postman_collection.json) và [En
 
 - TX1 tạo order có ID số ở trạng thái PENDING. Thanh toán mô phỏng thành công mới ghi PAID, cấp mã nhận món và trừ kho bằng OCC. Thanh toán đang đối soát giữ khóa idempotency; UI hiển thị đúng kết quả hoàn tiền khi replay.
 - Vé xác nhận mở trong trang menu. Lịch sử dùng `#orders` hoặc `#history` và API kiểm tra quyền sở hữu.
-- Thao tác nhân viên pha chế, khuyến mãi và sổ điểm Loyalty thuộc phạm vi hoãn. Quy tắc Loyalty được PO duyệt ngày 23/11/2026 là 1 điểm cho mỗi 10.000 VNĐ thực thanh toán trên một đơn PAID, làm tròn xuống. [Hồ sơ thay đổi GAP-03](https://github.com/vohuunghiaah/brewlite/pull/46)
+- Thao tác nhân viên pha chế, khuyến mãi và sổ điểm Loyalty thuộc phạm vi hoãn. Quy tắc Loyalty được PO duyệt ngày 23/11/2026 là 1 điểm cho mỗi 10.000 VNĐ thực thanh toán trên một đơn PAID, làm tròn xuống. Ví dụ, đơn 48.000 VNĐ được 4 điểm. [Quyết định GAP-03](docs/audits/asm2-gap-register.md)
 
 ## Kiểm thử và build
 

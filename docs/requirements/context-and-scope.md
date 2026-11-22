@@ -209,11 +209,7 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
 
 ### 4.4 Quy tắc nghiệp vụ về tỷ lệ tích điểm Loyalty (BR-LOYALTY-01)
 > [!NOTE]
-> **Business Rule cần Product Owner phê duyệt (BR-LOYALTY-01):**
-> - *Tài liệu đề xuất ban đầu (Context & Scope v1.0):* 10.000 VNĐ chi tiêu = 1 điểm thưởng khách hàng thân thiết.
-> - *Mã nguồn triển khai thực tế trên nhánh Sprint 1 (`payments.service.ts`):* `Math.floor(amount / 1000)` (tương đương 1.000 VNĐ chi tiêu = 1 điểm thưởng).
-> - **Trạng thái:** `PROPOSED / PENDING APPROVAL from PO`.
-> - **Khoảng trống triển khai (GAP-03):** Công thức tích điểm có sự không nhất quán giữa đề bài và mã nguồn thử nghiệm, cần quyết định chính thức từ PO. Trong giai đoạn kiểm thử hiện tại, hệ thống tuân theo cài đặt của mã nguồn (1.000 VNĐ = 1 điểm) để đảm bảo toàn bộ kiểm thử tự động (Unit/Integration Test) đạt kết quả nhất quán.
+> **BR-LOYALTY-01 — GAP-03 đã chốt.** PO đã duyệt ngày 23/11/2026: mỗi 10.000 VNĐ thực thanh toán trên một đơn `PAID` được 1 điểm, làm tròn xuống. Tính năng FR-10 vẫn hoãn theo C3.
 
 ### 4.5 Quy tắc hoàn tiền khi hủy đơn (BR-REFUND-01)
 > [!NOTE]
@@ -226,7 +222,7 @@ Tuyệt đối loại bỏ thuật ngữ gây mơ hồ `Received`. Vòng đời 
 Hệ thống tài liệu BrewLite thống nhất 5 mã định danh khoảng hở kỹ thuật (GAPs) xuyên suốt các văn bản:
 1. **`GAP-01` (Cơ chế Hoàn tiền - Refund):** Chưa có API `POST /payments/:id/refund` hay `PATCH /orders/:id/cancel`; quy tắc `BR-REFUND-01` ở trạng thái đề xuất, việc hủy đơn hợp lệ xử lý thủ công ngoại tuyến.
 2. **`GAP-02` (Lưu trữ Idempotency Key phía Client):** Backend đã có cơ chế Unique Index chống thanh toán trùng, nhưng giao diện Client Next.js chưa lưu key vào `sessionStorage` để tái sử dụng khi reload hoặc thử lại.
-3. **`GAP-03` (Công thức tích điểm thành viên - Loyalty Formula):** Mâu thuẫn giữa đề xuất nghiệp vụ ban đầu (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ PO phê duyệt.
+3. **GAP-03 (Loyalty):** Đã chốt theo BR-LOYALTY-01 ở §4.4.
 4. **`GAP-04` (Endpoint Health Check trên baseline `main`):** Nhánh `main` (TypeORM) chưa có endpoint `GET /health` (chỉ có `AppController` trả về 'Hello World!'). Endpoint `/health` đầy đủ chỉ mới hiện diện trên nhánh feature Prisma.
 
 5. **`GAP-05` (Retry tạo đơn):** Mất phản hồi sau COMMIT TX1 có thể gây tạo đơn trùng khi gửi lại; cơ chế nhận diện yêu cầu bền vững chưa được thiết kế đầy đủ, xem đặc tả UC-04.
@@ -272,4 +268,4 @@ Tài liệu Bối cảnh, Các bên liên quan và Phạm vi dự án (`context-
 
 GAP-01 vẫn ghi nhận phần triển khai backend còn thiếu. Quyết định này áp dụng cho xung đột OCC trước khi đơn đạt PAID; quy tắc hủy đơn đã PAID trong BR-REFUND-01 có phạm vi riêng.
 
-GAP-03 thuộc FR-10 Should Have: tỷ lệ Loyalty vẫn chờ PO; không chặn nghiệm thu phạm vi Must Have của Task 1.
+GAP-03 thuộc FR-10 Should Have: PO đã duyệt tỷ lệ 10.000 VNĐ = 1 điểm; không chặn nghiệm thu phạm vi Must Have của Task 1.

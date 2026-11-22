@@ -9,7 +9,7 @@
 
 ---
 
-> Nguồn nghiệm thu: Assignment2-BrewLite.pdf, VER 1.0, §3.1–3.3. Tham chiếu Assignment 1 chỉ là bối cảnh kế thừa. PDF Assignment 2 không quy định tỷ lệ Loyalty; GAP-03 là quyết định nội bộ còn chờ PO.
+> Nguồn nghiệm thu: Assignment2-BrewLite.pdf, VER 1.0, §3.1–3.3. Tham chiếu Assignment 1 chỉ là bối cảnh kế thừa. PDF Assignment 2 không quy định tỷ lệ Loyalty; PO đã chốt GAP-03 ngày 23/11/2026.
 
 **Quyết định Project Leader 23/11/2026.** C1: TX1 cấp ID số, TX2 thành công cấp mã nhận món. C2: FR-07 áp dụng cho thanh toán, thao tác Barista của FR-12 hoãn. C3: FR-10 hoãn, giữ Promotion/LoyaltyTransaction ở domain. C4: vé xác nhận trong trang menu, lịch sử qua #orders hoặc #history. Các kịch bản hoãn bên dưới là mục tiêu tương lai.
 
@@ -214,7 +214,7 @@ Scenario: Áp dụng mã khuyến mãi hợp lệ
 Scenario: Tích lũy điểm khách hàng thân thiết khi đơn hàng PAID
   Given đơn hàng thanh toán thành công số tiền 48.000đ
   When đơn hàng chuyển sang trạng thái PAID
-  Then hệ thống tính toán điểm thưởng theo tỷ lệ được PO phê duyệt (BR-LOYALTY-01, GAP-03; AC mở rộng chưa nghiệm thu khi chưa chốt tỷ lệ)
+  Then số điểm thưởng của đơn là 4 (làm tròn xuống 48.000 / 10.000 theo BR-LOYALTY-01)
   And ghi nhận giao dịch vào bảng LoyaltyTransaction và cộng vào tài khoản khách
 ```
 
@@ -355,9 +355,9 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 
 ### 7.1 Business Rules — bản ghi trước Sprint 2
 1. **BR-LOYALTY-01 (Tỷ lệ tích lũy điểm thưởng):**
-   - *Tài liệu đề xuất:* 10.000 VNĐ chi tiêu = 1 điểm.
+   - PO đã duyệt ngày 23/11/2026: mỗi 10.000 VNĐ thực thanh toán trên một đơn `PAID` được 1 điểm, làm tròn xuống.
    - *Mã nguồn nhánh Sprint 1 (`payments.service.ts`):* `Math.floor(amount / 1000)` (1.000 VNĐ = 1 điểm).
-   - *Trạng thái:* `PROPOSED / PENDING APPROVAL from PO` (Khoảng hở GAP-03). Trong giai đoạn kiểm thử, áp dụng tỷ lệ của mã nguồn để khớp với test tự động.
+   - GAP-03 đã chốt. Tỷ lệ 1.000 VNĐ của prototype là dữ liệu lịch sử; FR-10 vẫn DEFERRED.
 2. **BR-PROMO-01 (Mã khuyến mãi mặc định):**
    - Mã `BREW20` chiết khấu 20% cho đơn hàng có tổng tiền từ 50.000 VNĐ trở lên (`minOrderValue: 50000`, `discountType: PERCENTAGE`, `discountValue: 20`), quản lý qua model Prisma `Promotion`.
 3. **BR-REFUND-01 (Quy tắc hoàn tiền khi hủy đơn):**
@@ -367,7 +367,7 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 ### 7.2 Khoảng trống lịch sử trước Sprint 2 — xem [kết quả hiện tại](../audits/asm2-gap-register.md)
 - **GAP-01 (Chức năng Refund & Hủy đơn sau thanh toán):** Mã nguồn backend hiện tại chưa cài đặt phương thức `refund()` trong service thanh toán và chưa có endpoint `PATCH /orders/:id/cancel`. Cần triển khai bổ sung ở Task 4/5 nếu bài toán yêu cầu nghiệp vụ hoàn tiền tự động.
 - **GAP-02 (Cơ chế lưu giữ Idempotency Key tại Client):** Frontend hiện tại tái tạo đơn mới và sinh key mới mỗi lần bấm; chưa lưu key vào `sessionStorage` gắn với `orderId` để chống trừ tiền trùng khi rớt mạng rồi bấm thử lại.
-- **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa đề xuất nghiệp vụ ban đầu (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ Product Owner.
+- **GAP-03 (Công thức tích điểm Loyalty):** PO đã duyệt ngày 23/11/2026: mỗi 10.000 VNĐ thực thanh toán trên một đơn `PAID` được 1 điểm, làm tròn xuống.
 - **GAP-04 (Endpoint Health Check trên nhánh main):** Nhánh `main` (TypeORM) hiện chỉ có `AppController` trả về chuỗi chào mừng, chưa có endpoint `GET /health` trả về trạng thái database (đã có trên nhánh feature Prisma).
 
 - **GAP-05 (Retry tạo đơn khi mất phản hồi sau COMMIT):** `POST /orders` chưa có đặc tả idempotency; retry có thể tạo đơn trùng dù TX1 đã thành công. Không tự động gửi lại khi chưa rõ kết quả; tra cứu đơn có xác thực chỉ hỗ trợ khôi phục, không bảo đảm chống trùng. Cần thiết kế và kiểm chứng cơ chế nhận diện yêu cầu bền vững ở Task triển khai; xem [UC-04 — Luồng chính](./use-case-place-order.md#41-luồng-chính-thành-công-main-success-flow).
