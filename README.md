@@ -363,7 +363,7 @@ Nhằm đảm bảo tính minh bạch, trung thực học thuật và truy vết
 ### Khoảng hở tại thời điểm kiểm toán Task 2–3 (mốc lịch sử)
 - **GAP-01 (Hoàn tiền tự động):** Chưa có API `POST /payments/:id/refund` và background worker xử lý hoàn tiền khi giao dịch xảy ra lỗi bất thường; việc xử lý ngoại tuyến đang chờ Product Owner phê duyệt quy trình.
 - **GAP-02 (Lưu trữ Idempotency Key):** Backend có ràng buộc chống trùng lặp nhưng Client Next.js chưa lưu khóa vào `sessionStorage` để tái sử dụng khi người dùng refresh hoặc thanh toán lại.
-- **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa quy tắc nghiệp vụ SRS (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ PO.
+- **GAP-03 (Công thức tích điểm Loyalty) — đã chốt.** PO đã duyệt ngày 23/11/2026: mỗi 10.000 VNĐ thực thanh toán trên một đơn `PAID` được 1 điểm, làm tròn xuống. Ví dụ, đơn 48.000 VNĐ được 4 điểm. Tính năng tích điểm (FR-10) vẫn hoãn triển khai theo C3.
 - **GAP-04 (Endpoint Health Check trên `main`):** `main` chưa có `GET /health` kiểm tra kết nối PostgreSQL.
 - **GAP-05 (Mất phản hồi sau COMMIT tạo đơn):** `POST /orders` chưa có cơ chế Idempotency chống tạo đơn trùng khi gặp sự cố mạng sau khi database đã lưu đơn `PENDING`.
 
