@@ -13,7 +13,7 @@ Tài liệu này hướng dẫn cách thiết lập, cài đặt dependencies v�
 ## 1. Yêu cầu hệ thống (Prerequisites)
 
 - **Node.js**: Phiên bản 20 trở lên (khuyến nghị Node 22 hoặc 24).
-- **Docker**: Dùng để chạy `brewlite-db`, `brewlite-api`, `brewlite-web` (hoặc cài đặt PostgreSQL 16 cục bộ).
+- **Docker**: Dùng để chạy `brewlite-local-db`, `brewlite-local-api`, `brewlite-local-web` (hoặc cài đặt PostgreSQL 16 cục bộ).
 - **Playwright Chromium**: Trình duyệt Chromium cho kiểm thử giao diện người dùng.
 
 ---
@@ -54,7 +54,7 @@ docker compose up -d
 Xác minh các dịch vụ hoạt động tại:
 - Web App: `http://localhost:3000`
 - API Backend: `http://localhost:3001`
-- PostgreSQL: `localhost:5432` (Container: `brewlite-db`, User: `brewlite`, DB: `brewlite`)
+- PostgreSQL: `localhost:5432` (Container: `brewlite-local-db`, User: `brewlite`, DB: `brewlite`)
 
 ---
 
@@ -139,7 +139,7 @@ node scripts/e2e-security-exceptions.mjs
 |---|---|---|
 | `WEB_URL` | `http://localhost:3000` | Địa chỉ frontend Next.js |
 | `API_URL` | `http://localhost:3001` | Địa chỉ backend NestJS API |
-| `DB_CONTAINER` | `brewlite-db` | Tên Docker container chạy PostgreSQL |
+| `DB_CONTAINER` | `brewlite-local-db` | Tên Docker container chạy PostgreSQL |
 | `DB_USER` | `brewlite` | Username kết nối PostgreSQL |
 | `DB_NAME` | `brewlite` | Tên database kết nối PostgreSQL (Docker mode) |
 | `POSTGRES_DB` | `brewlite` | Tên database kết nối PostgreSQL (Direct PSQL mode) |

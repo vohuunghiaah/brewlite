@@ -49,13 +49,13 @@ Project **brewlite-local**, container brewlite-local-web/api/db, port loopback 3
 | Newman 6 | Hai lượt, mỗi lượt 33 request và 63/63 assertion PASS, gồm JWT, 400/401/403/404/409, replay, stock và catalog CRUD fixture |
 | Secrets | Gitleaks v8.24.3 git origin/main, 130 commit, 178,39 MB, zero findings với cấu hình checkout #44. Chưa xác minh toàn bộ lịch sử CI logs |
 
-Lượt API thử trước dọn thiếu PostgreSQL nên có 30 test fail trong suite DB. Lượt component chạy trực tiếp trong container development có một lỗi do test simulator ẩn ở mode đó. Kết quả bảng trên dùng database riêng và đúng NODE_ENV=test. Xem kiểm tra PR để tái lập trên checkout sạch.
+Lượt API thử trước dọn thiếu PostgreSQL nên có 30 test fail trong suite DB. Lượt component chạy trực tiếp trong container development có một lỗi do test simulator ẩn ở mode đó. Kết quả bảng trên dùng database riêng và đúng NODE_ENV=test. [Run CI độc lập trên checkout sạch](https://github.com/vohuunghiaah/brewlite/actions/runs/45058713827) và [các check của PR #45 theo HEAD mới nhất](https://github.com/vohuunghiaah/brewlite/pull/45/checks).
 
 ## Production và release
 
 Ngày 23/11/2026 (Asia/Saigon), GET /menu = 200 HTML, /api/products = 200 (15 sản phẩm), /api/health = 200, database=up. [Frontend](https://brewlite-swe.duckdns.org/menu) · [API](https://brewlite-swe.duckdns.org/api/products) · [Health](https://brewlite-swe.duckdns.org/api/health).
 
-[Deployment 45049566612](https://github.com/vohuunghiaah/brewlite/actions/runs/45049566612) ghi main 4e47d14c35177b94d287f1f3814c9299b896ea5b, pre-deployment backup 17,26 KB, mode 0600, migration và smoke HTTPS. DEPLOY_RUNNING tại rollout ghi API sha256:8b5480f86e1d3eec54edff636f428bdddacd21de3f4fe5db699fdac3fec8b316 và web sha256:c0db6dc0d5ca54da5f96fe4aaf25aad30684ee20bf7a3da092174f61cf4de178. Compose production chỉ publish cổng Caddy; firewall hiện hành và running digest sau rollout chưa được kiểm tra qua host. Main chưa có Git tag/GitHub Release. Không kích hoạt deploy từ đợt audit.
+[Deployment 45049566612](https://github.com/vohuunghiaah/brewlite/actions/runs/45049566612) ghi main 4e47d14c35177b94d287f1f3814c9299b896ea5b, pre-deployment backup 17,26 KB, mode 0600, migration và smoke HTTPS. DEPLOY_RUNNING tại rollout ghi API sha256:8b5480f86e1d3eec54edff636f428bdddacd21de3f4fe5db699fdac3fec8b316 và web sha256:c0db6dc0d5ca54da5f96fe4aaf25aad30684ee20bf7a3da092174f61cf4de178. Compose production chỉ publish cổng Caddy; firewall hiện hành và running digest sau rollout chưa được kiểm tra qua host. SSH strict host verification dừng trước xác thực vì known_hosts local thiếu khóa đã ghim cho IPv4 của VM. Main chưa có Git tag/GitHub Release. Không kích hoạt deploy từ đợt audit.
 
 ## Kết luận theo phạm vi
 

@@ -160,6 +160,8 @@ Copy-Item .env.example .env
 ```
 *(Nếu trên Linux/macOS, dùng lệnh: `cp .env.example .env`)*.
 
+**Nghiệm thu 23/11/2026.** [Hướng dẫn chạy LOCAL và Postman](docs/testing/postman-local-guide.md) · [Kết quả và cấu hình production đã kiểm tra](docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md). LOCAL dùng project brewlite-local và cổng loopback 3000/3001/5432. Lightsail triển khai qua [runbook](docs/deployment/production-release-runbook.md).
+
 > [!IMPORTANT]
 > **Lưu ý quan trọng về cấu hình `DATABASE_HOST` giữa hai phương thức khởi chạy:**
 > Tệp `.env.example` cung cấp giá trị mặc định `DATABASE_HOST=db` phục vụ cho mạng container nội bộ Docker Compose.
@@ -366,7 +368,3 @@ Nhằm đảm bảo tính minh bạch, trung thực học thuật và truy vết
 - **GAP-05 (Mất phản hồi sau COMMIT tạo đơn):** `POST /orders` chưa có cơ chế Idempotency chống tạo đơn trùng khi gặp sự cố mạng sau khi database đã lưu đơn `PENDING`.
 
 *(Chi tiết phân tích kỹ thuật và kế hoạch khắc phục được trình bày tại [Báo cáo kiểm toán GAP](docs/audits/task2-to-task3-gap-audit.md)).*
-
-## LOCAL và Postman
-
-[Hướng dẫn Docker Desktop, API và Collection Runner](docs/testing/postman-local-guide.md). Project brewlite-local dùng loopback 3000, 3001, 5432. Lightsail dùng workflow production và Compose riêng. [Vận hành production](docs/deployment/production-release-runbook.md) · [Rollback](docs/deployment/rollback-guide.md).

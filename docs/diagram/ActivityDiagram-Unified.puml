@@ -137,7 +137,7 @@ stop
 else ([Yêu cầu hợp lệ])
 endif
 |PostgreSQL|
-:Tra cứu khóa trong phạm vi chủ sở hữu
+:Tra cứu khóa UUID toàn cục, kiểm tra chủ sở hữu
 Đối chiếu orderId, amount, method đã lưu;
 |Backend|
 if () then ([Khóa cũ, payload khác])
