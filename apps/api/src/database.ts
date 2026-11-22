@@ -3,14 +3,12 @@ import { CreateOrderCatalog1731888000000 } from './migrations/1731888000000-crea
 import { AddCustomizationAndNoteToOrderItems1731974400000 } from './migrations/1731974400000-AddCustomizationAndNoteToOrderItems';
 import { AddAccountAuthentication1732060800000 } from './migrations/1732060800000-add-account-authentication';
 import { AddPaymentsAndStockOcc1732147200000 } from './migrations/1732147200000-add-payments-and-stock-occ';
-import { AddCatalogDeployments1732320000000 } from './migrations/1732320000000-add-catalog-deployments';
 
 export const migrations = [
   CreateOrderCatalog1731888000000,
   AddCustomizationAndNoteToOrderItems1731974400000,
   AddAccountAuthentication1732060800000,
   AddPaymentsAndStockOcc1732147200000,
-  AddCatalogDeployments1732320000000,
 ];
 
 export function databaseOptions(): DataSourceOptions {
