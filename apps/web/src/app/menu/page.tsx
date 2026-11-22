@@ -628,6 +628,11 @@ export default function MenuPage() {
         throw new Error(Array.isArray(detail) ? detail.join(", ") : detail);
       }
 
+      if (data.status === "PENDING" || data.status === "REFUND_PENDING") {
+        setPaymentError(data.message || "Giao dịch đang chờ đối soát.");
+        return;
+      }
+
       if (data.status === "FAILED" || !data.success) {
         setPendingOrder((prev) => (prev ? { ...prev, status: "PAYMENT_FAILED" } : null));
         setPaymentError(

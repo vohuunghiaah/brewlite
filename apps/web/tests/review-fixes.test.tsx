@@ -987,6 +987,9 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
         if (urlStr.endsWith('/orders/me')) {
           return Promise.resolve({ ok: true, status: 200, json: async () => [mockHistoricalOrder] } as Response);
         }
+        if (urlStr.endsWith('/payments')) {
+          return Promise.resolve({ ok: true, status: 201, json: async () => ({ success: false, status: 'PENDING' }) } as Response);
+        }
         if (urlStr.endsWith('/orders/701')) {
           return Promise.resolve({ ok: true, status: 200, json: async () => mockHistoricalOrder } as Response);
         }
@@ -1004,6 +1007,16 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
       await screen.findByRole('dialog', { name: /thanh toán đơn #701/i });
       expect(screen.getAllByText('70.000 đ').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText(/Mã QR mô phỏng thanh toán cashless · Đơn #701/i)).toBeInTheDocument();
+      const confirm = await screen.findByRole('button', { name: /Xác nhận thanh toán/i });
+      fireEvent.click(confirm);
+      await screen.findByText('Giao dịch đang chờ đối soát.');
+      fireEvent.click(confirm);
+      await waitFor(() => expect(confirm).toBeEnabled());
+      const requests = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).endsWith('/payments'));
+      expect(requests).toHaveLength(2);
+      const firstKey = requests[0][1].headers['Idempotency-Key'];
+      expect(firstKey).toBeTruthy();
+      expect(requests[1][1].headers['Idempotency-Key']).toEqual(firstKey);
     });
 
     it('2. Missing, NaN or invalid backend amount fails closed and displays error', async () => {
