@@ -291,7 +291,7 @@ else JWT hợp lệ
     UI --> C: Không đọc được trạng thái; giữ thông tin đơn
   else Đọc thành công trong phạm vi được phép
     API --> UI: 200 + Order và các món đã lưu
-    UI --> C: Hiển thị trạng thái hiện tại; chỉ xóa giỏ khi PAID\nChỉ xác nhận hoàn tiền khi REFUNDED đã COMMIT
+    UI --> C: Hiển thị trạng thái và mã nhận món từ Order
   end
 end
 deactivate API

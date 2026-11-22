@@ -27,18 +27,18 @@ stop
 else ([Hợp lệ])
 endif
 |Backend|
-:Yêu cầu đọc trạng thái đơn/giao dịch;
+:Yêu cầu đọc trạng thái đơn;
 |PostgreSQL|
 :Đọc và trả Order và các món đã lưu;
 |Backend|
 :Trả HTTP 200 + trạng thái hiện tại;
 |Frontend|
 :Hiển thị trạng thái đã nhận
-PAID: xác nhận và xóa giỏ
-PENDING/REFUND_PENDING: còn chờ, không kết luận thất bại
+PAID: hiển thị xác nhận
+PENDING: còn chờ, không kết luận thất bại
 PAYMENT_FAILED: cho thử lại khi đủ điều kiện
-REFUNDED/CANCELLED: thông báo đã hoàn/đã hủy
-PREPARING/READY/COMPLETED: tiến độ nhận món;
+CANCELLED: hiển thị đã hủy
+PREPARING/READY/COMPLETED: chỉ đọc nếu có dữ liệu, thao tác nhân viên DEFERRED;
 !endprocedure
 |Khách hàng|
 start
