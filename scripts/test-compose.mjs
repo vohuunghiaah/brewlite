@@ -101,7 +101,7 @@ try {
   compose('up', '-d', '--wait', '--wait-timeout', '180');
   compose('ps');
   await health(200, { status: 'ok', database: 'up' });
-  assert.equal((await (await fetch(env.API_URL + '/products')).json()).length, 4);
+  assert.equal((await (await fetch(env.API_URL + '/products')).json()).length, 15);
   script('test-env-safety.mjs');
   script('e2e-mvp-acceptance.mjs');
   script('e2e-security-exceptions.mjs');
