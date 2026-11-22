@@ -1,6 +1,6 @@
 # BrewLite Assignment 2 · Nghiệm thu ngày 23/11/2026
 
-**PARTIAL.** Luồng đặt và thanh toán, migration, seed, kiểm thử Chromium/PostgreSQL, LOCAL cho Postman và HTTPS production đã có bằng chứng thực thi. Chưa thể ký nghiệm thu toàn bộ PDF v1.0 do thiếu hồ sơ release, review/retro, xác nhận người ngoài nhóm và bằng chứng NFR. Đã đọc toàn bộ bản gốc “Requirements to Deployment”, Đại học Sài Gòn. PDF §2 yêu cầu thứ tự tạo phẩm; lịch sử PR #12–43 thể hiện các lần hiệu chỉnh và bàn giao tuần tự, dù các nhánh prototype cũ đã có code trước đó.
+**PARTIAL.** Luồng đặt và thanh toán, migration, seed, kiểm thử Chromium/PostgreSQL, LOCAL cho Postman và HTTPS production đã có bằng chứng thực thi. Chưa thể ký nghiệm thu toàn bộ PDF v1.0 do thiếu biên bản review/retro, xác nhận người ngoài nhóm và bằng chứng NFR. Đã đọc toàn bộ bản gốc “Requirements to Deployment”, Đại học Sài Gòn. PDF §2 yêu cầu thứ tự tạo phẩm; lịch sử PR #12–43 thể hiện các lần hiệu chỉnh và bàn giao tuần tự, dù các nhánh prototype cũ đã có code trước đó.
 
 ## Task matrix
 
@@ -21,7 +21,7 @@
 | 5.1 | PASS phạm vi MVP đã duyệt | Menu → size/topping → cart → auth → PENDING → payment → ticket → history. Thanh toán bảo toàn key khi chờ đối soát; Barista/Loyalty/Promotion hoãn. |
 | 5.2 | PASS | DB rỗng, bốn migration, seed lặp lại giữ inventory, Jest/PostgreSQL/OCC, Chromium E2E, health khi dừng/khởi động lại DB. |
 | 5.3 | PASS cho release đã triển khai | GHCR digest, approved deploy, backup, migration, HTTPS smoke thành công; regression rollout trong CI. Khôi phục production thực tế cần quyền vận hành. |
-| 5.4 | PARTIAL | Public frontend/API/health hoạt động. Thiếu release/tag, review/retro, ký nhận độc lập. Video/demo: **EXCLUDED BY USER — REQUIRED BY ORIGINAL ASSIGNMENT**. |
+| 5.4 | PARTIAL | Public frontend/API/health hoạt động. GitHub Release và tag v1.0.0 PASS. Review/retro và ký nhận độc lập BLOCKED. Video/demo: **EXCLUDED BY USER — REQUIRED BY ORIGINAL ASSIGNMENT**. |
 
 ## UML, traceability và quyết định
 
@@ -51,7 +51,18 @@ Project **brewlite-local**, container brewlite-local-web/api/db, port loopback 3
 
 Lượt API thử trước dọn thiếu PostgreSQL nên có 30 test fail trong suite DB. Lượt component chạy trực tiếp trong container development có một lỗi do test simulator ẩn ở mode đó. Kết quả bảng trên dùng database riêng và đúng NODE_ENV=test. [Run CI độc lập trên checkout sạch](https://github.com/vohuunghiaah/brewlite/actions/runs/45058713827) và [các check của PR #45 theo HEAD mới nhất](https://github.com/vohuunghiaah/brewlite/pull/45/checks).
 
-## Production và release
+## Task 5.4.3 · Nghiệm thu sau phát hành
+
+| Tiêu chí | Kết quả | Bằng chứng |
+|---|---|---|
+| D2 · Phát hành | PASS | GitHub trả tag v1.0.0 tại `04737fb37eb2ea6677253dfb69e405f4725a4a3b`, Release đã công bố lúc 03:26:17 ngày 23/11/2026 (UTC+7), draft=false, prerelease=false. [GitHub Release](https://github.com/vohuunghiaah/brewlite/releases/tag/v1.0.0) |
+| 5.3 · Triển khai bản phát hành | PASS | Job Lightsail của workflow_dispatch kết thúc thành công lúc 03:25:34 (UTC+7) trên đúng SHA tag. Log xác nhận backup 26,22 KB, mode 0600, bước migration, DEPLOY_RUNNING cho API và web, sau đó DEPLOY_SMOKE. Hai digest đầy đủ có trong log tại 20:25:31 UTC ngày 22/11. [Job production](https://github.com/vohuunghiaah/brewlite/actions/runs/45064789145/job/137342906899) |
+| Baseline hồ sơ | PASS | [PR #46](https://github.com/vohuunghiaah/brewlite/pull/46) đưa main tới `775a439c05b07e1ba06cd9c062dc65f82f68df3b`. Diff từ tag gồm sáu tệp Markdown. Quality trên main đạt; job Lightsail bị skip trong lần push main và lần push tag. [Quality](https://github.com/vohuunghiaah/brewlite/actions/runs/45065617938) · [Delivery main](https://github.com/vohuunghiaah/brewlite/actions/runs/45065617848) · [Delivery tag](https://github.com/vohuunghiaah/brewlite/actions/runs/45066425863) |
+| D3 · Hiện trạng vận hành | PARTIAL | Lúc 04:29 ngày 23/11/2026 (UTC+7), GET HTTPS trên brewlite-swe.duckdns.org trả /menu 200 HTML, /api/products 200 với 15 sản phẩm, /api/health 200 với status=ok và database=up. GitHub ghi deployment production gần nhất là 7984521149 tại SHA phát hành. Digest ở thời điểm audit và luật firewall thực tế vẫn OPEN. |
+| D2 · Sự kiện sprint và bàn giao | BLOCKED | Hai sprint có backlog. [Mẫu review/retro](../handover/sprint-review-retrospective.md) và [phiếu clone độc lập](../handover/clean-clone-acceptance.md) còn trống. Chưa có biên bản hoặc kết quả của người nhận trong hồ sơ đã rà soát. |
+| D1, D6, G5 · Bằng chứng còn thiếu | PARTIAL | [Checklist theo NFR, chủ trì và tiêu chí đóng](task-5-4-3-evidence.md). Task 2.1, 2.2 và 5.4 tiếp tục PARTIAL. |
+
+## Snapshot trước khi phát hành · bằng chứng lịch sử
 
 Ngày 23/11/2026 (Asia/Saigon), GET /menu = 200 HTML, /api/products = 200 (15 sản phẩm), /api/health = 200, database=up. [Frontend](https://brewlite-swe.duckdns.org/menu) · [API](https://brewlite-swe.duckdns.org/api/products) · [Health](https://brewlite-swe.duckdns.org/api/health).
 
@@ -62,12 +73,12 @@ Ngày 23/11/2026 (Asia/Saigon), GET /menu = 200 HTML, /api/products = 200 (15 s�
 | Phạm vi | Trạng thái | Điều kiện còn lại |
 |---|---|---|
 | Technical readiness | PASS phạm vi MVP đã duyệt | Giới hạn retry tạo đơn sau mất ACK còn OPEN |
-| Assignment compliance | PARTIAL | D1–D6, đặc biệt hồ sơ §7.4 và xác nhận giảng viên về video |
+| Assignment compliance | PARTIAL | D1, phần còn lại của D2, D3, D6 và G5; D4 đã đóng theo snapshot. D5 giữ ngoại lệ của Project Leader và yêu cầu gốc §7.4 |
 | Production readiness | PARTIAL | Production đang phục vụ; NFR thời gian dài, firewall và kiểm chứng host thời điểm audit còn thiếu |
 | Documentation readiness | PARTIAL | Hồ sơ sự kiện sprint và bàn giao cần người tham gia thực tế xác nhận |
 | Postman readiness | PASS | Chọn LOCAL và điền catalogKey riêng từ .env |
 
-## Kiểm tra bổ sung trên nhánh audit
+## Kiểm tra lịch sử trên nhánh audit trước phát hành
 
 - Clone GitHub mới tại cc700d6f, chạy test-compose --quality với DB mới. API 130, web 14 + 80, env safety 9, Chromium 14 bước và exceptions 11 ca đều đạt. Harness xác minh volume tạm đã xóa. Đây là phép chạy của auditor; việc người ngoài nhóm ký bàn giao vẫn chờ.
 - [CI sau sửa checkout](https://github.com/vohuunghiaah/brewlite/actions/runs/45059209313) chạy đủ API, web và Compose/Chromium/PostgreSQL trên d2593541. Test mới xác minh retry đang đối soát giữ nguyên key và nhận đúng kết quả hoàn tiền.
