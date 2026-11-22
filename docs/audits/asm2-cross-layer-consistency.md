@@ -18,8 +18,8 @@ Baseline và lịch sử PR xem [inventory](asm2-final-baseline.md). Các mã UC
 | §3.2, §4.3 | FR-12 / 12 | C Staff | Role khái niệm. API không có PATCH trạng thái pha chế; cột role không tồn tại | Isolated Compose kiểm tra schema; tính năng DEFERRED |
 | §7.2 | FR-13 / 13 | D | GET /health → SELECT 1 → 200/up hoặc 503/down | health.controller.spec, stop/start PostgreSQL |
 | §3.2 | NFR-01 | D, menu/order | GET products/detail, POST orders; FCP trên mobile | BLOCKED. Thiếu bộ đo p95 đúng cấu hình trong SRS §3 |
-| §3.2 | NFR-02 | S/D | Auth, whitelist DTO, ownership, catalog guard, Caddy HTTPS | Auth/security/negative tests; kiểm tra toàn bộ lịch sử log CI còn thiếu |
-| §3.2, §6.3 | NFR-03 | A/D | Responsive Next.js; menu, modal, cart, checkout | Chromium + component. Chưa đủ Lighthouse ≥90, bốn trình duyệt và touch target |
+| §3.2 | NFR-02 | S/D | Auth, whitelist DTO, ownership, catalog guard, Caddy HTTPS | Auth/security/negative tests; Gitleaks quét 170 run đã hoàn tất tại snapshot. Xem D4 |
+| §3.2, §6.3 | NFR-03 | A/D | Responsive Next.js; menu, modal, cart, checkout | Chromium không tràn ngang tại 360/390/430/768/1280 px. Lighthouse 12.8.2 trên /menu production đạt accessibility 94/100, còn cảnh báo color-contrast và heading-order. Thiếu bốn trình duyệt và kiểm tra toàn bộ touch target |
 | §4.2 | NFR-04 | A/S/C | Product.version, transactions, unique payment key, refund, advisory lock | PostgreSQL conflict/recovery suite PASS |
 | §7.2 | NFR-05 | D | Hai Compose, bốn migration, seed 15 sản phẩm, persistent volume | Clean test DB + seed lại + health PASS. Chưa chứng minh time-to-healthy ≤30s |
 | §6.4, §7.3 | NFR-06 | D | Quality workflow, GHCR images, rollout script, smoke/rollback | Xem baseline CI và production. Không ngoại suy thành 100% lịch sử main |

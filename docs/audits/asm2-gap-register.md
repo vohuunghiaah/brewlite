@@ -10,10 +10,10 @@
 | B1 | B / vừa | TX1, HTTP 400/201, key lookup, order detail, domain và deployment khác sơ đồ cũ. | FIXED các nhóm sai khác trong [đối chiếu](asm2-cross-layer-consistency.md); render lại nguồn. |
 | B2 | B / vừa | 9 đường dẫn local trong report Task 5.3 thừa một cấp ../. | FIXED. Sửa đích tương đối. |
 | A2 | A / vừa | 27.646 dependency files được Git theo dõi mặc dù đã có lockfile và npm ci; 16 file Nest starter không có caller. | FIXED trên audit branch. CI build cả hai app từ lockfile. |
-| D1 | D / cao | NFR-01,03,05,07 thiếu benchmark theo profile, Lighthouse/cross-browser, thời gian cold boot và chuỗi uptime bảy ngày. | BLOCKED các tiêu chí thiếu bằng chứng; chủ sở hữu QA/operations. |
+| D1 | D / cao | NFR-01,03,05,07 thiếu benchmark theo profile, cross-browser/touch target (Lighthouse mobile /menu đạt 94/100), thời gian cold boot và chuỗi uptime bảy ngày. | BLOCKED các tiêu chí thiếu bằng chứng; chủ sở hữu QA/operations. |
 | D2 | D / cao | PDF §7.4 yêu cầu tag/release, review, retrospective và bàn giao. Chưa có Git tag/GitHub Release. PR #44 chứa release notes đề xuất. | BLOCKED release chờ Project Leader; review/retro và nghiệm thu độc lập chờ nhóm cung cấp biên bản thực. |
-| D3 | D / vừa | Không có snapshot firewall/live container digest riêng tại thời điểm audit; cấu hình không publish DB. | BLOCKED xác minh trực tiếp host. Có log rollout và public probe. |
-| D4 | D / vừa | Chưa có bằng chứng rà toàn bộ log CI từ mọi run. | BLOCKED phần lịch sử log; scan repo và PR #44 là bằng chứng riêng. |
+| D3 | D / vừa | Không có snapshot firewall/live container digest riêng tại thời điểm audit; cấu hình không publish DB. | BLOCKED xác minh trực tiếp host. Có log rollout và public probe. Kết nối TCP từ máy audit tới cổng 5432 công khai không thành công trong 3,5 giây. |
+| D4 | D / vừa | Đã tải log GitHub của 170 run hoàn tất tại snapshot, 399 file theo job. Gitleaks báo 113 kết quả. | FIXED cho snapshot. Cả 113 khớp phần tag 40-hex của tham chiếu image GHCR. 84 so được Git commit cục bộ, 29 là tag lịch sử chưa có object trong clone. Không có finding ngoài nhóm này. |
 | D5 | D / vừa | §7.4 video/live demo. | EXCLUDED BY USER — REQUIRED BY ORIGINAL ASSIGNMENT. Chỉ giảng viên có thể miễn yêu cầu gốc. |
 | G5 | B / vừa | POST /orders thiếu idempotency. Sau COMMIT TX1 nhưng mất 201, client cần tra lịch sử trước khi tạo lại. | OPEN giới hạn đã ghi trong SRS GAP-05; PDF bắt buộc idempotency ở thanh toán. |
 | D6 | D / vừa | Giao thức phục hồi chi tiết có nhiều nhánh mất ACK/COMMIT; chưa có fault injection cho từng nhánh. | OPEN bằng chứng bổ sung. PostgreSQL concurrency và restart đã kiểm thử. |

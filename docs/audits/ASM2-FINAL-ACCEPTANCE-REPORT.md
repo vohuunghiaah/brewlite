@@ -47,7 +47,7 @@ Project **brewlite-local**, container brewlite-local-web/api/db, port loopback 3
 | Exceptions / quyền / đồng thời | 11/11 PASS trong test project |
 | Compose local và production | config -q; local có ba container healthy. Test DB health 200 → 503 → 200 |
 | Newman 6 | Hai lượt, mỗi lượt 33 request và 63/63 assertion PASS, gồm JWT, 400/401/403/404/409, replay, stock và catalog CRUD fixture |
-| Secrets | Gitleaks v8.24.3 git origin/main, 130 commit, 178,39 MB, zero findings với cấu hình checkout #44. Chưa xác minh toàn bộ lịch sử CI logs |
+| Secrets | Gitleaks v8.24.3 git origin/main, 130 commit, 178,39 MB, zero findings với cấu hình checkout #44. Quét riêng toàn bộ 170 run đã hoàn tất tại snapshot, xem D4 |
 
 Lượt API thử trước dọn thiếu PostgreSQL nên có 30 test fail trong suite DB. Lượt component chạy trực tiếp trong container development có một lỗi do test simulator ẩn ở mode đó. Kết quả bảng trên dùng database riêng và đúng NODE_ENV=test. [Run CI độc lập trên checkout sạch](https://github.com/vohuunghiaah/brewlite/actions/runs/45058713827) và [các check của PR #45 theo HEAD mới nhất](https://github.com/vohuunghiaah/brewlite/pull/45/checks).
 
@@ -66,3 +66,13 @@ Ngày 23/11/2026 (Asia/Saigon), GET /menu = 200 HTML, /api/products = 200 (15 s�
 | Production readiness | PARTIAL | Production đang phục vụ; NFR thời gian dài, firewall và kiểm chứng host thời điểm audit còn thiếu |
 | Documentation readiness | PARTIAL | Hồ sơ sự kiện sprint và bàn giao cần người tham gia thực tế xác nhận |
 | Postman readiness | PASS | Chọn LOCAL và điền catalogKey riêng từ .env |
+
+## Kiểm tra bổ sung trên nhánh audit
+
+- Clone GitHub mới tại cc700d6f, chạy test-compose --quality với DB mới. API 130, web 14 + 80, env safety 9, Chromium 14 bước và exceptions 11 ca đều đạt. Harness xác minh volume tạm đã xóa. Đây là phép chạy của auditor; việc người ngoài nhóm ký bàn giao vẫn chờ.
+- [CI sau sửa checkout](https://github.com/vohuunghiaah/brewlite/actions/runs/45059209313) chạy đủ API, web và Compose/Chromium/PostgreSQL trên d2593541. Test mới xác minh retry đang đối soát giữ nguyên key và nhận đúng kết quả hoàn tiền.
+- GET /menu trên Chromium không tràn ngang tại 360, 390, 430, 768 và 1280 px. Lighthouse 12.8.2 đo accessibility 94/100 trên URL menu production, ghi nhận color-contrast và heading-order. Kiểm tra khả năng kết nối TCP tới cổng 5432 public hết hạn sau 3,5 giây.
+- Gitleaks cảnh báo hai dòng lịch sử trong báo cáo này. Cả hai trích cùng một digest SHA-256 của API từ DEPLOY_RUNNING. Đối chiếu theo commit và cột, ghi hai fingerprint chính xác vào .gitleaksignore. Kiểm lại dải commit với cấu hình #44 không còn cảnh báo. Các rule quét vẫn hoạt động trên nội dung khác.
+
+- Quét mặc định Gitleaks 8.24.3 trên 399 file log cấp job thuộc 170 run hoàn tất, tải đủ 170/170. Đã đối chiếu cả 113 vị trí generic-api-key với tham chiếu GHCR dùng tag 40-hex. 84 lần khớp object commit trong clone; 29 lần là tag lịch sử chưa có object cục bộ. Không có cảnh báo nào nằm ngoài tag image. Không đưa log thô hoặc dữ liệu xác thực vào Git.
+- Image còn giữ trên Desktop gồm brewlite-local-{api,web}, brewlite-{api,web}, brewlite-pr38-{api,web}, brewlite-rehearsal-{api,web}, brewlite-sim (v1-stable/v2-broken), test-api/test-web:prod, postgres:16-alpine và caddy:2-alpine. Các image không rõ chủ sở hữu tiếp tục được giữ. Chỉ ba service LOCAL chạy thường trực.

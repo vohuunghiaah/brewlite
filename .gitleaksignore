@@ -1,0 +1,4 @@
+# DEPLOY_RUNNING manifest digest for the API image in GitHub Actions run 45049566612.
+# These fingerprints identify two historical lines quoting the same public SHA-256.
+204cdc1651d6caaad498e1f2d1e3f7fa932c0a28:docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md:generic-api-key:58
+3dcbeca42e93d3f7dfcb8fd0a39ac61708592b8b:docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md:generic-api-key:58
