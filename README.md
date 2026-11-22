@@ -43,8 +43,8 @@
   - **Task 5:** Triển khai trọn vẹn Sprint 2 MVP, kiểm soát đồng thời lạc quan (OCC), kiểm thử tích hợp & E2E, nâng cấp giao diện UI V2 (Homepage cao cấp, danh mục 15 đồ uống, huy hiệu tồn kho thời gian thực), tự động hóa CD, quét bảo mật Gitleaks, triển khai thành công lên AWS Lightsail và hoàn tất bàn giao.
 
 ### 2. Các tính năng nổi bật:
-- **Trang chủ thương hiệu cao cấp (Rich UI V2 Homepage):** Hero banner, bộ lọc danh mục đồ uống, câu chuyện hạt cà phê nguyên bản, đánh giá khách hàng và thiết kế responsive đa nền tảng.
-- **Thực đơn mở rộng 15 sản phẩm (Expanded Catalog):** Cung cấp 15 loại đồ uống đa dạng (Cà phê pha máy, cà phê truyền thống, trà trái cây thanh nhiệt, trà sữa cao cấp).
+- **Trang chủ thương hiệu cao cấp (Rich UI V2 Homepage):** Hero banner, bộ lọc danh mục đồ uống, câu chuyện hạt cà phê nguyên bản, đánh giá khách hàng và thiết kế responsive thích ứng trên cả Desktop lẫn Mobile.
+- **Thực đơn mở rộng 15 sản phẩm (Expanded Catalog):** Cung cấp 15 loại đồ uống chuẩn hóa theo `TARGET_CATALOG` (Cà phê Latte, Trà đào, Cacao sữa, Nước suối, Cà phê đen đá, Cà phê sữa đá, Bạc xỉu, Espresso, Americano đá, Cappuccino, Caramel Macchiato, Cold Brew cam, Matcha Latte, Trà vải, Trà chanh mật ong).
 - **Huy hiệu tồn kho động (Stock Badges):** Hiển thị trực quan trạng thái `"Còn X ly"`, `"Sắp hết · Còn X ly"`, hoặc `"Tạm hết hàng"`.
 - **Tùy biến món uống (Customizer Modal):** Tùy chọn kích cỡ (Size M / Size L), tỷ lệ đường ($0\% - 100\%$), tỷ lệ đá ($0\% - 100\%$) và topping đi kèm.
 - **Giỏ hàng trượt thông minh (Sticky Cart Drawer):** Tính toán tức thì, đối soát an toàn với giá từ cơ sở dữ liệu backend.
@@ -71,6 +71,15 @@ flowchart TD
     Proxy -->|Reverse Proxy /*| Client
     API -->|TypeORM Connection Pool| DB
 ```
+
+> [!IMPORTANT]
+> **Phân định rõ Định Tuyến API Cục Bộ và Production:**
+> - **Khi gọi API trực tiếp trên môi trường Local (không qua Caddy):** Backend NestJS **không đặt global prefix `/api`**. Do đó, các endpoint cục bộ nằm trực tiếp tại gốc:
+>   - Health Check: `http://localhost:3001/health`
+>   - Danh mục sản phẩm: `http://localhost:3001/products`
+> - **Khi gọi API trên môi trường Production (qua Caddy Reverse Proxy):** Caddy lắng nghe tại `/api/*`, tự động bóc tách (strip) tiền tố `/api` bằng directive `handle_path /api/*` rồi chuyển tiếp vào cổng `3001` của NestJS:
+>   - Health Check: `https://brewlite.click/api/health`
+>   - Danh mục sản phẩm: `https://brewlite.click/api/products`
 
 ### 2. Bảng Ngăn Xếp Công Nghệ (Technology Stack)
 
@@ -115,7 +124,8 @@ git clone https://github.com/vohuunghiaah/brewlite.git
 cd brewlite
 ```
 
-### Bước 2: Thiết lập biến môi trường
+### Bước 2: Thiết lập biến môi trường & Khởi tạo JWT Secret
+Sao chép tệp cấu hình mẫu:
 - **Trên Windows PowerShell:**
   ```powershell
   Copy-Item .env.example .env
@@ -125,8 +135,18 @@ cd brewlite
   cp .env.example .env
   ```
 
-> [!TIP]
-> Tệp `.env.example` đã được cấu hình sẵn các giá trị mặc định tối ưu cho Docker Compose với `DATABASE_HOST=db`. Bạn không cần chỉnh sửa bất kỳ biến nào cho lần chạy đầu tiên.
+> [!IMPORTANT]
+> **Khởi tạo `JWT_SECRET` cho Môi trường Development:**
+> Backend NestJS áp dụng cơ chế fail-closed: API sẽ từ chối khởi động nếu `JWT_SECRET` bị bỏ trống, có độ dài dưới 32 bytes, hoặc giữ nguyên chuỗi mặc định không an toàn.
+> Hãy sinh một khóa ngẫu nhiên an toàn (64 ký tự hex) bằng câu lệnh sau:
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+> ```
+> Sau đó mở tệp `.env` vừa tạo và điền giá trị vừa sinh vào dòng:
+> ```env
+> JWT_SECRET=paste_your_generated_32_bytes_random_secret_here
+> ```
+> *(Lưu ý: Tuyệt đối không sử dụng khóa bí mật của Production và không commit tệp `.env` chứa secret vào Git)*.
 
 ### Bước 3: Khởi chạy trọn gói bằng Docker Compose
 ```bash
@@ -144,19 +164,22 @@ Kiểm tra danh sách các container đang hoạt động:
 ```bash
 docker compose ps
 ```
+Xác nhận cả 3 dịch vụ (`brewlite-db`, `brewlite-api`, `brewlite-web`) đều ở trạng thái `healthy` hoặc `running (Up)`.
 
 Truy cập và trải nghiệm các dịch vụ:
 - **Frontend Storefront:** [http://localhost:3000](http://localhost:3000)
 - **Thực đơn trực tuyến (Menu):** [http://localhost:3000/menu](http://localhost:3000/menu)
-- **Kiểm tra sức khỏe Backend (Health Check):** [http://localhost:3001/api/health](http://localhost:3001/api/health)
-- **Danh mục đồ uống API:** [http://localhost:3001/api/products](http://localhost:3001/api/products)
+- **Kiểm tra sức khỏe Backend (Health Check):** [http://localhost:3001/health](http://localhost:3001/health) *(Trả về: `{"status":"ok"}`)*
+- **Danh mục đồ uống API:** [http://localhost:3001/products](http://localhost:3001/products) *(Trả về danh sách 15 sản phẩm)*
 
 ### Bước 5: Dừng hệ thống
 Khi muốn dừng hệ thống và bảo toàn dữ liệu trong volume:
 ```bash
 docker compose down
 ```
-*(Nếu muốn xóa sạch toàn bộ cơ sở dữ liệu để chạy lại từ đầu: `docker compose down -v`)*.
+
+> [!WARNING]
+> Cờ `-v` (`docker compose down -v`) sẽ **XÓA TOÀN BỘ** dữ liệu trong database volume `postgres_data`. Chỉ dùng cờ `-v` trên môi trường local development khi bạn thực sự muốn reset toàn bộ cơ sở dữ liệu thử nghiệm để khởi tạo lại từ đầu. **TUYỆT ĐỐI KHÔNG BAO GIỜ** sử dụng cờ `-v` trên máy chủ Production.
 
 ---
 
@@ -171,13 +194,17 @@ docker compose up -d db
 ```
 
 ### Bước 2: Cấu hình biến môi trường cục bộ
-Mở tệp `.env` vừa tạo và cập nhật biến `DATABASE_HOST`:
+Mở tệp `.env` tại thư mục gốc:
+1. Cập nhật `DATABASE_HOST=localhost` (thay cho giá trị `db` của mạng nội bộ Compose).
+2. Đảm bảo `JWT_SECRET` đã được điền chuỗi ngẫu nhiên $\ge 32$ bytes.
+
 ```env
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 DATABASE_NAME=brewlite
 DATABASE_USER=brewlite
 DATABASE_PASSWORD=brewlite_dev_password
+JWT_SECRET=your_generated_random_secret_at_least_32_bytes_long
 ```
 
 ### Bước 3: Cài đặt và khởi chạy Backend API
@@ -303,7 +330,7 @@ Hệ thống triển khai theo kiến trúc Single-VM an toàn tuân thủ [ADR-
 ### 1. Quy trình CI/CD GitHub Actions:
 - **Workflow Quality Gates (`.github/workflows/quality.yml`):**
   - Kích hoạt tự động trên mỗi Pull Request và commit vào nhánh `main`.
-  - Chạy song song: Quét bảo mật Gitleaks Secret Scanner, kiểm tra Linting, Unit/Integration Tests, Catalog Rollback Tests, và Build artifacts.
+  - Chạy song song: Quét bảo mật Gitleaks Secret Scanner (cả phạm vi PR và full history audit), kiểm tra Linting, Unit/Integration Tests, Catalog Rollback Tests, và Build artifacts.
 - **Workflow Continuous Delivery (`.github/workflows/deploy.yml`):**
   1. **Bước 1 — Quality Gate:** Thực thi lại toàn bộ bộ kiểm thử nghiệm thu.
   2. **Bước 2 — Build & Publish:** Đóng gói và đẩy Docker images gắn commit SHA lên GitHub Container Registry (`ghcr.io/vohuunghiaah/brewlite-api` và `brewlite-web`).
@@ -336,6 +363,11 @@ Cho phép mở rộng danh mục đồ uống từ 4 lên 15 món mà không là
   ```bash
   node scripts/sync-catalog.mjs --apply
   ```
+- **Thực thi trên Production thông qua Docker Compose:**
+  ```bash
+  docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --dry-run
+  docker compose -f docker-compose.prod.yml run --rm --no-deps api node scripts/sync-catalog.mjs --apply
+  ```
 - **Bảng kiểm toán `catalog_deployments`:**
   - Tự động lưu trữ `deployment_id`, danh sách các product ID mới được thêm, timestamp và trạng thái (`APPLIED`).
   - Được thực hiện trong cùng một transaction với thao tác INSERT sản phẩm, bảo đảm tính toàn vẹn 100%.
@@ -344,32 +376,56 @@ Cho phép mở rộng danh mục đồ uống từ 4 lên 15 món mà không là
 
 ## J. Chiến Lược Sao Lưu & Khôi Phục Hai Lớp (Backup & Two-Phase Rollback)
 
-### 1. Sao lưu Cơ sở Dữ liệu (Database Backup):
-```bash
-node scripts/backup-db.mjs
-```
-Tạo bản snapshot SQL tại thư mục `backups/db-backup-<timestamp>.sql`.
+Hệ thống phân định rạch ròi giữa 3 quy trình khôi phục:
 
-### 2. Khôi phục Phiên bản Ứng dụng (Application Rollback):
+### 1. Sao lưu & Phục hồi Cơ sở Dữ liệu (Database Backup & Disaster Recovery):
+- **Tạo bản sao lưu trước khi phát hành:**
+  ```bash
+  node scripts/backup-db.mjs
+  ```
+  Tạo bản snapshot SQL tại thư mục `backups/db-backup-<timestamp>.sql` với quyền tệp `0600`.
+- **Phục hồi Cơ sở Dữ liệu (Disaster Recovery):**
+  ```bash
+  node scripts/restore-db.mjs --confirm-restore-database --container <container_name> --db <db_name> --backup-file <path_to_sql>
+  ```
+  > [!CAUTION]
+  > Thao tác phục hồi cơ sở dữ liệu sẽ ghi đè toàn bộ dữ liệu hiện tại bằng bản snapshot sao lưu. Lệnh này yêu cầu cờ bắt buộc `--confirm-restore-database` và chỉ được kích hoạt trong trường hợp thảm họa theo [Sổ Tay Vận Hành SOP-03](docs/deployment/production-release-runbook.md).
+
+### 2. Khôi phục Phiên bản Ứng dụng (Application Container Rollback):
 Khi phiên bản container mới gặp sự cố hiệu năng hoặc lỗi runtime:
 ```bash
 node scripts/rollback.mjs
 ```
 - Tự động nạp lại digest container phiên bản tốt gần nhất từ tệp `/home/ubuntu/app/.deployment-state.json`.
-- Tuyệt đối bảo toàn volume dữ liệu `postgres_data`.
+- **Tuyệt đối bảo toàn volume dữ liệu `postgres_data`**, không chạy bất kỳ lệnh down migration phá hủy nào.
 
 ### 3. Hoàn tác Danh mục Dữ liệu An toàn (`scripts/safe-catalog-rollback.mjs`):
-Khi cần hoàn tác các sản phẩm đồ uống đã đưa vào hệ thống:
-- **Chế độ Compensate (Khuyến nghị cho Production):**
-  ```bash
-  node scripts/safe-catalog-rollback.mjs --deployment-id=<id> --mode=compensate
-  ```
-  Đặt `isAvailable=false` cho các món thuộc lần sync, giữ nguyên tồn kho và bảo vệ 100% các đơn hàng lịch sử tham chiếu đến sản phẩm.
-- **Chế độ Prune (Dành cho môi trường Dev / Staging):**
-  ```bash
-  node scripts/safe-catalog-rollback.mjs --deployment-id=<id> --mode=prune
-  ```
-  Áp dụng nguyên tắc **All-or-Nothing**: Từ chối xóa toàn bộ và rollback ngay lập tức nếu phát hiện bất kỳ món nào đã phát sinh đơn hàng trong `order_items`.
+Khi cần hoàn tác các sản phẩm đồ uống đã đưa vào hệ thống theo đúng mã `deployment_id` từ bảng audit `catalog_deployments`:
+- **Chế độ Compensate (Bồi hoàn an toàn — Khuyến nghị chính thức cho Production):**
+  - Chạy thử nghiệm đối soát:
+    ```bash
+    node scripts/safe-catalog-rollback.mjs --dry-run --deployment-id=<id>
+    ```
+  - Áp dụng bồi hoàn:
+    ```bash
+    node scripts/safe-catalog-rollback.mjs --apply --deployment-id=<id> --mode=compensate
+    ```
+  - Hoặc bồi hoàn đợt sync gần nhất có xác nhận ID:
+    ```bash
+    node scripts/safe-catalog-rollback.mjs --apply --manifest-latest --confirm-deployment=<id> --mode=compensate
+    ```
+  *(Cơ chế: Đặt `isAvailable=false`, giữ nguyên số lượng tồn kho gốc, tăng version OCC, bảo vệ nguyên vẹn 100% các đơn hàng lịch sử tham chiếu)*.
+
+- **Chế độ Prune (Xóa vật lý món chưa tham chiếu — Dành cho Dev/Staging):**
+  - Chạy thử nghiệm:
+    ```bash
+    node scripts/safe-catalog-rollback.mjs --dry-run --deployment-id=<id> --mode=prune
+    ```
+  - Áp dụng xóa thật (BẮT BUỘC cờ `--confirm`):
+    ```bash
+    node scripts/safe-catalog-rollback.mjs --apply --deployment-id=<id> --mode=prune --confirm
+    ```
+  *(Cơ chế: Áp dụng nguyên tắc **All-or-Nothing**, từ chối xóa và rollback ngay lập tức nếu phát hiện bất kỳ món nào đã phát sinh đơn hàng)*.
 
 ---
 
@@ -389,21 +445,25 @@ Hệ thống BrewLite đang vận hành thực tế trên đám mây AWS Lightsa
 
 ## L. Xử Lý Sự Cố Thường Gặp (Troubleshooting)
 
-### 1. Lỗi xung đột cổng mạng (Port Already in Use):
-- **Hiện tượng:** Docker báo lỗi không thể lắng nghe tại cổng `3000`, `3001`, hoặc `5432`.
-- **Khắc phục:**
-  - Trên Windows: Chạy `netstat -ano | findstr :3000` để tìm PID và tắt tiến trình xung đột bằng `taskkill /PID <PID> /F`.
-  - Trên Linux/macOS: Chạy `lsof -i :3000` và `kill -9 <PID>`.
+### 1. Lỗi khởi động API: `Set JWT_SECRET to a generated secret of at least 32 bytes`:
+- **Nguyên nhân:** Tệp `.env` chưa được gán biến `JWT_SECRET` hoặc chuỗi secret dưới 32 bytes.
+- **Khắc phục:** Chạy `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` và gán chuỗi kết quả vào biến `JWT_SECRET` trong `.env`.
 
 ### 2. Lỗi kết nối cơ sở dữ liệu `ENOTFOUND db`:
 - **Nguyên nhân:** Khởi chạy Backend NestJS trực tiếp trên máy trạm nhưng vẫn giữ nguyên `DATABASE_HOST=db` của Docker Compose.
 - **Khắc phục:** Mở tệp `.env` tại thư mục gốc và đổi thành `DATABASE_HOST=localhost`.
 
-### 3. Lỗi từ chối quyền thực thi PowerShell:
+### 3. Lỗi xung đột cổng mạng (Port Already in Use):
+- **Hiện tượng:** Docker báo lỗi không thể lắng nghe tại cổng `3000`, `3001`, hoặc `5432`.
+- **Khắc phục:**
+  - Trên Windows: Chạy `netstat -ano | findstr :3000` để tìm PID và tắt tiến trình xung đột bằng `taskkill /PID <PID> /F`.
+  - Trên Linux/macOS: Chạy `lsof -i :3000` và `kill -9 <PID>`.
+
+### 4. Lỗi từ chối quyền thực thi PowerShell:
 - **Hiện tượng:** `File ... cannot be loaded because running scripts is disabled on this system`.
 - **Khắc phục:** Mở PowerShell với quyền Administrator và chạy `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, hoặc gọi trực tiếp bằng `node <tệp>` / `npm.cmd`.
 
-### 4. Lỗi phân quyền quản trị khi đồng bộ danh mục:
+### 5. Lỗi phân quyền quản trị khi đồng bộ danh mục:
 - **Hiện tượng:** `sync-catalog` báo lỗi `403 Forbidden: Catalog admin key required`.
 - **Khắc phục:** Cung cấp biến môi trường `CATALOG_ADMIN_KEY` hợp lệ khi chạy lệnh sync trên môi trường production.
 
