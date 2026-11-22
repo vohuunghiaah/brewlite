@@ -140,7 +140,7 @@ export default function CartDrawer({
         )}
 
         {/* Pending Order Banner (Section D) */}
-        {pendingOrder && (
+        {pendingOrder && pendingOrder.status === "PENDING" && (
           <div role="status" className="m-4 mb-0 bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] p-3 rounded-2xl text-xs font-semibold">
             Đặt hàng thành công! Mã đơn hàng: #{pendingOrder.id}. Trạng thái: Chờ thanh toán. Giỏ hàng được giữ nguyên để tiến hành thanh toán.
             {onNewOrder && (
@@ -386,7 +386,7 @@ export default function CartDrawer({
             </div>
 
             {/* Action buttons */}
-            {pendingOrder && (
+            {pendingOrder && (pendingOrder.status === "PENDING" || pendingOrder.status === "PAYMENT_FAILED") && (
               <button
                 type="button"
                 onClick={onOpenPaymentModal}

@@ -48,6 +48,7 @@ interface OrderHistoryProps {
   onOpenLogin: () => void;
   onReorder: (order: OrderHistoryItem) => void;
   onViewConfirmationTicket: (order: OrderHistoryItem) => void;
+  onPayOrder?: (order: OrderHistoryItem) => void;
   reorderNotice?: string;
   onGoMenu?: () => void;
 }
@@ -61,6 +62,7 @@ export default function OrderHistory({
   onOpenLogin,
   onReorder,
   onViewConfirmationTicket,
+  onPayOrder,
   reorderNotice,
   onGoMenu,
 }: OrderHistoryProps) {
@@ -439,6 +441,17 @@ export default function OrderHistory({
                       >
                         Xem vé xác nhận {orderCode}
                       </button>
+
+                      {/* Pay button for PENDING orders */}
+                      {(order.status === "PENDING" || order.status === "PAYMENT_FAILED") && onPayOrder && (
+                        <button
+                          type="button"
+                          onClick={() => onPayOrder(order)}
+                          className="bg-[#C28D58] hover:bg-[#3D261D] text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm active:scale-95 flex items-center gap-1"
+                        >
+                          <span>Thanh toán</span>
+                        </button>
+                      )}
 
                       {/* Reorder button */}
                       {(order.status === "COMPLETED" || order.status === "CANCELLED" || order.status === "PAID") && (

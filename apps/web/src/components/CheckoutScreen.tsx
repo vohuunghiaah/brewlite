@@ -327,12 +327,15 @@ export default function CheckoutScreen({
                 </text>
               </svg>
 
-              <div className="mt-2 text-center">
+              <div className="mt-2 text-center space-y-1">
                 <p className="text-[11px] font-bold text-[#3D261D]">
-                  Quét mã để thanh toán {formatVND(totalAmount)}
+                  Mã QR mô phỏng thanh toán cashless · Đơn #{orderId}
+                </p>
+                <p className="text-[10px] font-bold text-[#DC2626] bg-red-50 py-0.5 px-2 rounded-md inline-block border border-red-100">
+                  QR minh họa — không dùng để chuyển khoản thực tế
                 </p>
                 <p className="text-[10px] text-[#6B4235]">
-                  Chủ TK: BREWLITE COFFEE · Nội dung: Đơn #{orderId}
+                  Số tiền: {formatVND(totalAmount)} · Nhấn nút &quot;Xác nhận thanh toán&quot; bên dưới để hoàn tất
                 </p>
               </div>
             </div>

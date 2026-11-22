@@ -37,6 +37,14 @@ interface OrderResponse {
   message?: string;
 }
 
+interface PendingOrderState {
+  id: number;
+  status: string;
+  totalAmount?: number;
+  items?: CartItem[];
+  isHistorical?: boolean;
+}
+
 interface ModalState {
   selectedProduct: Product | null;
   loadingDetail: boolean;
@@ -108,7 +116,12 @@ export default function MenuPage() {
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderError, setOrderError] = useState("");
-  const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string; totalAmount?: number } | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<PendingOrderState | null>(null);
+
+  // Auto-scroll refs
+  const lastNavTimeToHome = useRef(0);
+  const hasBeenAtTopOfHome = useRef(false);
+  const touchStartY = useRef<number | null>(null);
 
   // Cashless Payment state
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
@@ -186,7 +199,11 @@ export default function MenuPage() {
     if (window.location.hash !== hash) window.history.pushState(null, "", hash);
     setActiveNav(view);
     if (view === "home") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      lastNavTimeToHome.current = Date.now() + 800;
+      hasBeenAtTopOfHome.current = true;
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+      }
     }
     if (view === "orders") {
       setIsCartOpen(false);
@@ -447,7 +464,13 @@ export default function MenuPage() {
       const orderId = data.id;
       const orderStatus = data.status || "PENDING";
       if (orderId !== undefined) {
-        setPendingOrder({ id: orderId, status: orderStatus, totalAmount: totalCartPrice });
+        setPendingOrder({
+          id: orderId,
+          status: orderStatus,
+          totalAmount: totalCartPrice,
+          items: [...cartItems],
+          isHistorical: false,
+        });
         setShowCheckoutForm(false);
       }
 
@@ -483,6 +506,13 @@ export default function MenuPage() {
       setPaymentIdempotencyKey(key);
     }
 
+    const paymentAmount =
+      pendingOrder.totalAmount !== undefined
+        ? pendingOrder.totalAmount
+        : pendingOrder.isHistorical
+        ? 0
+        : totalCartPrice;
+
     try {
       const res = await fetch(`${API_URL}/payments`, {
         method: "POST",
@@ -493,7 +523,7 @@ export default function MenuPage() {
         },
         body: JSON.stringify({
           orderId: pendingOrder.id,
-          amount: pendingOrder.totalAmount || totalCartPrice,
+          amount: paymentAmount,
           method: selectedPaymentMethod,
           idempotencyKey: key,
           mockOutcome: testMode,
@@ -540,22 +570,30 @@ export default function MenuPage() {
         throw new Error("Không nhận được mã chuông định danh hợp lệ từ máy chủ.");
       }
 
+      const ticketItems =
+        pendingOrder.isHistorical && pendingOrder.items && pendingOrder.items.length > 0
+          ? pendingOrder.items
+          : [...cartItems];
+
       setBuzzerTicket({
         orderId: pendingOrder.id,
         orderCode: buzzerCode,
         status: paidOrder.status || "PAID",
         pickupMethod,
         tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
-        totalAmount: pendingOrder.totalAmount || totalCartPrice,
-        items: [...cartItems],
+        totalAmount: paymentAmount,
+        items: ticketItems,
       });
 
-      // Xóa sạch giỏ hàng theo FR-06
-      setCartItems([]);
+      // Xóa giỏ hàng phiên hiện tại nếu đơn thanh toán là đơn hiện tại, không xóa giỏ hàng nếu là đơn cũ
+      if (!pendingOrder.isHistorical) {
+        setCartItems([]);
+      }
       setIsCartOpen(false);
       setIsBuzzerOpen(true);
       setIsPaymentOpen(false);
-      setPendingOrder({ id: pendingOrder.id, status: "PAID", totalAmount: pendingOrder.totalAmount || totalCartPrice });
+      // Xóa pendingOrder để giỏ hàng không hiển thị banner chờ thanh toán nữa (FIX-09)
+      setPendingOrder(null);
       setPaymentIdempotencyKey("");
       showToast("Thanh toán thành công! ☕", "success");
 
@@ -744,6 +782,82 @@ export default function MenuPage() {
     setIsBuzzerOpen(true);
   }
 
+  async function handlePayHistoricalOrder(orderId: number, expectedAmount?: number) {
+    if (!authToken) {
+      openAuthModal("login", false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+        cache: "no-store",
+      });
+
+      if (res.status === 401) {
+        authController.clearSession();
+        openAuthModal("login", false);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error("Không thể kiểm tra thông tin đơn hàng từ hệ thống.");
+      }
+
+      const freshOrder: OrderHistoryItem = await res.json();
+      if (!freshOrder || freshOrder.id !== orderId) {
+        throw new Error("Thông tin đơn hàng không hợp lệ.");
+      }
+
+      if (freshOrder.status !== "PENDING" && freshOrder.status !== "PAYMENT_FAILED") {
+        showToast(
+          `Đơn hàng #${orderId} hiện ở trạng thái ${freshOrder.status}, không thể thanh toán tiếp.`,
+          "error"
+        );
+        if (authToken) void fetchOrders();
+        return;
+      }
+
+      const mappedItems: CartItem[] = (freshOrder.items || []).map((i) => ({
+        key: `hist-pay-${freshOrder.id}-${i.id}`,
+        productId: i.productId,
+        productName: i.productName,
+        basePrice: Number(i.unitPrice),
+        size: i.size,
+        toppings: i.toppings || [],
+        note: i.note || "",
+        unitPrice: Number(i.unitPrice),
+        quantity: i.quantity,
+        subtotal: Number(i.subtotal),
+      }));
+
+      const authoritativeAmount = Number(freshOrder.totalAmount) || expectedAmount || 0;
+
+      setPendingOrder({
+        id: freshOrder.id,
+        status: freshOrder.status,
+        totalAmount: authoritativeAmount,
+        items: mappedItems,
+        isHistorical: true,
+      });
+
+      if (freshOrder.pickupMethod === "AT_TABLE") {
+        setPickupMethod("AT_TABLE");
+        if (freshOrder.tableNumber) setTableNumber(freshOrder.tableNumber);
+      } else {
+        setPickupMethod("AT_COUNTER");
+      }
+
+      setPaymentIdempotencyKey(generatePaymentIdempotencyKey());
+      setPaymentError("");
+      setIsBuzzerOpen(false);
+      setIsPaymentOpen(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Lỗi khi chuẩn bị thanh toán đơn hàng.";
+      showToast(msg, "error");
+    }
+  }
+
   const ticketId = isBuzzerOpen ? buzzerTicket?.orderId : undefined;
   useEffect(() => {
     if (!ticketId || !authToken) return;
@@ -885,7 +999,14 @@ export default function MenuPage() {
       }
       else if (hash === "#account") setActiveNav("account");
       else if (hash === "#menu") setActiveNav("menu");
-      else if (hash === "#top") setActiveNav("home");
+      else if (hash === "#top") {
+        lastNavTimeToHome.current = Date.now() + 800;
+        hasBeenAtTopOfHome.current = true;
+        if (typeof window !== "undefined") {
+          window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+        }
+        setActiveNav("home");
+      }
       else setActiveNav(initialView);
     }
     handleLocation();
@@ -899,28 +1020,58 @@ export default function MenuPage() {
 
   // Auto-scroll transition: from Home to Menu when scrolling down
   useEffect(() => {
-    if (activeNav !== "home") return;
+    if (activeNav !== "home") {
+      hasBeenAtTopOfHome.current = false;
+      return;
+    }
     let triggered = false;
     const triggerMenu = () => {
       if (triggered) return;
+      if (Date.now() < lastNavTimeToHome.current) return;
       triggered = true;
       navigate("menu");
     };
+
     const handleScroll = () => {
-      if (window.scrollY > 60) {
+      if (typeof window === "undefined") return;
+      if (Date.now() < lastNavTimeToHome.current) return;
+      if (window.scrollY <= 25) {
+        hasBeenAtTopOfHome.current = true;
+      }
+      if (window.scrollY > 80 && hasBeenAtTopOfHome.current) {
         triggerMenu();
       }
     };
+
     const handleWheel = (e: WheelEvent) => {
-      if (e.deltaY > 40) {
+      if (Date.now() < lastNavTimeToHome.current) return;
+      if (e.deltaY > 30) {
         triggerMenu();
       }
     };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0]?.clientY ?? null;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (touchStartY.current === null || Date.now() < lastNavTimeToHome.current) return;
+      const currentY = e.touches[0]?.clientY ?? 0;
+      const deltaY = touchStartY.current - currentY;
+      if (deltaY > 45) {
+        triggerMenu();
+      }
+    };
+
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("wheel", handleWheel, { passive: true });
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
     return () => {
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
     };
   }, [activeNav]);
 
@@ -1023,6 +1174,7 @@ export default function MenuPage() {
             onOpenLogin={() => openAuthModal("login")}
             onReorder={handleReorder}
             onViewConfirmationTicket={openOrderTicket}
+            onPayOrder={(order) => void handlePayHistoricalOrder(order.id, Number(order.totalAmount))}
             reorderNotice={reorderNotice}
             onGoMenu={() => navigate("menu")}
           />
@@ -1141,10 +1293,7 @@ export default function MenuPage() {
             navigate("menu");
           }}
           onPayPendingOrder={(orderId, amount) => {
-            setIsBuzzerOpen(false);
-            setIsCartOpen(false);
-            setPendingOrder({ id: orderId, status: "PENDING", totalAmount: amount });
-            setIsPaymentOpen(true);
+            void handlePayHistoricalOrder(orderId, amount);
           }}
         />
       )}

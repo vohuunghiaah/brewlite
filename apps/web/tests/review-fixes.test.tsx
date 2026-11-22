@@ -5,7 +5,7 @@ import CartDrawer from '../src/components/CartDrawer';
 import CheckoutScreen from '../src/components/CheckoutScreen';
 import OrderConfirmation from '../src/components/OrderConfirmation';
 import AccountScreen from '../src/components/AccountScreen';
-import { OrderHistoryItem } from '../src/components/OrderHistory';
+import OrderHistory, { OrderHistoryItem } from '../src/components/OrderHistory';
 import MenuScreen, { getProductImage, ProductCard, Product } from '../src/components/MenuScreen';
 import { CartItem } from '../src/app/menu/session-cart';
 
@@ -477,7 +477,7 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
       expect(statusBadge.textContent).not.toContain('(PAID)');
     });
 
-    it('CheckoutScreen renders simulated QR code for cashless payment', () => {
+    it('CheckoutScreen renders simulated QR code for cashless payment with non-payable notice', () => {
       const { container } = render(
         <CheckoutScreen
           isOpen={true}
@@ -499,7 +499,9 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
 
       // Verify QR Code svg exists and mentions simulated Cashless
       expect(screen.getByText(/Mã VietQR \/ Napas247 \(Mô phỏng\)/i)).toBeInTheDocument();
-      expect(screen.getByText(/Quét mã để thanh toán 58\.000\s*đ/i)).toBeInTheDocument();
+      expect(screen.getByText(/Mã QR mô phỏng thanh toán cashless · Đơn #100/i)).toBeInTheDocument();
+      expect(screen.getByText(/QR minh họa — không dùng để chuyển khoản thực tế/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Chủ TK: BREWLITE COFFEE/i)).not.toBeInTheDocument();
       const svg = container.querySelector('svg');
       expect(svg).toBeInTheDocument();
     });
@@ -588,6 +590,341 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
       const continueBtn = screen.getByRole('button', { name: /Tiếp tục mua hàng/i });
       fireEvent.click(continueBtn);
       expect(handleContinue).toHaveBeenCalled();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // FIX-08: Historical PENDING Orders Payment & Cart Independence
+  // --------------------------------------------------------------------------
+  describe('FIX-08: Historical PENDING Orders Payment & Cart Isolation', () => {
+    const historicalOrder: OrderHistoryItem = {
+      id: 205,
+      orderCode: '#BL-0205',
+      pickupMethod: 'AT_COUNTER',
+      tableNumber: null,
+      userId: 1,
+      customerName: 'Nguyen Van A',
+      customerPhone: '0901234567',
+      note: null,
+      totalAmount: 70000,
+      status: 'PENDING',
+      createdAt: new Date().toISOString(),
+      items: [
+        {
+          id: 1,
+          productId: 1,
+          productName: 'Cà phê Phin Sữa Tươi',
+          size: 'SMALL',
+          toppings: [],
+          note: null,
+          quantity: 2,
+          unitPrice: 35000,
+          subtotal: 70000,
+        },
+      ],
+    };
+
+    it('OrderHistory renders "Thanh toán" button for PENDING orders and triggers onPayOrder', () => {
+      const handlePayOrder = jest.fn();
+      render(
+        <OrderHistory
+          orders={[historicalOrder]}
+          loading={false}
+          isAuthenticated={true}
+          onOpenLogin={jest.fn()}
+          onReorder={jest.fn()}
+          onViewConfirmationTicket={jest.fn()}
+          onPayOrder={handlePayOrder}
+        />
+      );
+
+      const payBtn = screen.getByRole('button', { name: /Thanh toán/i });
+      expect(payBtn).toBeInTheDocument();
+      fireEvent.click(payBtn);
+      expect(handlePayOrder).toHaveBeenCalledTimes(1);
+      expect(handlePayOrder).toHaveBeenCalledWith(historicalOrder);
+    });
+
+    it('OrderHistory does NOT render "Thanh toán" button for PAID, COMPLETED, or CANCELLED orders', () => {
+      const nonPayableOrders: OrderHistoryItem[] = [
+        { ...historicalOrder, id: 301, status: 'PAID' },
+        { ...historicalOrder, id: 302, status: 'COMPLETED' },
+        { ...historicalOrder, id: 303, status: 'CANCELLED' },
+      ];
+
+      const { rerender } = render(
+        <OrderHistory
+          orders={[nonPayableOrders[0]]}
+          loading={false}
+          isAuthenticated={true}
+          onOpenLogin={jest.fn()}
+          onReorder={jest.fn()}
+          onViewConfirmationTicket={jest.fn()}
+          onPayOrder={jest.fn()}
+        />
+      );
+
+      // In "Đang xử lý" tab (PAID is in processing tab)
+      expect(screen.queryByRole('button', { name: /^Thanh toán$/i })).not.toBeInTheDocument();
+
+      // Switch to completed
+      rerender(
+        <OrderHistory
+          orders={[nonPayableOrders[1]]}
+          loading={false}
+          isAuthenticated={true}
+          onOpenLogin={jest.fn()}
+          onReorder={jest.fn()}
+          onViewConfirmationTicket={jest.fn()}
+          onPayOrder={jest.fn()}
+        />
+      );
+      const completedTab = screen.getByRole('tab', { name: /Hoàn tất/i });
+      fireEvent.click(completedTab);
+      expect(screen.queryByRole('button', { name: /^Thanh toán$/i })).not.toBeInTheDocument();
+    });
+
+    it('OrderConfirmation delegates to onPayPendingOrder with orderId and authoritative total amount', () => {
+      const handlePayPendingOrder = jest.fn();
+      render(
+        <OrderConfirmation
+          isOpen={true}
+          onClose={jest.fn()}
+          orderId={205}
+          orderCode="BL-0205"
+          status="PENDING"
+          pickupMethod="AT_COUNTER"
+          totalAmount={70000}
+          items={[]}
+          onViewHistory={jest.fn()}
+          onContinueShopping={jest.fn()}
+          onPayPendingOrder={handlePayPendingOrder}
+        />
+      );
+
+      const payBtn = screen.getByRole('button', { name: /Tiến hành thanh toán đơn #205/i });
+      expect(payBtn).toBeInTheDocument();
+      fireEvent.click(payBtn);
+      expect(handlePayPendingOrder).toHaveBeenCalledWith(205, 70000);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // FIX-09: Paid Order Must Not Appear Pending in Cart
+  // --------------------------------------------------------------------------
+  describe('FIX-09: Paid Order Must Not Appear Pending in Cart', () => {
+    const mockCartItems: CartItem[] = [
+      {
+        key: 'item-1',
+        productId: 1,
+        productName: 'Cà phê Phin Đen',
+        basePrice: 25000,
+        size: 'SMALL',
+        toppings: [],
+        note: '',
+        unitPrice: 25000,
+        quantity: 1,
+        subtotal: 25000,
+      },
+    ];
+
+    it('does NOT render pending banner or payment action when pendingOrder is null', () => {
+      render(
+        <CartDrawer
+          isOpen={true}
+          onClose={jest.fn()}
+          cartItems={mockCartItems}
+          onUpdateQuantity={jest.fn()}
+          onRemoveItem={jest.fn()}
+          onClearCart={jest.fn()}
+          showCheckoutForm={false}
+          onStartCheckout={jest.fn()}
+          customerName=""
+          onCustomerNameChange={jest.fn()}
+          customerPhone=""
+          onCustomerPhoneChange={jest.fn()}
+          onProceedOrder={jest.fn()}
+          isCreatingOrder={false}
+          pendingOrder={null}
+          onOpenPaymentModal={jest.fn()}
+        />
+      );
+
+      expect(screen.queryByText(/Trạng thái: Chờ thanh toán/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Tiếp tục thanh toán/i })).not.toBeInTheDocument();
+    });
+
+    it('does NOT render pending banner or payment action when pendingOrder is PAID', () => {
+      render(
+        <CartDrawer
+          isOpen={true}
+          onClose={jest.fn()}
+          cartItems={mockCartItems}
+          onUpdateQuantity={jest.fn()}
+          onRemoveItem={jest.fn()}
+          onClearCart={jest.fn()}
+          showCheckoutForm={false}
+          onStartCheckout={jest.fn()}
+          customerName=""
+          onCustomerNameChange={jest.fn()}
+          customerPhone=""
+          onCustomerPhoneChange={jest.fn()}
+          onProceedOrder={jest.fn()}
+          isCreatingOrder={false}
+          pendingOrder={{ id: 100, status: 'PAID' }}
+          onOpenPaymentModal={jest.fn()}
+        />
+      );
+
+      expect(screen.queryByText(/Trạng thái: Chờ thanh toán/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Tiếp tục thanh toán/i })).not.toBeInTheDocument();
+    });
+
+    it('does NOT render pending banner or payment action when pendingOrder is CANCELLED or COMPLETED', () => {
+      const { rerender } = render(
+        <CartDrawer
+          isOpen={true}
+          onClose={jest.fn()}
+          cartItems={mockCartItems}
+          onUpdateQuantity={jest.fn()}
+          onRemoveItem={jest.fn()}
+          onClearCart={jest.fn()}
+          showCheckoutForm={false}
+          onStartCheckout={jest.fn()}
+          customerName=""
+          onCustomerNameChange={jest.fn()}
+          customerPhone=""
+          onCustomerPhoneChange={jest.fn()}
+          onProceedOrder={jest.fn()}
+          isCreatingOrder={false}
+          pendingOrder={{ id: 100, status: 'CANCELLED' }}
+          onOpenPaymentModal={jest.fn()}
+        />
+      );
+
+      expect(screen.queryByText(/Trạng thái: Chờ thanh toán/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Tiếp tục thanh toán/i })).not.toBeInTheDocument();
+
+      rerender(
+        <CartDrawer
+          isOpen={true}
+          onClose={jest.fn()}
+          cartItems={mockCartItems}
+          onUpdateQuantity={jest.fn()}
+          onRemoveItem={jest.fn()}
+          onClearCart={jest.fn()}
+          showCheckoutForm={false}
+          onStartCheckout={jest.fn()}
+          customerName=""
+          onCustomerNameChange={jest.fn()}
+          customerPhone=""
+          onCustomerPhoneChange={jest.fn()}
+          onProceedOrder={jest.fn()}
+          isCreatingOrder={false}
+          pendingOrder={{ id: 100, status: 'COMPLETED' }}
+          onOpenPaymentModal={jest.fn()}
+        />
+      );
+
+      expect(screen.queryByText(/Trạng thái: Chờ thanh toán/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Tiếp tục thanh toán/i })).not.toBeInTheDocument();
+    });
+
+    it('renders pending banner and payment action strictly when pendingOrder is PENDING', () => {
+      render(
+        <CartDrawer
+          isOpen={true}
+          onClose={jest.fn()}
+          cartItems={mockCartItems}
+          onUpdateQuantity={jest.fn()}
+          onRemoveItem={jest.fn()}
+          onClearCart={jest.fn()}
+          showCheckoutForm={false}
+          onStartCheckout={jest.fn()}
+          customerName=""
+          onCustomerNameChange={jest.fn()}
+          customerPhone=""
+          onCustomerPhoneChange={jest.fn()}
+          onProceedOrder={jest.fn()}
+          isCreatingOrder={false}
+          pendingOrder={{ id: 100, status: 'PENDING' }}
+          onOpenPaymentModal={jest.fn()}
+        />
+      );
+
+      expect(screen.getByText(/Trạng thái: Chờ thanh toán/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Tiếp tục thanh toán/i })).toBeInTheDocument();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // FIX-10: Simulated QR Code Non-Payable Integrity
+  // --------------------------------------------------------------------------
+  describe('FIX-10: Simulated QR Integrity & Non-Payable Safeguard', () => {
+    it('prominently displays non-payable warning and excludes fabricated bank details', () => {
+      render(
+        <CheckoutScreen
+          isOpen={true}
+          onClose={jest.fn()}
+          orderId={555}
+          totalAmount={45000}
+          pickupMethod="AT_COUNTER"
+          onPickupMethodChange={jest.fn()}
+          tableNumber=""
+          onTableNumberChange={jest.fn()}
+          paymentMethod="VIETQR"
+          onPaymentMethodChange={jest.fn()}
+          testMode="SUCCESS"
+          onTestModeChange={jest.fn()}
+          showTestControls={false}
+          onConfirmPayment={jest.fn()}
+          processing={false}
+        />
+      );
+
+      // Must clearly state non-payable simulation
+      expect(
+        screen.getByText('QR minh họa — không dùng để chuyển khoản thực tế')
+      ).toBeInTheDocument();
+
+      // Non-misleading subtitle
+      expect(
+        screen.getByText('Mã QR mô phỏng thanh toán cashless · Đơn #555')
+      ).toBeInTheDocument();
+
+      // Must NOT contain fabricated bank info
+      expect(screen.queryByText(/Chủ TK: BREWLITE COFFEE/i)).not.toBeInTheDocument();
+
+      // Instructions point to mock button
+      expect(screen.getByText(/Xác nhận thanh toán.*bên dưới để hoàn tất/i)).toBeInTheDocument();
+    });
+
+    it('requires explicit button click to confirm mock payment', () => {
+      const handleConfirm = jest.fn();
+      render(
+        <CheckoutScreen
+          isOpen={true}
+          onClose={jest.fn()}
+          orderId={555}
+          totalAmount={45000}
+          pickupMethod="AT_COUNTER"
+          onPickupMethodChange={jest.fn()}
+          tableNumber=""
+          onTableNumberChange={jest.fn()}
+          paymentMethod="VIETQR"
+          onPaymentMethodChange={jest.fn()}
+          testMode="SUCCESS"
+          onTestModeChange={jest.fn()}
+          showTestControls={false}
+          onConfirmPayment={handleConfirm}
+          processing={false}
+        />
+      );
+
+      const confirmBtn = screen.getByRole('button', { name: /Xác nhận thanh toán/i });
+      expect(confirmBtn).toBeInTheDocument();
+      fireEvent.click(confirmBtn);
+      expect(handleConfirm).toHaveBeenCalledTimes(1);
     });
   });
 });
