@@ -1,0 +1,26 @@
+# Gitleaks Configuration for BrewLite
+title = "BrewLite Gitleaks Configuration"
+
+[extend]
+# Extend standard Gitleaks rules
+useDefault = true
+
+[allowlist]
+description = "Known development fixtures, starter template badges, and integration test mocks"
+paths = [
+  '''(?i)docs/.*''',
+  '''(?i)scripts/test-.*''',
+  '''(?i)apps/api/src/.*\.spec\.ts''',
+  '''(?i)apps/web/.*\.test\..*'''
+]
+regexes = [
+  '''abc123def456''',
+  '''brewlite_dev_password''',
+  '''super_secure_pg_pw''',
+  '''sim_secure_db_password''',
+  '''jwt_secret_for_integration_testing''',
+  '''jwt_testing_secret_key_12345''',
+  '''jwt_testing_secret_key_second_12345''',
+  '''p@\$\$w0rd!''',
+  '''replace_with_strong_production_secret'''
+]
