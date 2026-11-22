@@ -108,7 +108,7 @@ export default function MenuPage() {
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderError, setOrderError] = useState("");
-  const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string } | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<{ id: number; status: string; totalAmount?: number } | null>(null);
 
   // Cashless Payment state
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
@@ -447,7 +447,7 @@ export default function MenuPage() {
       const orderId = data.id;
       const orderStatus = data.status || "PENDING";
       if (orderId !== undefined) {
-        setPendingOrder({ id: orderId, status: orderStatus });
+        setPendingOrder({ id: orderId, status: orderStatus, totalAmount: totalCartPrice });
         setShowCheckoutForm(false);
       }
 
@@ -493,7 +493,7 @@ export default function MenuPage() {
         },
         body: JSON.stringify({
           orderId: pendingOrder.id,
-          amount: totalCartPrice,
+          amount: pendingOrder.totalAmount || totalCartPrice,
           method: selectedPaymentMethod,
           idempotencyKey: key,
           mockOutcome: testMode,
@@ -546,15 +546,16 @@ export default function MenuPage() {
         status: paidOrder.status || "PAID",
         pickupMethod,
         tableNumber: pickupMethod === "AT_TABLE" ? tableNumber.trim() : undefined,
-        totalAmount: totalCartPrice,
+        totalAmount: pendingOrder.totalAmount || totalCartPrice,
         items: [...cartItems],
       });
 
       // Xóa sạch giỏ hàng theo FR-06
       setCartItems([]);
+      setIsCartOpen(false);
       setIsBuzzerOpen(true);
       setIsPaymentOpen(false);
-      setPendingOrder({ id: pendingOrder.id, status: "PAID" });
+      setPendingOrder({ id: pendingOrder.id, status: "PAID", totalAmount: pendingOrder.totalAmount || totalCartPrice });
       setPaymentIdempotencyKey("");
       showToast("Thanh toán thành công! ☕", "success");
 
@@ -1073,6 +1074,7 @@ export default function MenuPage() {
           setShowCheckoutForm(true);
           setOrderError("");
         }}
+        onExploreMenu={() => navigate("menu")}
       />
 
       {/* 5. Auth Modal */}
@@ -1096,7 +1098,7 @@ export default function MenuPage() {
           isOpen={isPaymentOpen}
           onClose={() => setIsPaymentOpen(false)}
           orderId={pendingOrder.id}
-          totalAmount={totalCartPrice}
+          totalAmount={pendingOrder.totalAmount || totalCartPrice}
           pickupMethod={pickupMethod}
           onPickupMethodChange={setPickupMethod}
           tableNumber={tableNumber}
@@ -1116,7 +1118,10 @@ export default function MenuPage() {
       {buzzerTicket && (
         <OrderConfirmation
           isOpen={isBuzzerOpen}
-          onClose={() => setIsBuzzerOpen(false)}
+          onClose={() => {
+            setIsBuzzerOpen(false);
+            setIsCartOpen(false);
+          }}
           orderId={buzzerTicket.orderId}
           orderCode={buzzerTicket.orderCode}
           status={buzzerTicket.status}
@@ -1125,10 +1130,22 @@ export default function MenuPage() {
           totalAmount={buzzerTicket.totalAmount}
           items={buzzerTicket.items}
           onViewHistory={() => {
+            setIsBuzzerOpen(false);
+            setIsCartOpen(false);
             navigate("orders");
             if (authToken) void fetchOrders();
           }}
-          onContinueShopping={() => navigate("menu")}
+          onContinueShopping={() => {
+            setIsBuzzerOpen(false);
+            setIsCartOpen(false);
+            navigate("menu");
+          }}
+          onPayPendingOrder={(orderId, amount) => {
+            setIsBuzzerOpen(false);
+            setIsCartOpen(false);
+            setPendingOrder({ id: orderId, status: "PENDING", totalAmount: amount });
+            setIsPaymentOpen(true);
+          }}
         />
       )}
 

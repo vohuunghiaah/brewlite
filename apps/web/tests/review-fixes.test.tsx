@@ -503,5 +503,91 @@ describe('PR #41 Review Fixes Verification Suite (FIX-01 through FIX-05)', () =>
       const svg = container.querySelector('svg');
       expect(svg).toBeInTheDocument();
     });
+
+    it('CartDrawer "Khám phá menu ngay" triggers onExploreMenu and onClose', () => {
+      const handleClose = jest.fn();
+      const handleExplore = jest.fn();
+
+      render(
+        <CartDrawer
+          isOpen={true}
+          onClose={handleClose}
+          cartItems={[]}
+          onUpdateQuantity={jest.fn()}
+          onRemoveItem={jest.fn()}
+          onClearCart={jest.fn()}
+          showCheckoutForm={false}
+          onStartCheckout={jest.fn()}
+          customerName=""
+          onCustomerNameChange={jest.fn()}
+          customerPhone=""
+          onCustomerPhoneChange={jest.fn()}
+          onProceedOrder={jest.fn()}
+          isCreatingOrder={false}
+          pendingOrder={null}
+          onOpenPaymentModal={jest.fn()}
+          onExploreMenu={handleExplore}
+        />
+      );
+
+      const exploreBtn = screen.getByRole('button', { name: /Khám phá menu ngay/i });
+      fireEvent.click(exploreBtn);
+
+      expect(handleClose).toHaveBeenCalledTimes(1);
+      expect(handleExplore).toHaveBeenCalledTimes(1);
+    });
+
+    it('OrderConfirmation for PENDING order renders "Chờ thanh toán" badge, pending title, and pay action', () => {
+      const handlePay = jest.fn();
+      const handleContinue = jest.fn();
+
+      render(
+        <OrderConfirmation
+          isOpen={true}
+          onClose={jest.fn()}
+          orderId={101}
+          orderCode="BL-0101"
+          status="PENDING"
+          pickupMethod="AT_COUNTER"
+          totalAmount={45000}
+          items={[
+            {
+              key: 'latte',
+              productId: 2,
+              productName: 'Cà phê Latte',
+              basePrice: 45000,
+              size: 'SMALL',
+              toppings: [],
+              note: '',
+              unitPrice: 45000,
+              quantity: 1,
+              subtotal: 45000,
+            },
+          ]}
+          onViewHistory={jest.fn()}
+          onContinueShopping={handleContinue}
+          onPayPendingOrder={handlePay}
+        />
+      );
+
+      // Verify title reflects pending status
+      expect(screen.getByText(/Đơn hàng đang chờ thanh toán/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Thanh toán thành công/i)).not.toBeInTheDocument();
+
+      // Verify badge displays "Chờ thanh toán"
+      const pendingBadge = screen.getByText('Chờ thanh toán');
+      expect(pendingBadge).toBeInTheDocument();
+
+      // Verify pay action button is present and clickable
+      const payBtn = screen.getByRole('button', { name: /Tiến hành thanh toán đơn #101/i });
+      expect(payBtn).toBeInTheDocument();
+      fireEvent.click(payBtn);
+      expect(handlePay).toHaveBeenCalledWith(101, 45000);
+
+      // Verify "Tiếp tục mua hàng" is clickable
+      const continueBtn = screen.getByRole('button', { name: /Tiếp tục mua hàng/i });
+      fireEvent.click(continueBtn);
+      expect(handleContinue).toHaveBeenCalled();
+    });
   });
 });

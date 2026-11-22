@@ -35,6 +35,7 @@ interface CartDrawerProps {
   onOpenPaymentModal: () => void;
   orderError?: string;
   onNewOrder?: () => void;
+  onExploreMenu?: () => void;
 }
 
 export default function CartDrawer({
@@ -56,6 +57,7 @@ export default function CartDrawer({
   onOpenPaymentModal,
   orderError,
   onNewOrder,
+  onExploreMenu,
 }: CartDrawerProps) {
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherMessage, setVoucherMessage] = useState("");
@@ -168,7 +170,10 @@ export default function CartDrawer({
             </p>
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                onClose();
+                onExploreMenu?.();
+              }}
               className="bg-[#3D261D] hover:bg-[#C28D58] text-white px-5 py-2.5 rounded-2xl font-bold text-xs transition-colors shadow"
             >
               Khám phá menu ngay

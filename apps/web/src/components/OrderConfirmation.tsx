@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle, X, ArrowRight } from "lucide-react";
+import { CheckCircle, X, ArrowRight, Clock, AlertCircle, XCircle } from "lucide-react";
 import { formatVND } from "./Header";
 import { CartItem } from "../app/menu/session-cart";
 
@@ -10,13 +10,14 @@ interface OrderConfirmationProps {
   onClose: () => void;
   orderId: number;
   orderCode: string;
-  status: string;
+  status?: string;
   pickupMethod: string;
   tableNumber?: string | null;
   totalAmount: number;
   items: CartItem[];
   onViewHistory: () => void;
-  onContinueShopping: () => void;
+  onContinueShopping?: () => void;
+  onPayPendingOrder?: (orderId: number, totalAmount: number) => void;
 }
 
 const CONFETTI_COLORS = ["#C28D58", "#3D261D", "#10B981", "#F59E0B", "#E8C99A", "#FAF6F0"];
@@ -70,25 +71,82 @@ export default function OrderConfirmation({
   onClose,
   orderId,
   orderCode,
+  status = "PAID",
   pickupMethod,
   tableNumber,
   totalAmount,
   items,
   onViewHistory,
   onContinueShopping,
+  onPayPendingOrder,
 }: OrderConfirmationProps) {
-  const [showConfetti, setShowConfetti] = useState(true);
+  const isPending = status === "PENDING";
+  const isPaid = status === "PAID";
+  const isCompleted = status === "COMPLETED";
+  const isCancelled = status === "CANCELLED";
+  const isFailed = status === "PAYMENT_FAILED";
+  const shouldShowConfetti = isPaid || isCompleted;
+
+  const [confettiDismissed, setConfettiDismissed] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-    const timer = setTimeout(() => setShowConfetti(false), 3500);
+    if (!isOpen || !shouldShowConfetti) return;
+    const timer = setTimeout(() => setConfettiDismissed(true), 3500);
     return () => clearTimeout(timer);
-  }, [isOpen]);
+  }, [isOpen, shouldShowConfetti]);
+
+  const showConfetti = isOpen && shouldShowConfetti && !confettiDismissed;
 
   if (!isOpen) return null;
 
   const displayCode = orderCode || `#BL-${orderId.toString().padStart(4, "0")}`;
   const isTable = pickupMethod === "AT_TABLE" || (tableNumber && tableNumber.trim().length > 0);
+
+  let badgeText = "Đã thanh toán";
+  let badgeColor = "bg-[#10B981]/20 text-[#10B981] border-[#10B981]/30";
+  let dotColor = "bg-[#10B981]";
+  let headerTitle = "Đặt hàng thành công!";
+  let headerSubtitle = isTable
+    ? "Đã thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại bàn."
+    : "Thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại quầy.";
+  let IconComponent = CheckCircle;
+  let iconBoxBg = "bg-[#10B981]";
+
+  if (isPending) {
+    badgeText = "Chờ thanh toán";
+    badgeColor = "bg-[#F59E0B]/20 text-[#D97706] border-[#F59E0B]/30";
+    dotColor = "bg-[#F59E0B]";
+    headerTitle = "Đơn hàng đang chờ thanh toán";
+    headerSubtitle = isTable
+      ? "Đơn hàng đã được tạo. Vui lòng thanh toán để nhận đồ uống tại bàn."
+      : "Đơn hàng đã được tạo. Vui lòng thanh toán để nhận đồ uống tại quầy.";
+    IconComponent = Clock;
+    iconBoxBg = "bg-[#F59E0B]";
+  } else if (isCompleted) {
+    badgeText = "Hoàn tất";
+    badgeColor = "bg-[#10B981]/20 text-[#10B981] border-[#10B981]/30";
+    dotColor = "bg-[#10B981]";
+    headerTitle = "Đơn hàng hoàn tất";
+    headerSubtitle = "Đơn hàng đã được phục vụ hoàn tất. Cảm ơn bạn đã ghé thăm BrewLite!";
+    IconComponent = CheckCircle;
+    iconBoxBg = "bg-[#10B981]";
+  } else if (isCancelled) {
+    badgeText = "Đã hủy";
+    badgeColor = "bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/30";
+    dotColor = "bg-[#EF4444]";
+    headerTitle = "Đơn hàng đã hủy";
+    headerSubtitle = "Đơn hàng này đã được hủy trên hệ thống.";
+    IconComponent = XCircle;
+    iconBoxBg = "bg-[#EF4444]";
+  } else if (isFailed) {
+    badgeText = "Thanh toán thất bại";
+    badgeColor = "bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/30";
+    dotColor = "bg-[#EF4444]";
+    headerTitle = "Thanh toán chưa thành công";
+    headerSubtitle = "Giao dịch thanh toán chưa hoàn tất. Vui lòng thử thanh toán lại.";
+    IconComponent = AlertCircle;
+    iconBoxBg = "bg-[#EF4444]";
+  }
 
   return (
     <div
@@ -119,23 +177,21 @@ export default function OrderConfirmation({
           <X size={16} />
         </button>
 
-        {/* Success Banner Top */}
+        {/* Banner Top */}
         <div className="bg-[#3D261D] text-white p-6 pb-5 text-center relative overflow-hidden">
           {/* Decorative badge */}
-          <div className="w-14 h-14 bg-[#10B981] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg animate-bounce-in">
-            <CheckCircle size={30} className="text-white" strokeWidth={2.5} />
+          <div className={`w-14 h-14 ${iconBoxBg} rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg animate-bounce-in`}>
+            <IconComponent size={30} className="text-white" strokeWidth={2.5} />
           </div>
 
           <span className="text-[10px] font-bold uppercase tracking-widest text-[#C28D58] block mb-1">
             BrewLite Digital Buzzer · Vé chuông điện tử
           </span>
           <h2 className="text-xl font-extrabold text-white">
-            Đặt hàng thành công!
+            {headerTitle}
           </h2>
           <p className="text-xs text-[#E8C99A] mt-1 leading-relaxed max-w-xs mx-auto">
-            {isTable
-              ? "Đã thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại bàn."
-              : "Thanh toán thành công. Vui lòng giữ mã đơn để nhận đồ uống tại quầy."}
+            {headerSubtitle}
           </p>
         </div>
 
@@ -154,9 +210,9 @@ export default function OrderConfirmation({
             {displayCode}
           </div>
           <div className="mt-3 flex items-center justify-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-status-pulse" />
-              Đã thanh toán
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${badgeColor} border`}>
+              <span className={`w-2 h-2 rounded-full ${dotColor} animate-status-pulse`} />
+              {badgeText}
             </span>
             <span className="text-xs font-semibold text-[#E8C99A]">
               {isTable ? `Bàn: ${tableNumber || "VIP"}` : "Tại quầy"}
@@ -192,13 +248,27 @@ export default function OrderConfirmation({
 
           {/* Action Buttons */}
           <div className="space-y-2 pt-2">
+            {isPending && onPayPendingOrder && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onPayPendingOrder(orderId, totalAmount);
+                }}
+                className="w-full bg-[#C28D58] hover:bg-[#3D261D] text-white py-3 rounded-2xl font-bold text-xs transition-colors shadow flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <span>Tiến hành thanh toán đơn #{orderId}</span>
+                <ArrowRight size={14} />
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
                 onClose();
                 onViewHistory();
               }}
-              className="w-full bg-[#3D261D] hover:bg-[#C28D58] text-white py-3 rounded-2xl font-bold text-xs transition-colors shadow flex items-center justify-center gap-1.5"
+              className="w-full bg-[#3D261D] hover:bg-[#C28D58] text-white py-2.5 rounded-2xl font-bold text-xs transition-colors shadow flex items-center justify-center gap-1.5"
             >
               <span>Xem lịch sử đơn hàng</span>
               <ArrowRight size={14} />
@@ -207,7 +277,7 @@ export default function OrderConfirmation({
               type="button"
               onClick={() => {
                 onClose();
-                onContinueShopping();
+                onContinueShopping?.();
               }}
               className="w-full bg-[#FAF6F0] hover:bg-[#EFE8DF] text-[#3D261D] py-2.5 rounded-2xl font-bold text-xs transition-colors"
             >
