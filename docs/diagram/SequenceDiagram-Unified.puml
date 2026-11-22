@@ -71,16 +71,17 @@ break JWT thiếu / không hợp lệ / hết hạn hoặc dữ liệu sai
   API --> UI: 401 / 400
   UI --> C: Yêu cầu đăng nhập hoặc sửa giỏ hàng
 end
-API -> DB: Lấy giá và tồn kho
+API -> DB: BEGIN TX1; lấy giá và tồn kho
 activate DB
 DB --> API: Thông tin đồ uống
 deactivate DB
 API -> API: Kiểm tra khả dụng; tính tổng tiền
 break Hết hàng hoặc không đủ số lượng
-  API --> UI: 409 - Không đủ hàng
+  API -> DB: ROLLBACK TX1
+  API --> UI: 400 - Không đủ hàng
   UI --> C: Yêu cầu điều chỉnh giỏ hàng
 end
-API -> DB: BEGIN TX1; lưu Order + OrderItem (PENDING)
+API -> DB: Lưu Order + OrderItem (PENDING)
 activate DB
 DB --> API: Kết quả ghi đơn
 deactivate DB
@@ -90,7 +91,7 @@ alt Lưu đơn thành công
   DB --> API: Xác nhận COMMIT; Order PENDING
   deactivate DB
   alt Client nhận được phản hồi
-    API --> UI: 201 Created - orderId, orderCode, totalAmount, PENDING
+    API --> UI: 201 Created - id (số nguyên), totalAmount, PENDING
     UI --> C: Tạo đơn thành công; chưa thanh toán, chưa được pha chế
   else Mất HTTP 201 sau COMMIT TX1 (GAP-05)
     API ->x UI: 201 Created không đến được client
@@ -115,7 +116,7 @@ deactivate API
 deactivate UI
 
 == UC-10 độc lập: thanh toán đơn đã tồn tại ==
-opt Khách đã nhận mã đơn PENDING và chủ động chọn thanh toán
+opt Khách đã nhận ID số của đơn PENDING và chủ động chọn thanh toán
 C -> UI: Chọn Ví/Thẻ và xác nhận thanh toán
 activate UI
 UI -> UI: Lần mới tạo khóa mới; lần gửi lại giữ khóa và payload
@@ -126,7 +127,7 @@ break Yêu cầu không hợp lệ
   API --> UI: 400 / 401 / 403 theo lỗi
   UI --> C: Báo lỗi và giữ đơn
 end
-API -> DB: Tra cứu khóa theo chủ sở hữu; đối chiếu payload
+API -> DB: Tra cứu khóa UUID toàn cục, kiểm tra chủ sở hữu; đối chiếu payload
 activate DB
 DB --> API: Khóa mới / payload khớp / payload khác
 deactivate DB
@@ -164,7 +165,7 @@ else Khóa mới
           DB --> API: Kết quả COMMIT TX2
           deactivate DB
           alt COMMIT TX2 đã xác nhận
-            API -> API: Kết quả: 200 + PAID
+            API -> API: Kết quả: 201 + PAID
           else COMMIT TX2 lỗi hoặc chưa xác định
             API -> API: Không xác nhận PAID; giữ công việc đối soát
             ref over API, DB
@@ -194,7 +195,7 @@ else Khóa mới
         activate DB
         DB --> API: Đã lưu; không kết luận FAILED
         deactivate DB
-        API -> API: Kết quả: 202 + PENDING
+        API -> API: Kết quả: 201 + PENDING
       end
     end
   end
@@ -246,7 +247,7 @@ alt JWT không hợp lệ
   API --> UI: 401 Unauthorized
   UI --> C: Yêu cầu đăng nhập lại
 else JWT hợp lệ
-  API -> DB: Kiểm tra chủ sở hữu; đọc Order/Payment trong phạm vi được phép
+  API -> DB: Kiểm tra chủ sở hữu; đọc Order + items trong phạm vi được phép
   activate DB
   DB --> API: Kết quả kiểm tra quyền và dữ liệu được phép / lỗi đọc
   deactivate DB
@@ -258,7 +259,7 @@ else JWT hợp lệ
     UI --> C: Chưa đọc được trạng thái
   else Đọc thành công
     API --> UI: 200 + trạng thái hiện tại
-    UI --> C: Hiển thị thanh toán/hoàn tiền hoặc tiến độ nhận món\nPENDING chưa được pha chế; PAID mới được xử lý tiếp
+    UI --> C: Hiển thị trạng thái Order và mã nhận món\nPENDING chưa được pha chế; PAID mới được xử lý tiếp
   end
 end
 deactivate API

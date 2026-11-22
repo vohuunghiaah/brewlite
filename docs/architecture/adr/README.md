@@ -18,6 +18,8 @@ Architecture Decision Record (ADR) là tài liệu nắm bắt các quyết đ�
 
 ---
 
+**Đối chiếu 23/11/2026.** ADR-001/002/003/004/005 và topology ADR-007 có triển khai trên main. ADR-006 là đề xuất lịch sử. TypeORM chạy bốn migration và health trả database=up. [Bằng chứng](../../audits/asm2-cross-layer-consistency.md). Trạng thái phê duyệt tại ngày lập ADR được bảo toàn dưới đây.
+
 ## 2. Bảng Tổng Hợp Các Quyết Định Kiến Trúc
 
 | Mã ADR | Tiêu Đề Quyết Định | Trạng Thái Quyết Định | Trạng Thái Triển Khai | Baseline Ghi Nhận | Tệp Đặc Tả Chi Tiết |

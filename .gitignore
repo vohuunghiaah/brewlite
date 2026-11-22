@@ -33,7 +33,9 @@ node_modules/
 
 # Tools & API clients
 .postman/
-postman/
+/postman/*
+!/postman/BrewLite-ASM2-Local.postman_collection.json
+!/postman/BrewLite-Local.postman_environment.json
 
 # Build and distribution outputs
 dist/

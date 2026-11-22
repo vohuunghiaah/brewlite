@@ -11,6 +11,8 @@
 
 > Nguồn nghiệm thu: Assignment2-BrewLite.pdf, VER 1.0, §3.1–3.3. Tham chiếu Assignment 1 chỉ là bối cảnh kế thừa. PDF Assignment 2 không quy định tỷ lệ Loyalty; GAP-03 là quyết định nội bộ còn chờ PO.
 
+**Quyết định Project Leader 23/11/2026.** C1: TX1 cấp ID số, TX2 thành công cấp mã nhận món. C2: FR-07 áp dụng cho thanh toán, thao tác Barista của FR-12 hoãn. C3: FR-10 hoãn, giữ Promotion/LoyaltyTransaction ở domain. C4: vé xác nhận trong trang menu, lịch sử qua #orders hoặc #history. Các kịch bản hoãn bên dưới là mục tiêu tương lai.
+
 ## 1. TỔNG QUAN HỆ THỐNG (SYSTEM OVERVIEW)
 
 ### 1.1 Mục đích tài liệu
@@ -40,9 +42,9 @@ Toàn bộ các yêu cầu chức năng được đánh số định danh duy nh
 | **FR-07** | Quản lý trạng thái đơn | **Must Have** | Kiểm soát chặt chẽ vòng đời đơn hàng qua Máy trạng thái hữu hạn (`assertTransition`), ngăn chặn mọi chuyển tiếp trạng thái bất hợp lệ hoặc nhảy cóc. | Ass 1 §9.1, Ass 2 §4.3 |
 | **FR-08** | Idempotent Payment | **Must Have** | Sử dụng HTTP Header `Idempotency-Key` (chuẩn UUID-v4) và ràng buộc duy nhất trong CSDL để loại bỏ rủi ro trừ tiền hoặc tạo giao dịch trùng lặp khi retry. | Ass 1 §9.2, Ass 2 §4.2 |
 | **FR-09** | Kiểm soát tồn kho đồng thời | **Must Have** | Sử dụng Database Transaction và Optimistic Locking (cột `version`) để loại bỏ hoàn toàn rủi ro bán vượt tồn kho thành phẩm (Overselling) khi có nhiều yêu cầu đồng thời. | Ass 1 §9.3, Ass 2 §4.2 |
-| **FR-10** | Mã khuyến mãi (Promotion) & Loyalty | **Should Have** | Nhập mã khuyến mãi hợp lệ (`BREW20`) tại bước checkout dựa trên model `Promotion` và tự động tích lũy điểm thưởng khách hàng thân thiết sau khi đơn hàng chuyển sang `PAID` (theo quy tắc BR-LOYALTY-01, GAP-03). | Ass 1 §9.4; Ass 2 §4.3 (domain); quy tắc mở rộng do nhóm đề xuất |
+| **FR-10** | Mã khuyến mãi (Promotion) & Loyalty — DEFERRED | **Should Have** | Nhập mã khuyến mãi hợp lệ (`BREW20`) tại bước checkout dựa trên model `Promotion` và tự động tích lũy điểm thưởng khách hàng thân thiết sau khi đơn hàng chuyển sang `PAID` (theo quy tắc BR-LOYALTY-01, GAP-03). | Ass 1 §9.4; Ass 2 §4.3 (domain); quy tắc mở rộng do nhóm đề xuất |
 | **FR-11** | Xác nhận và lịch sử đơn | **Must Have** | Màn hình hiển thị mã đơn nhận món `#xxxx`, trạng thái `PAID`, dặn lấy nước tại quầy; cho phép xem danh sách lịch sử đơn của cá nhân (`GET /orders/me`). | Ass 1 §7 (S5), Ass 2 §7.1 |
-| **FR-12** | Cập nhật tiến độ pha chế | **Should Have** | Cung cấp endpoint cho nhân viên quầy/Barista cập nhật tiến độ chế biến đơn hàng: `PAID -> PREPARING -> READY -> COMPLETED`. | Ass 1 §9.1, Ass 2 §7.1 |
+| **FR-12** | Cập nhật tiến độ pha chế — DEFERRED | **Should Have** | Cung cấp endpoint cho nhân viên quầy/Barista cập nhật tiến độ chế biến đơn hàng: `PAID -> PREPARING -> READY -> COMPLETED`. | Ass 1 §9.1, Ass 2 §7.1 |
 | **FR-13** | Health Check | **Must Have** | Endpoint `GET /health` cung cấp trạng thái hoạt động của Backend API và tình trạng kết nối tới cơ sở dữ liệu PostgreSQL. | Ass 2 §5.1, §7.2 |
 
 ---
@@ -136,8 +138,8 @@ Scenario: Tạo đơn hàng thành công từ giỏ hàng
   Given khách hàng đã đăng nhập và giỏ hàng có ít nhất 1 sản phẩm còn tồn kho thành phẩm
   When khách hàng nhấn nút xác nhận đặt đơn (POST /api/orders)
   Then hệ thống khởi tạo đơn hàng mới ở trạng thái PENDING
-  And hệ thống cấp mã hiển thị duy nhất (orderCode) và lưu snapshot chi tiết từng món
-  And API phản hồi HTTP 201 Created chứa orderId (UUID) và totalAmount
+  And hệ thống lưu snapshot từng món; orderCode chỉ được cấp khi thanh toán chuyển PAID
+  And API phản hồi HTTP 201 Created chứa id (số nguyên) và totalAmount
 
 Scenario: Từ chối tạo đơn khi giỏ hàng trống hoặc sản phẩm hết hàng
   Given giỏ hàng của khách hàng đang rỗng hoặc sản phẩm có tồn kho bằng 0
@@ -167,7 +169,7 @@ Scenario: Thanh toán mô phỏng thất bại do lỗi thẻ hoặc từ chối
 
 ### 4.7 Nghiệm thu FR-07: Quản lý trạng thái đơn (Order State Machine)
 ```gherkin
-Scenario: Chuyển đổi trạng thái đơn hàng tuần tự hợp lệ
+Scenario (DEFERRED cùng FR-12): Chuyển đổi trạng thái pha chế tuần tự
   Given đơn hàng vừa được thanh toán thành công ở trạng thái PAID
   When nhân viên quầy tiếp nhận và cập nhật sang PREPARING
   Then hệ thống chấp thuận và lưu trạng thái PREPARING
@@ -202,7 +204,7 @@ Scenario: Hai khách hàng cùng mua ly nước cuối cùng trong kho đồng t
   And số lượng tồn kho trong cơ sở dữ liệu không bao giờ bị âm
 ```
 
-### 4.10 Nghiệm thu FR-10: Mã khuyến mãi (Promotion) & Loyalty
+### 4.10 DEFERRED — Nghiệm thu FR-10: Mã khuyến mãi (Promotion) & Loyalty
 ```gherkin
 Scenario: Áp dụng mã khuyến mãi hợp lệ
   Given đơn hàng có tổng tiền tạm tính từ 50.000đ trở lên
@@ -220,7 +222,7 @@ Scenario: Tích lũy điểm khách hàng thân thiết khi đơn hàng PAID
 ```gherkin
 Scenario: Hiển thị màn hình xác nhận sau khi thanh toán
   Given đơn hàng thanh toán thành công chuyển sang PAID
-  When khách hàng được điều hướng tới màn hình /order/confirmation
+  When giao diện mở vé xác nhận trong trang /menu
   Then giao diện hiển thị biểu tượng thành công, mã nhận món (orderCode), huy hiệu PAID
   And hiển thị thông điệp hướng dẫn: "Mời tới quầy lấy nước"
 
@@ -231,7 +233,7 @@ Scenario: Tra cứu lịch sử đơn hàng cá nhân
   And từ chối truy cập (HTTP 403 Forbidden) nếu khách cố tình đọc đơn của người khác
 ```
 
-### 4.12 Nghiệm thu FR-12: Cập nhật tiến độ pha chế
+### 4.12 DEFERRED — Nghiệm thu FR-12: Cập nhật tiến độ pha chế
 ```gherkin
 Scenario: Nhân viên Barista cập nhật trạng thái đơn
   Given nhân viên quầy có quyền STAFF/ADMIN
@@ -351,7 +353,7 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
 
 ## 7. CÁC QUY TẮC NGHIỆP VỤ & KHOẢNG TRỐNG TRIỂN KHAI (BUSINESS RULES & GAPS)
 
-### 7.1 Business Rules
+### 7.1 Business Rules — bản ghi trước Sprint 2
 1. **BR-LOYALTY-01 (Tỷ lệ tích lũy điểm thưởng):**
    - *Tài liệu đề xuất:* 10.000 VNĐ chi tiêu = 1 điểm.
    - *Mã nguồn nhánh Sprint 1 (`payments.service.ts`):* `Math.floor(amount / 1000)` (1.000 VNĐ = 1 điểm).
@@ -362,7 +364,7 @@ Bảng ánh xạ chuẩn hóa đồng bộ giữa Yêu cầu chức năng (FR), 
    - *Hành vi nghiệp vụ mong muốn:* Nếu đơn hàng đã ở trạng thái `PAID` bị hủy do sự cố kỹ thuật hoặc hết nguyên liệu, hệ thống cần thực hiện hoàn tiền tự động 100% cho khách hàng.
    - *Trạng thái:* `PROPOSED / PENDING APPROVAL` (Khoảng hở GAP-01).
 
-### 7.2 Khoảng trống triển khai (Implementation Gaps)
+### 7.2 Khoảng trống lịch sử trước Sprint 2 — xem [kết quả hiện tại](../audits/asm2-gap-register.md)
 - **GAP-01 (Chức năng Refund & Hủy đơn sau thanh toán):** Mã nguồn backend hiện tại chưa cài đặt phương thức `refund()` trong service thanh toán và chưa có endpoint `PATCH /orders/:id/cancel`. Cần triển khai bổ sung ở Task 4/5 nếu bài toán yêu cầu nghiệp vụ hoàn tiền tự động.
 - **GAP-02 (Cơ chế lưu giữ Idempotency Key tại Client):** Frontend hiện tại tái tạo đơn mới và sinh key mới mỗi lần bấm; chưa lưu key vào `sessionStorage` gắn với `orderId` để chống trừ tiền trùng khi rớt mạng rồi bấm thử lại.
 - **GAP-03 (Công thức tích điểm Loyalty):** Mâu thuẫn giữa đề xuất nghiệp vụ ban đầu (10.000 VNĐ = 1 điểm) và mã nguồn thử nghiệm (1.000 VNĐ = 1 điểm), đang chờ phê duyệt chính thức từ Product Owner.

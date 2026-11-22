@@ -142,7 +142,7 @@ Tiêu chí kiểm chứng: hai khách mua sản phẩm cuối cùng tạo một 
 
 - Trước khi gọi Payment Service, commit attempt PENDING cùng merchantReference duy nhất, chủ sở hữu, orderId, amount, method, Idempotency-Key, payload chuẩn hóa và công việc đối soát bền vững. Lỗi commit dừng trước lời gọi thanh toán.
 - Gửi merchantReference tới cổng mô phỏng và hỗ trợ tra cứu bằng mã này. transactionId được lưu khi nhận được; timeout trước khi có transactionId vẫn tra cứu được. Chưa tìm thấy giao dịch chưa đủ để kết luận FAILED.
-- Timeout trả 202/PENDING và kết thúc lượt POST /payments. Tác vụ nền tiếp nhận công việc đến hạn và cập nhật dữ liệu, không phản hồi vào HTTP đã đóng.
+- Timeout trả 201/PENDING và kết thúc lượt POST /payments. Tác vụ nền tiếp nhận công việc đến hạn và cập nhật dữ liệu, không phản hồi vào HTTP đã đóng.
 - SUCCESS sau đối soát áp dụng TX2/OCC đúng một lần. OCC xung đột tạo REFUND_PENDING và công việc hoàn tiền trong TX3; tác vụ hoàn tiền chạy với cùng refundKey.
 - Nhánh đồng bộ còn HTTP mở có thể trả 409 kèm trạng thái hoàn tiền sau lần thử đầu. Sau khi HTTP đóng, client đọc kết quả bằng một lượt GET /orders/:id có xác thực quyền sở hữu.
 
@@ -160,7 +160,7 @@ Tiêu chí kiểm chứng: hai khách mua sản phẩm cuối cùng tạo một 
 | **Actor phụ** | Không có actor phụ trực tiếp trong UC-04. |
 | **Trigger** | Khách hàng nhấn **"Xác nhận đặt hàng"** tại giỏ hàng/checkout. |
 | **Tiền điều kiện** | 1. Khách hàng đã truy cập ứng dụng BrewLite và giỏ hàng có ít nhất một (01) đồ uống hợp lệ.<br>2. Các sản phẩm trong giỏ có trạng thái kinh doanh (`isAvailable = true`) và đủ tồn kho thành phẩm (`stock >= quantity`).<br>3. Khách hàng đã đăng nhập tài khoản hợp lệ với JWT Bearer Token (FR-04).<br>4. Backend API và CSDL PostgreSQL đang hoạt động bình thường. |
-| **Hậu điều kiện thành công (Success Postconditions)** | Order và OrderItem được lưu hợp lệ, TX1 đã COMMIT; Order = **PENDING**. Khách hàng nhận orderId, orderCode và totalAmount. UC-04 không tạo Payment, không chuyển PAID và không trừ hoặc giữ tồn kho. Đơn chưa thanh toán chưa được pha chế hoặc nhận đồ uống. |
+| **Hậu điều kiện thành công (Success Postconditions)** | Order và OrderItem được lưu hợp lệ, TX1 đã COMMIT; Order = **PENDING**. Khách hàng nhận id (số nguyên) và totalAmount. UC-04 không tạo Payment, không chuyển PAID và không trừ hoặc giữ tồn kho. Đơn chưa thanh toán chưa được pha chế hoặc nhận đồ uống. |
 | **Hậu điều kiện thất bại / Chưa hoàn tất (Failure / Incomplete Postconditions)** | Validation thất bại thì không tạo đơn. Lỗi trước COMMIT TX1 phải ROLLBACK phần đã ghi; giỏ được giữ nguyên và khách nhận lỗi 400/401/409/500 tương ứng. Lỗi UC-10 phát sinh sau này không làm mất kết quả tạo đơn đã COMMIT. |
 
 ---
@@ -176,7 +176,7 @@ Tiêu chí kiểm chứng: hai khách mua sản phẩm cuối cùng tạo một 
 5. **Frontend** gửi `POST /orders` kèm JWT và CreateOrderDto.
 6. **Backend** xác thực JWT, validate dữ liệu, kiểm tra khả dụng và tồn kho sơ bộ, tính lại giá phía máy chủ.
 7. **Backend** bắt đầu TX1, lưu Order và OrderItem với Order = PENDING, rồi COMMIT TX1.
-8. **Backend** phản hồi 201 Created với orderId, orderCode, totalAmount và PENDING.
+8. **Backend** phản hồi 201 Created với id (số nguyên), totalAmount và PENDING.
 9. **Frontend** hiển thị kết quả tạo đơn và số tiền cần thanh toán. **UC-04 kết thúc thành công.**
 
 **GAP-05 — Mất phản hồi sau COMMIT TX1:** Order/OrderItem đã được lưu ở PENDING nên không được coi timeout là bằng chứng TX1 rollback. Hiện đặc tả chưa có cơ chế idempotency cho `POST /orders`; gửi lại có thể tạo thêm đơn. Idempotency-Key của `POST /payments` không chống trùng bước tạo đơn. Khi chưa rõ kết quả, client cần tra cứu các đơn của chính khách hàng trước khi cho phép xác nhận tạo đơn mới; nếu không xác định được đơn tương ứng thì thông báo kết quả chưa xác định, không tự động gửi lại `POST /orders`. Tra cứu lịch sử chỉ hỗ trợ khôi phục, không bảo đảm chống trùng trong mọi tình huống. Cần thiết kế cơ chế nhận diện yêu cầu tạo đơn bền vững và kiểm chứng retry sau mất phản hồi ở Task triển khai; chưa tuyên bố cơ chế này đã tồn tại.
@@ -244,8 +244,8 @@ Scenario: UC-04 tạo đơn PENDING thành công từ giỏ hàng
   And giỏ hàng có ít nhất 1 sản phẩm còn tồn kho khả dụng
   When khách hàng gửi yêu cầu tạo đơn (POST /api/orders)
   Then hệ thống khởi tạo đơn hàng mới ở trạng thái PENDING
-  And hệ thống cấp mã hiển thị duy nhất (orderCode) và lưu snapshot chi tiết từng món
-  And API phản hồi HTTP 201 Created chứa orderId (UUID) và totalAmount
+  And hệ thống lưu snapshot từng món; orderCode chỉ được cấp khi thanh toán chuyển PAID
+  And API phản hồi HTTP 201 Created chứa id (số nguyên) và totalAmount
   And UC-04 kết thúc thành công; tồn kho chưa bị trừ hoặc giữ
   And đơn PENDING không được chuyển sang PREPARING, READY hoặc COMPLETED
 ```
@@ -279,7 +279,7 @@ Scenario: Xử lý khi thanh toán thất bại trong quy trình đặt hàng
 1. **Lược đồ Lớp (Class Diagram):** Mô hình hóa cấu trúc quan hệ giữa thực thể `Order`, `OrderItem`, `Payment`, enum `OrderStatus` (`PENDING`, `PAID`, `PAYMENT_FAILED`) và cơ chế khóa lạc quan `version`.
 2. **Sơ đồ Tuần tự (Sequence Diagram):** Biểu diễn hai Use Case độc lập trong kịch bản UC-CORE-01:
    - UC-04 (`SequenceDiagram.puml` (Sẽ hoàn thiện ở Task 2)): `Client -> OrdersController -> OrdersService -> DB Transaction 1 (Commit PENDING) -> HTTP 201 Created`.
-   - UC-10 (`SequenceDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2)): `Client -> PaymentsController (UC-10) -> PaymentsService -> Mock Payment -> DB Transaction 2 (OCC Deduct Stock, Commit PAID) -> HTTP 200 OK -> Màn hình xác nhận`.
+   - UC-10 (`SequenceDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2)): `Client -> PaymentsController (UC-10) -> PaymentsService -> Mock Payment -> DB Transaction 2 (OCC Deduct Stock, Commit PAID) -> HTTP 201 -> Màn hình xác nhận`.
 3. **Sơ đồ Máy trạng thái (State Machine Diagram):** Thể hiện rõ vòng đời chuyển đổi trạng thái của đơn hàng từ `Initial -> PENDING -> PAID` (hoặc `PAYMENT_FAILED`), khẳng định `PENDING` là trạng thái chờ và chỉ `PAID` mới đưa đơn vào chu trình pha chế.
 
 Activity tương ứng: `ActivityDiagram.puml` (Sẽ hoàn thiện ở Task 2) và `ActivityDiagram-UC10.puml` (Sẽ hoàn thiện ở Task 2).

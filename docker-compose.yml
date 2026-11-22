@@ -1,7 +1,9 @@
+name: brewlite-local
+
 services:
   db:
     image: postgres:16-alpine
-    container_name: ${DB_CONTAINER:-brewlite-db}
+    container_name: ${DB_CONTAINER:-brewlite-local-db}
     restart: unless-stopped
 
     environment:
@@ -10,7 +12,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
 
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -30,7 +32,7 @@ services:
       dockerfile: Dockerfile
       target: development
 
-    container_name: ${API_CONTAINER:-brewlite-api}
+    container_name: ${API_CONTAINER:-brewlite-local-api}
     restart: unless-stopped
 
     env_file:
@@ -52,7 +54,7 @@ services:
       retries: 20
 
     ports:
-      - "${API_PORT:-3001}:3001"
+      - "127.0.0.1:${API_PORT:-3001}:3001"
 
     depends_on:
       db:
@@ -73,7 +75,7 @@ services:
       dockerfile: Dockerfile
       target: development
 
-    container_name: ${WEB_CONTAINER:-brewlite-web}
+    container_name: ${WEB_CONTAINER:-brewlite-local-web}
     restart: unless-stopped
 
     environment:
@@ -82,7 +84,7 @@ services:
       API_INTERNAL_URL: ${API_INTERNAL_URL}
 
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
 
     depends_on:
       api:

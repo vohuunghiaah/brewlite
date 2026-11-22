@@ -42,16 +42,17 @@ break JWT thiếu / không hợp lệ / hết hạn hoặc dữ liệu sai
   API --> UI: 401 / 400
   UI --> C: Yêu cầu đăng nhập hoặc sửa giỏ hàng
 end
-API -> DB: Lấy giá và tồn kho
+API -> DB: BEGIN TX1; lấy giá và tồn kho
 activate DB
 DB --> API: Thông tin đồ uống
 deactivate DB
 API -> API: Kiểm tra khả dụng; tính tổng tiền
 break Hết hàng hoặc không đủ số lượng
-  API --> UI: 409 - Không đủ hàng
+  API -> DB: ROLLBACK TX1
+  API --> UI: 400 - Không đủ hàng
   UI --> C: Yêu cầu điều chỉnh giỏ hàng
 end
-API -> DB: BEGIN TX1; lưu Order + OrderItem (PENDING)
+API -> DB: Lưu Order + OrderItem (PENDING)
 activate DB
 DB --> API: Kết quả ghi đơn
 deactivate DB
@@ -61,7 +62,7 @@ alt Lưu đơn thành công
   DB --> API: Xác nhận COMMIT; Order PENDING
   deactivate DB
   alt Client nhận được phản hồi
-    API --> UI: 201 Created - orderId, orderCode, totalAmount, PENDING
+    API --> UI: 201 Created - id (số nguyên), totalAmount, PENDING
     UI --> C: Tạo đơn thành công; chưa thanh toán, chưa được pha chế
   else Mất HTTP 201 sau COMMIT TX1 (GAP-05)
     API ->x UI: 201 Created không đến được client

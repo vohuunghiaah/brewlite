@@ -30,46 +30,56 @@ classDiagram
   %% Customer/Staff are conceptual roles, not implemented subclasses.
   %% Menu is a view of existing products (FR-01), not a new persistent entity.
   class User {
+    <<IMPLEMENTED>>
     id
-    fullName
+    createdAt
     email
   }
   class Customer {
+    <<CONCEPTUAL>>
     loyaltyPoints
     placeOrder()
   }
   class Staff {
+    <<DEFERRED>>
     updateOrderStatus()
   }
   class Order {
+    <<IMPLEMENTED>>
+    id
     orderCode
     status
     totalAmount
   }
   class OrderItem {
+    <<IMPLEMENTED>>
     quantity
     size
     toppings
     unitPrice
   }
   class Product {
+    <<IMPLEMENTED>>
     name
-    basePrice
+    price
     isAvailable
     stock
     version
   }
   class Payment {
+    <<IMPLEMENTED>>
     amount
     status
     method
     idempotencyKey
   }
   class Menu {
+    <<CONCEPTUAL>>
     viewProducts()
   }
 
   class Promotion {
+    <<DEFERRED>>
     code
     discountType
     discountValue
@@ -77,6 +87,7 @@ classDiagram
     isActive
   }
   class LoyaltyTransaction {
+    <<DEFERRED>>
     id
     points
     type
@@ -116,5 +127,5 @@ classDiagram
   Order "0..1" -- "0..*" LoyaltyTransaction : referenced by
   OrderStatus <.. Order : status
   Payment ..> PaymentStatus : status
-  %% Refund states are target design (GAP-01); loyalty rate remains GAP-03.
+  %% Refund states implemented by PaymentsService; loyalty ledger deferred.
   %% Staff assignment and number of Menu views are unspecified, not DB cardinalities.
