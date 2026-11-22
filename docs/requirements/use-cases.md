@@ -5,7 +5,7 @@
 - **Tài liệu tham chiếu:** Assignment 1 (Task 10) & Assignment 2 (Task 1.3, Task 2)
 - **Mã tài liệu:** `REQ-UC-CORE`
 - **Phiên bản:** 1.6.0 (Independent Use Cases — Retry & Authorization Alignment)
-- **Trạng thái:** Đề xuất nghiệm thu Task 1 (Proposed Baseline for Task 1 Review)
+- **Trạng thái:** Bản thiết kế lịch sử của prototype Prisma. Hợp đồng hiện hành cho ASM2 dùng [UC-04 và UC-10](use-case-place-order.md) và [SRS](srs.md). Các ví dụ UUID, promotion và /order/confirmation bên dưới chỉ ghi lại phương án trước quyết định C1–C4.
 
 ---
 

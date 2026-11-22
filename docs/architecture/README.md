@@ -1,5 +1,7 @@
 # Tài Liệu Đặc Tả Kiến Trúc Hệ Thống BrewLite (System Architecture Specification)
 
+**Hiện hành 23/11/2026.** [Sơ đồ Lightsail](DeploymentDiagram.svg) nối Caddy, Next.js, NestJS và PostgreSQL với GHCR và rollout. Main dùng TypeORM, bốn migration, synchronize=false, mock gateway nội bộ và GET /health kiểm tra DB. Các bảng baseline Task 3 bên dưới lưu lịch sử thiết kế trước Sprint 2. [Đối chiếu triển khai](../audits/asm2-cross-layer-consistency.md).
+
 **Dự án:** Hệ Thống Đặt Đồ Uống Trực Tuyến BrewLite (Assignment 2)
 **Phân hệ:** Task 3 — Thiết kế Kiến trúc (Task 3.1: Kiến trúc Hệ thống & Task 3.2: Deployment Diagram)
 **Phiên bản:** 2.2.0 (Task 3.2 — AWS Lightsail deployment baseline)

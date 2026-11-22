@@ -40,7 +40,7 @@ if () then ([Không hợp lệ])
 else ([Hợp lệ])
 endif
 |PostgreSQL|
-:Tra cứu khóa theo chủ sở hữu\nĐối chiếu orderId, amount, method;
+:Tra cứu khóa UUID toàn cục, kiểm tra chủ sở hữu\nĐối chiếu orderId, amount, method;
 |Backend|
 if () then ([Cùng khóa, payload khác])
   :Trả 409, từ chối yêu cầu;
@@ -98,9 +98,9 @@ if () then ([PENDING / timeout])
   |PostgreSQL|
   :Giữ PENDING và lịch đối soát bền vững;
   |Backend|
-  :Trả 202 + PENDING, kết thúc HTTP POST;
+  :Trả 201 + PENDING, kết thúc HTTP POST;
   |Frontend|
-  :Nhận 202 + PENDING\nKết thúc POST /payments;
+  :Nhận 201 + PENDING\nKết thúc POST /payments;
   stop
 else ([SUCCESS])
 endif
@@ -112,7 +112,7 @@ if () then ([Hợp lệ])
   |PostgreSQL|
   :Lưu Payment SUCCESS và Order PAID\nCOMMIT TX2;
 |Backend|
-:Trả 200 + PAID;
+:Trả 201 + PAID;
 |Frontend|
 if () then ([Mất phản hồi])
   :Gửi lại POST /payments\ncùng payload và cùng khóa;
@@ -260,17 +260,17 @@ if () then ([Không có quyền])
 else ([Có quyền])
 endif
 |Backend|
-:Yêu cầu đọc trạng thái đơn/giao dịch;
+:Yêu cầu đọc trạng thái đơn;
 |PostgreSQL|
-:Đọc Order và Payment đã lưu;
+:Đọc Order, OrderItem và Product đã lưu;
 |Backend|
 :Trả 200 + trạng thái trong HTTP GET mới;
 |Frontend|
 :Nhận 200 + trạng thái hiện tại;
 if () then ([PAID])
-  :Hiển thị thanh toán thành công\nChỉ xóa giỏ khi PAID;
+  :Hiển thị trạng thái đơn đã thanh toán;
 else ([Chưa PAID])
-  :Hiển thị PAYMENT_FAILED / PENDING /\nREFUND_PENDING / REFUNDED / CANCELLED\nCho phép thử lại khi đủ điều kiện;
+  :Hiển thị PAYMENT_FAILED / PENDING / CANCELLED\nCho phép thử lại khi đủ điều kiện;
 endif
 :Kết thúc GET\nLượt kiểm tra tiếp theo là yêu cầu mới;
 stop

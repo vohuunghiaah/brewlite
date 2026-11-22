@@ -1,4 +1,6 @@
 # BrewLite — Hệ Thống Đặt Đồ Uống Trực Tuyến (Online Drink Ordering System)
+**Nghiệm thu 23/11/2026.** [Hướng dẫn chạy LOCAL và Postman](docs/testing/postman-local-guide.md) · [Kết quả và cấu hình production đã kiểm tra](docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md). LOCAL dùng project brewlite-local và cổng loopback 3000/3001/5432. Lightsail triển khai qua [runbook](docs/deployment/production-release-runbook.md).
+
 
 [![Quality gates](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/vohuunghiaah/brewlite/actions/workflows/quality.yml)
 [![Continuous Delivery](https://github.com/vohuunghiaah/brewlite/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/vohuunghiaah/brewlite/actions/workflows/deploy.yml)

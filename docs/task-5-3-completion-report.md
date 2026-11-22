@@ -62,7 +62,7 @@
 
 ## 4. Pipeline CI/CD và Approval Gate (Phase C & D)
 
-Tệp cấu hình: [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
+Tệp cấu hình: [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
 
 1. **Điều kiện kích hoạt:**
    - `push` lên nhánh `main`.
@@ -88,7 +88,7 @@ Tệp cấu hình: [`.github/workflows/deploy.yml`](../../.github/workflows/depl
 
 ## 5. Cấu hình Production và Giới hạn tài nguyên (Phase E)
 
-Tệp cấu hình: [`docker-compose.prod.yml`](../../docker-compose.prod.yml) & [`Caddyfile`](../../Caddyfile)
+Tệp cấu hình: [`docker-compose.prod.yml`](../docker-compose.prod.yml) & [`Caddyfile`](../Caddyfile)
 
 - **Cân đối tài nguyên 2 GB RAM Lightsail:**
   - `caddy`: 128 MB RAM, 0.25 vCPU.
@@ -207,7 +207,7 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
 - Xử lý triệt để lỗi stream/process, tự động xóa tệp dump hỏng/dở dang và thoát mã lỗi 1 khi backup thất bại.
 
 ### FIX-16: Tuần tự hóa, Phân tích .env an toàn và Ràng buộc Nhánh Production
-- **Loại bỏ hoàn toàn `source .env`:** Thay thế `set -a; . ./.env; set +a` bằng tiện ích an toàn [`scripts/safe-env.mjs`](../../scripts/safe-env.mjs) chống thực thi mã độc và command injection từ nội dung secrets.
+- **Loại bỏ hoàn toàn `source .env`:** Thay thế `set -a; . ./.env; set +a` bằng tiện ích an toàn [`scripts/safe-env.mjs`](../scripts/safe-env.mjs) chống thực thi mã độc và command injection từ nội dung secrets.
 - **Tuần tự hóa và Phân tích tương thích hai chiều:** Xử lý toàn diện mọi ký tự đặc biệt (`$`, `$$`, `'`, `"`, `#`, `\`, Unicode tiếng Việt, khoảng trắng, xuống dòng, `$(whoami)`, `` `id` ``, `${PATH}`) tương thích hoàn hảo giữa Docker Compose và Node.js.
 - **Fail-Closed Validation:** Tiện ích `validateKey` và `validateValue` từ chối rõ ràng các khóa không hợp lệ hoặc các byte điều khiển/null byte không an toàn trước khi deploy thay vì âm thầm làm sai lệch.
 - **Ràng buộc Nhánh Production (Branch Safety):** Ràng buộc job `deploy-production` trong `.github/workflows/deploy.yml` với điều kiện `github.ref == 'refs/heads/main'`, từ chối tuyệt đối kích hoạt triển khai production từ nhánh tính năng hoặc PR.
@@ -239,15 +239,15 @@ Nhằm đáp ứng tiêu chuẩn khắt khe nhất của một hệ thống Cont
 3. [`docs/deployment/github-environment-setup.md`](deployment/github-environment-setup.md): Hướng dẫn thiết lập Approval Gate, GitHub Secrets & Variables.
 4. [`docs/deployment/rollback-guide.md`](deployment/rollback-guide.md): Hướng dẫn chiến lược khôi phục và phục hồi dữ liệu khi có sự cố.
 5. [`docs/deployment/production-prerequisites.md`](deployment/production-prerequisites.md): Checklist điều kiện tiên quyết trước khi kích hoạt production thật.
-6. [`docker-compose.prod.yml`](../../docker-compose.prod.yml): Docker Compose production theo chuẩn ADR-007.
-7. [`Caddyfile`](../../Caddyfile): Cấu hình reverse proxy, HTTPS tự động và security headers.
-8. [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml): Quy trình Continuous Delivery & Deployment.
-9. [`scripts/safe-env.mjs`](../../scripts/safe-env.mjs): Tiện ích tuần tự hóa, phân tích cú pháp dotenv an toàn và trích xuất biến môi trường không dùng eval/shell source (FIX-16).
-10. [`scripts/deployment-state.mjs`](../../scripts/deployment-state.mjs): Mô-đun quản lý và ghi nhận trạng thái deployment state.
-11. [`scripts/smoke-test.mjs`](../../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret (Fail-closed & TLS).
-12. [`scripts/backup-db.mjs`](../../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed và streaming memory safe.
-13. [`scripts/rollback.mjs`](../../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn và xác định.
-14. [`scripts/test-deployment-scripts.mjs`](../../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện 34 ca cho các công cụ triển khai.
+6. [`docker-compose.prod.yml`](../docker-compose.prod.yml): Docker Compose production theo chuẩn ADR-007.
+7. [`Caddyfile`](../Caddyfile): Cấu hình reverse proxy, HTTPS tự động và security headers.
+8. [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml): Quy trình Continuous Delivery & Deployment.
+9. [`scripts/safe-env.mjs`](../scripts/safe-env.mjs): Tiện ích tuần tự hóa, phân tích cú pháp dotenv an toàn và trích xuất biến môi trường không dùng eval/shell source (FIX-16).
+10. [`scripts/deployment-state.mjs`](../scripts/deployment-state.mjs): Mô-đun quản lý và ghi nhận trạng thái deployment state.
+11. [`scripts/smoke-test.mjs`](../scripts/smoke-test.mjs): Kịch bản kiểm thử khói và kiểm tra rò rỉ secret (Fail-closed & TLS).
+12. [`scripts/backup-db.mjs`](../scripts/backup-db.mjs): Kịch bản sao lưu dữ liệu tự động fail-closed và streaming memory safe.
+13. [`scripts/rollback.mjs`](../scripts/rollback.mjs): Kịch bản khôi phục phiên bản ứng dụng an toàn và xác định.
+14. [`scripts/test-deployment-scripts.mjs`](../scripts/test-deployment-scripts.mjs): Bộ kiểm thử tự động toàn diện 34 ca cho các công cụ triển khai.
 
 ---
 

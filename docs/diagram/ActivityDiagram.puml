@@ -47,13 +47,13 @@ stop
 else ([Yêu cầu hợp lệ])
 endif
 |Backend|
-:Yêu cầu đọc giá và tồn kho;
+:BEGIN TX1 — yêu cầu đọc giá và tồn kho;
 |PostgreSQL|
 :Đọc giá và tồn kho;
 |Backend|
 :Kiểm tra khả dụng và tính lại tổng tiền;
 if () then ([Thiếu hàng])
-:Trả lỗi hết hàng;
+:ROLLBACK TX1 và trả HTTP 400;
 |Frontend|
 :Nhận lỗi, hiển thị hết hàng và giữ giỏ;
 stop
@@ -62,7 +62,7 @@ endif
 |Backend|
 :Yêu cầu tạo đơn trong TX1;
 |PostgreSQL|
-:BEGIN TX1\nLưu Order và OrderItem ở PENDING;
+:Lưu Order và OrderItem ở PENDING;
 if () then ([Lỗi ghi đơn])
 :ROLLBACK TX1;
 |Backend|
@@ -84,7 +84,7 @@ GAP-05: tra cứu đơn của chính khách chỉ hỗ trợ khôi phục;
 stop
 else ([Nhận phản hồi])
 endif
-:Nhận orderId, orderCode, totalAmount và PENDING;
+:Nhận id (số nguyên), totalAmount và PENDING;
 :Hiển thị tạo đơn thành công\nChưa thanh toán; chưa được pha chế;
 stop
 @enduml
