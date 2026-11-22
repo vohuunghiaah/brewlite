@@ -2,3 +2,29 @@
 # These fingerprints identify two historical lines quoting the same public SHA-256.
 204cdc1651d6caaad498e1f2d1e3f7fa932c0a28:docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md:generic-api-key:58
 3dcbeca42e93d3f7dfcb8fd0a39ac61708592b8b:docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md:generic-api-key:58
+# Documented idempotency examples
+0f453f017a5c99b11b97c2bf8e3e23dfb38f2580:docs/requirements/use-cases.md:generic-api-key:162
+0f453f017a5c99b11b97c2bf8e3e23dfb38f2580:docs/requirements/use-cases.md:generic-api-key:186
+0f453f017a5c99b11b97c2bf8e3e23dfb38f2580:docs/requirements/use-cases.md:generic-api-key:198
+12431cccb8186542d16387bcdb0f3b46d2cf0eb2:docs/requirements/use-cases.md:generic-api-key:158
+12431cccb8186542d16387bcdb0f3b46d2cf0eb2:docs/requirements/use-cases.md:generic-api-key:182
+12431cccb8186542d16387bcdb0f3b46d2cf0eb2:docs/requirements/use-cases.md:generic-api-key:194
+1a8816740fada17c4929775345a7ca5325af1d24:docs/requirements/use-cases.md:generic-api-key:192
+1b71d3e961d85d33300480a3cac3b3c78461a919:docs/diagrams/sequence-checkout.puml:generic-api-key:92
+1b71d3e961d85d33300480a3cac3b3c78461a919:docs/requirements/use-cases.md:generic-api-key:119
+81bee7f52b413726474ca72c2edd615f9b57bc95:docs/requirements/use-cases.md:generic-api-key:162
+81bee7f52b413726474ca72c2edd615f9b57bc95:docs/requirements/use-cases.md:generic-api-key:186
+81bee7f52b413726474ca72c2edd615f9b57bc95:docs/requirements/use-cases.md:generic-api-key:198
+bff23effe66b1f9e9aba64f87958ebbe9d7552d3:docs/requirements/use-cases.md:generic-api-key:122
+c93cd0f2c1dbbcbec1555e519ec58ee3d6046141:docs/requirements/use-cases.md:generic-api-key:122
+# Nest starter badge
+762f399deb355fcefcd749c36b8764f5e2df3f16:apps/api-temp/README.md:generic-api-key:5
+762f399deb355fcefcd749c36b8764f5e2df3f16:apps/api/README.md:generic-api-key:5
+e744a14353837bdee2dd73474a20fab094a0bbbf:apps/api-temp/README.md:generic-api-key:5
+e744a14353837bdee2dd73474a20fab094a0bbbf:apps/api/README.md:generic-api-key:5
+f9cca7ec655a0db503f653180ca6512b89c5ebda:apps/api-temp/README.md:generic-api-key:5
+f9cca7ec655a0db503f653180ca6512b89c5ebda:apps/api/README.md:generic-api-key:5
+# Verified public GHCR manifest digest
+5fb799132b5e1e637ec76f95cd89eff108daf103:docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md:generic-api-key:58
+# Same release manifest on the PR 44 synchronization merge.
+e68a82c7eb82007e9561806f056983cbacd5be23:docs/audits/ASM2-FINAL-ACCEPTANCE-REPORT.md:generic-api-key:58
