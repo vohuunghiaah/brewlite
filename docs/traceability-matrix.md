@@ -6,6 +6,8 @@
 
 Cập nhật GAP-03 ngày 23/11/2026: PO duyệt 10.000 VNĐ thực thanh toán = 1 điểm, làm tròn xuống trên từng đơn PAID. Triển khai FR-10 vẫn DEFERRED.
 
+Task 5.4.3 đối chiếu baseline `775a439c` với release `04737fb3`. Task 5.3 PASS cho rollout đã ghi log; Task 5.4 PARTIAL do thiếu biên bản hai sprint và ký nhận ngoài nhóm. FR-05 áp dụng C1, FR-11 áp dụng C4; FR-07 chỉ nghiệm thu luồng thanh toán, FR-10/12 hoãn theo C2–C3. FR-08 bảo vệ thao tác thanh toán; retry tạo đơn còn G5. [Ma trận nghiệm thu NFR và checklist D1–D6/G5](audits/task-5-4-3-evidence.md)
+
 ### Kết quả ở release `7d808408` · 21/11/2026
 
 [Ma trận hiện hành theo từng Task, FR-01–13 và NFR-01–07](final-handover-report.md) kết nối SRS và UC với source, test, khoảng trống và người xử lý. [Biên bản AWS](deployment/final-production-acceptance-2026-11-21.md) xác nhận cổng phê duyệt, rollout, digest, migration, restore và smoke.
