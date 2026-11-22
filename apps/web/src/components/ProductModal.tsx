@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Plus } from "lucide-react";
+import { X, Plus, ShoppingBag } from "lucide-react";
 import { formatVND } from "./Header";
-import { Product, getProductImage } from "./MenuScreen";
+import { Product, getProductImage, getStockBadgeInfo } from "./MenuScreen";
 
 export interface CustomizationOption {
   size: "SMALL" | "MEDIUM" | "LARGE";
@@ -19,6 +19,7 @@ interface ProductModalProps {
   isOpen: boolean;
   loadingDetail?: boolean;
   detailError?: string;
+  cartCount?: number;
   onClose: () => void;
   onAddToCart: (customization: CustomizationOption) => void;
 }
@@ -50,12 +51,14 @@ function ProductModalInner({
   product,
   loadingDetail,
   detailError,
+  cartCount = 0,
   onClose,
   onAddToCart,
 }: {
   product: Product;
   loadingDetail?: boolean;
   detailError?: string;
+  cartCount?: number;
   onClose: () => void;
   onAddToCart: (customization: CustomizationOption) => void;
 }) {
@@ -66,6 +69,14 @@ function ProductModalInner({
   const [note, setNote] = useState<string>("");
   const [qty, setQty] = useState<number>(1);
   const [imgLoaded, setImgLoaded] = useState(false);
+
+  const badgeInfo = getStockBadgeInfo(product);
+  const isOutOfStock = badgeInfo.isOutOfStock;
+  const availableToAdd =
+    product.stock !== undefined
+      ? Math.max(0, product.stock - cartCount)
+      : 999;
+  const isMaxInCart = product.stock !== undefined && cartCount >= product.stock;
 
   const basePrice = Number(product.price);
   const sizeSurcharge = SIZES.find((s) => s.id === size)?.surcharge || 0;
@@ -83,13 +94,14 @@ function ProductModalInner({
   };
 
   const handleAdd = () => {
+    if (isOutOfStock || isMaxInCart || availableToAdd <= 0) return;
     onAddToCart({
       size,
       toppings,
       ice,
       sugar,
       note,
-      quantity: qty,
+      quantity: Math.min(qty, availableToAdd),
     });
     onClose();
   };
@@ -128,10 +140,28 @@ function ProductModalInner({
             alt={product.name}
             className={`w-full h-full object-cover transition-opacity duration-500 ${
               imgLoaded ? "opacity-100" : "opacity-0"
-            }`}
+            } ${isOutOfStock ? "grayscale opacity-50" : ""}`}
             onLoad={() => setImgLoaded(true)}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#3D261D]/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#3D261D]/50 to-transparent" />
+
+          {/* Badges on Modal Image */}
+          <div className="absolute top-4 left-4 flex flex-wrap gap-2 z-10">
+            <span
+              className={`stockBadge text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full shadow backdrop-blur-sm tracking-wide ${badgeInfo.className}`}
+            >
+              {badgeInfo.text}
+            </span>
+
+            {cartCount > 0 && (
+              <span
+                className="cartBadge bg-[#3D261D]/90 text-[#FAF6F0] text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full border border-white/20 shadow backdrop-blur-sm flex items-center gap-1"
+              >
+                <ShoppingBag size={11} className="text-[#C28D58]" />
+                <span>Trong giỏ: {cartCount}</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Form Body */}
@@ -311,9 +341,10 @@ function ProductModalInner({
             <div className="flex items-center gap-1.5 bg-[#FAF6F0] border border-[#EFE8DF] rounded-2xl px-2 py-1.5">
               <button
                 type="button"
+                disabled={qty <= 1 || isOutOfStock || isMaxInCart}
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
                 aria-label="Giảm số lượng"
-                className="w-8 h-8 rounded-xl bg-white border border-[#EFE8DF] flex items-center justify-center hover:bg-[#3D261D] hover:text-white transition-colors text-sm font-bold leading-none select-none"
+                className="w-8 h-8 rounded-xl bg-white border border-[#EFE8DF] flex items-center justify-center hover:bg-[#3D261D] hover:text-white transition-colors text-sm font-bold leading-none select-none disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 -
               </button>
@@ -322,9 +353,10 @@ function ProductModalInner({
               </span>
               <button
                 type="button"
-                onClick={() => setQty((q) => q + 1)}
+                disabled={isOutOfStock || isMaxInCart || qty >= availableToAdd}
+                onClick={() => setQty((q) => Math.min(availableToAdd, q + 1))}
                 aria-label="Tăng số lượng"
-                className="w-8 h-8 rounded-xl bg-[#3D261D] text-white flex items-center justify-center hover:bg-[#C28D58] transition-colors text-sm font-bold leading-none select-none"
+                className="w-8 h-8 rounded-xl bg-[#3D261D] text-white flex items-center justify-center hover:bg-[#C28D58] transition-colors text-sm font-bold leading-none select-none disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 +
               </button>
@@ -333,11 +365,22 @@ function ProductModalInner({
             {/* Add to cart action button */}
             <button
               type="button"
+              disabled={isOutOfStock || isMaxInCart || availableToAdd <= 0}
               onClick={handleAdd}
-              className="flex-1 bg-[#C28D58] hover:bg-[#3D261D] text-white py-3 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-md active:scale-95"
+              className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                isOutOfStock || isMaxInCart || availableToAdd <= 0
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-[#C28D58] hover:bg-[#3D261D] text-white active:scale-95"
+              }`}
             >
               <Plus size={16} strokeWidth={2.5} />
-              <span>Thêm vào giỏ hàng — {formatVND(totalPrice)}</span>
+              <span>
+                {isOutOfStock
+                  ? "Hết hàng"
+                  : isMaxInCart || availableToAdd <= 0
+                  ? "Đã đạt giới hạn tồn kho"
+                  : `Thêm vào giỏ hàng — ${formatVND(totalPrice)}`}
+              </span>
             </button>
           </div>
         </div>
@@ -351,6 +394,7 @@ export default function ProductModal({
   isOpen,
   loadingDetail,
   detailError,
+  cartCount = 0,
   onClose,
   onAddToCart,
 }: ProductModalProps) {
@@ -373,6 +417,7 @@ export default function ProductModal({
       product={product}
       loadingDetail={loadingDetail}
       detailError={detailError}
+      cartCount={cartCount}
       onClose={onClose}
       onAddToCart={onAddToCart}
     />

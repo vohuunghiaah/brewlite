@@ -14,6 +14,10 @@ const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const products_module_1 = require("./products/products.module");
 const orders_module_1 = require("./orders/orders.module");
+const auth_module_1 = require("./auth/auth.module");
+const payments_module_1 = require("./payments/payments.module");
+const database_1 = require("./database");
+const health_controller_1 = require("./health.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -26,25 +30,20 @@ exports.AppModule = AppModule = __decorate([
             }),
             typeorm_1.TypeOrmModule.forRootAsync({
                 imports: [config_1.ConfigModule],
-                inject: [config_1.ConfigService],
-                useFactory: (config) => ({
-                    type: 'postgres',
-                    host: config.get('DATABASE_HOST', 'localhost'),
-                    port: Number(config.get('DATABASE_PORT') ?? 5432),
-                    username: config.get('DATABASE_USER'),
-                    password: config.get('DATABASE_PASSWORD'),
-                    database: config.get('DATABASE_NAME'),
+                useFactory: () => ({
+                    ...(0, database_1.databaseOptions)(),
                     autoLoadEntities: true,
-                    synchronize: true,
-                    logging: true,
+                    migrationsRun: true,
                     retryAttempts: 5,
                     retryDelay: 3000,
                 }),
             }),
             products_module_1.ProductsModule,
+            auth_module_1.AuthModule,
             orders_module_1.OrdersModule,
+            payments_module_1.PaymentsModule,
         ],
-        controllers: [app_controller_1.AppController],
+        controllers: [app_controller_1.AppController, health_controller_1.HealthController],
         providers: [app_service_1.AppService],
     })
 ], AppModule);

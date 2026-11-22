@@ -8,11 +8,13 @@ import {
   Param,
   Body,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { CatalogAdminGuard } from './guards/catalog-admin.guard';
 
 @Controller('products')
 export class ProductsController {
@@ -21,14 +23,14 @@ export class ProductsController {
   ) {}
 
   // GET /products
-  // Lấy danh sách tất cả sản phẩm
+  // Lấy danh sách tất cả sản phẩm (Public)
   @Get()
   findAll() {
     return this.productsService.findAll();
   }
 
   // GET /products/:id
-  // Lấy thông tin chi tiết sản phẩm
+  // Lấy thông tin chi tiết sản phẩm (Public)
   @Get(':id')
   findOne(
     @Param('id', ParseIntPipe) id: number,
@@ -37,8 +39,9 @@ export class ProductsController {
   }
 
   // POST /products
-  // Thêm sản phẩm mới
+  // Thêm sản phẩm mới (Protected by CatalogAdminGuard)
   @Post()
+  @UseGuards(CatalogAdminGuard)
   create(
     @Body() data: CreateProductDto,
   ) {
@@ -46,8 +49,9 @@ export class ProductsController {
   }
 
   // PATCH /products/:id
-  // Cập nhật thông tin sản phẩm
+  // Cập nhật thông tin sản phẩm (Protected by CatalogAdminGuard)
   @Patch(':id')
+  @UseGuards(CatalogAdminGuard)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() data: UpdateProductDto,
@@ -56,8 +60,9 @@ export class ProductsController {
   }
 
   // DELETE /products/:id
-  // Xóa sản phẩm
+  // Xóa sản phẩm (Protected by CatalogAdminGuard)
   @Delete(':id')
+  @UseGuards(CatalogAdminGuard)
   remove(
     @Param('id', ParseIntPipe) id: number,
   ) {

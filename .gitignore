@@ -31,6 +31,10 @@ node_modules/
 /.pnp
 .pnp.*
 
+# Tools & API clients
+.postman/
+postman/
+
 # Build and distribution outputs
 dist/
 build/

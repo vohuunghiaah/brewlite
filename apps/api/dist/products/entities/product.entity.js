@@ -18,6 +18,8 @@ let Product = class Product {
     price;
     imageUrl;
     isAvailable;
+    stock;
+    version;
     createdAt;
     updatedAt;
 };
@@ -63,6 +65,19 @@ __decorate([
     }),
     __metadata("design:type", Boolean)
 ], Product.prototype, "isAvailable", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: 'int',
+        default: 50,
+    }),
+    __metadata("design:type", Number)
+], Product.prototype, "stock", void 0);
+__decorate([
+    (0, typeorm_1.VersionColumn)({
+        default: 1,
+    }),
+    __metadata("design:type", Number)
+], Product.prototype, "version", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)

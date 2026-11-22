@@ -72,10 +72,17 @@ export function buildCartItemKey(productId, size = 'SMALL', toppings = [], note 
  */
 export function getCategory(product) {
   const details = `${product.name} ${product.description || ''}`.toLocaleLowerCase();
-  if (/trà|tea|đào|cam/.test(details)) return 'Trà trái cây';
-  if (/cold brew|espresso|americano/.test(details)) return 'Cold Brew & Espresso';
-  if (/cà phê|latte|cappuccino/.test(details)) return 'Cà phê truyền thống';
-  if (/bánh|cake/.test(details)) return 'Bánh ngọt';
+  // 1. Matcha & Cacao
+  if (/matcha|cacao|chocolate/.test(details)) return 'Matcha & Cacao';
+  // 2. Cold Brew & Espresso
+  if (/cold brew|espresso|americano|cappuccino|macchiato/.test(details)) return 'Cold Brew & Espresso';
+  if (/latte/.test(details) && !/matcha/.test(details)) return 'Cold Brew & Espresso';
+  // 3. Cà phê truyền thống
+  if (/đen đá|sữa đá|bạc xỉu|phin|cà phê/.test(details)) return 'Cà phê truyền thống';
+  // 4. Trà trái cây
+  if (/trà|tea|đào|vải|chanh|cam/.test(details)) return 'Trà trái cây';
+  // 5. Bánh ngọt
+  if (/bánh|cake|croissant|pastry/.test(details)) return 'Bánh ngọt';
   return 'Khác';
 }
 
@@ -87,10 +94,13 @@ export function filterProducts(products, search, selectedCategory) {
   return products.filter((product) => {
     const searchText = `${product.name} ${product.description || ''}`.toLocaleLowerCase();
     const matchesSearch = !normalizedSearch || searchText.includes(normalizedSearch);
-    const matchesCategory =
+    const cat = getCategory(product);
+    const isCategoryMatch =
       selectedCategory === 'Tất cả' ||
-      getCategory(product) === selectedCategory;
-    return matchesSearch && matchesCategory;
+      cat === selectedCategory ||
+      (selectedCategory === 'Espresso & Cold Brew' && (cat === 'Cold Brew & Espresso' || cat === 'Espresso & Cold Brew')) ||
+      (selectedCategory === 'Cold Brew & Espresso' && (cat === 'Espresso & Cold Brew' || cat === 'Cold Brew & Espresso'));
+    return matchesSearch && isCategoryMatch;
   });
 }
 

@@ -21,6 +21,8 @@ let ProductsSeedService = ProductsSeedService_1 = class ProductsSeedService {
         this.dataSource = dataSource;
     }
     async onApplicationBootstrap() {
+        if (!['development', 'test'].includes(process.env.NODE_ENV ?? 'development'))
+            return;
         try {
             await (0, products_seed_1.seedProducts)(this.dataSource);
             this.logger.log('Khởi tạo dữ liệu sản phẩm thành công!');
