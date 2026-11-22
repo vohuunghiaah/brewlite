@@ -609,18 +609,15 @@ export default function MenuPage() {
 
       const data = await res.json().catch(() => ({}));
 
-      if (res.status === 409) {
-        if (data.status === "REFUNDED") {
-          setPendingOrder((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
-          setPaymentError(
-            `Rất tiếc, sản phẩm vừa hết hàng khi bạn đang thanh toán. Giao dịch đã được hoàn tiền tự động (Mã hoàn: ${
-              data.refundKey || "Đã bồi hoàn"
-            }). Đơn hàng đã hủy an toàn.`
-          );
-          setPaymentIdempotencyKey("");
-          return;
-        }
-        throw new Error(data.message || "Xung đột giao dịch đồng thời.");
+      if ((res.ok || res.status === 409) && data.status === "REFUNDED") {
+        setPendingOrder((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+        setPaymentError(
+          `Rất tiếc, sản phẩm vừa hết hàng khi bạn đang thanh toán. Giao dịch đã được hoàn tiền tự động (Mã hoàn: ${
+            data.refundKey || "Đã bồi hoàn"
+          }). Đơn hàng đã hủy an toàn.`
+        );
+        setPaymentIdempotencyKey("");
+        return;
       }
 
       if (!res.ok) {

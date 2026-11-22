@@ -6,7 +6,7 @@
 | C2 | C / cao | FR-07/12 yêu cầu quản lý trạng thái. Có state machine thanh toán, thiếu endpoint/role Barista. | DEFERRED. Project Leader duyệt hoãn pha chế; FR-07 vẫn áp dụng cho thanh toán. |
 | C3 | C / vừa | FR-10 Should. Không có Promotion/LoyaltyTransaction trong TypeORM. PDF §4.3 yêu cầu cả hai lớp domain. | DEFERRED. Project Leader duyệt hoãn triển khai; giữ lớp trên sơ đồ và nhãn trạng thái. |
 | C4 | C / vừa | FR-11 ghi /order/confirmation. UI mở OrderConfirmation trong /menu; history dùng hash. | FIXED. Project Leader duyệt hợp đồng điều hướng hiện tại. |
-| A1 | A / cao | UI xem mọi success=false là PAYMENT_FAILED, xóa key cả khi gateway còn PENDING. | FIXED. MenuPage giữ trạng thái và key khi đang đối soát; regression test gửi hai lần cùng khóa. |
+| A1 | A / cao | UI xem mọi success=false là PAYMENT_FAILED, xóa key cả khi gateway còn PENDING. | FIXED. MenuPage giữ trạng thái và key khi đang đối soát; regression test gửi hai lần cùng khóa. Khi replay trả REFUNDED qua HTTP 201, UI cũng hiển thị hoàn tiền và đơn CANCELLED như trường hợp 409. |
 | B1 | B / vừa | TX1, HTTP 400/201, key lookup, order detail, domain và deployment khác sơ đồ cũ. | FIXED các nhóm sai khác trong [đối chiếu](asm2-cross-layer-consistency.md); render lại nguồn. |
 | B2 | B / vừa | 9 đường dẫn local trong report Task 5.3 thừa một cấp ../. | FIXED. Sửa đích tương đối. |
 | A2 | A / vừa | 27.646 dependency files được Git theo dõi mặc dù đã có lockfile và npm ci; 16 file Nest starter không có caller. | FIXED trên audit branch. CI build cả hai app từ lockfile. |
