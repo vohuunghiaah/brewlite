@@ -555,7 +555,7 @@ describe("UI-03: Premium BrewLite HomeScreen Component", () => {
     expect(screen.getByText("Câu chuyện BrewLite")).toBeInTheDocument();
     expect(screen.getByText(/nơi công nghệ nâng niu hương vị cà phê mộc/i)).toBeInTheDocument();
 
-    const ctaBtn = screen.getByRole("button", { name: /khám phá thực đơn ngay/i });
+    const ctaBtn = screen.getByRole("button", { name: /bắt đầu đặt món ngay/i });
     fireEvent.click(ctaBtn);
     expect(onNavigateToMenu).toHaveBeenCalled();
   });

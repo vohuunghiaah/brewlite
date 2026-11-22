@@ -412,7 +412,7 @@ export default function HomeScreen({
               onClick={() => onNavigateToMenu()}
               className="bg-[#C28D58] hover:bg-white hover:text-[#3D261D] text-white px-8 py-4 rounded-2xl font-bold text-sm sm:text-base transition-all duration-300 shadow-xl inline-flex items-center gap-2 active:scale-95"
             >
-              <span>Khám phá thực đơn ngay</span>
+              <span>Bắt đầu đặt món ngay</span>
               <ArrowRight size={18} strokeWidth={2.5} />
             </button>
           </div>
