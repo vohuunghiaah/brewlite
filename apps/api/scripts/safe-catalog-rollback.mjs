@@ -387,9 +387,22 @@ export async function safeCatalogRollback({
     }
 
     if (mode === 'prune') {
-      // Prune mode: Delete ONLY unreferenced products. Referenced products are strictly protected.
       const unreferenced = analyzed.filter((p) => !p.isReferenced);
       const protectedReferenced = analyzed.filter((p) => p.isReferenced);
+
+      // ALL-OR-NOTHING PRINCIPLE (FIX-11 Refinement):
+      // If ANY product in the deployment is referenced by order_items, PRUNE IS STRICTLY REJECTED.
+      // We must NEVER perform partial deletions. The entire prune transaction is rolled back,
+      // and audit status remains 'APPLIED' so the operator can safely execute 'compensate' instead.
+      if (protectedReferenced.length > 0) {
+        await client.query('ROLLBACK');
+        const refDetails = protectedReferenced
+          .map((p) => `"${p.name}" (ID ${p.id}, ${p.orderRefCount} đơn hàng)`)
+          .join(', ');
+        throw new Error(
+          `❌ [PRUNE REJECTED - ALL OR NOTHING] Thao tác prune bị từ chối hoàn toàn: Phát hiện ${protectedReferenced.length} sản phẩm trong deployment đã có đơn hàng tham chiếu: ${refDetails}. Áp dụng nguyên tắc All-or-Nothing: Không có sản phẩm nào bị xóa và audit status giữ nguyên 'APPLIED'. Vui lòng dùng chế độ bồi hoàn an toàn: --mode=compensate.`
+        );
+      }
 
       if (isDryRun) {
         await client.query('ROLLBACK');
@@ -401,9 +414,9 @@ export async function safeCatalogRollback({
           totalCandidates: candidates.length,
           unreferencedCount: unreferenced.length,
           unreferencedItems: unreferenced,
-          protectedCount: protectedReferenced.length,
-          protectedItems: protectedReferenced,
-          action: 'DRY-RUN: Chỉ xóa các sản phẩm trong deployment chưa có đơn hàng nào tham chiếu. Sản phẩm đã có đơn hàng được BẢO VỆ TUYỆT ĐỐI.',
+          protectedCount: 0,
+          protectedItems: [],
+          action: 'DRY-RUN: Tất cả sản phẩm trong deployment đều chưa có đơn hàng tham chiếu và đủ điều kiện xóa sạch (All-or-Nothing).',
         };
       }
 
@@ -413,7 +426,7 @@ export async function safeCatalogRollback({
           await client.query('DELETE FROM products WHERE id = ANY($1)', [idsToDelete]);
         }
 
-        // Update audit record status in PostgreSQL only if items were pruned
+        // Update audit record status in PostgreSQL to ROLLED_BACK (100% of deployment items were cleanly pruned)
         if (authoritativeDeployment && unreferenced.length > 0) {
           await client.query(
             `UPDATE catalog_deployments
@@ -426,7 +439,6 @@ export async function safeCatalogRollback({
                 rolledBackAt: new Date().toISOString(),
                 rollbackMode: 'prune',
                 deletedCount: unreferenced.length,
-                protectedCount: protectedReferenced.length,
               }),
               authoritativeDeployment.deploymentId,
             ]
@@ -442,8 +454,8 @@ export async function safeCatalogRollback({
           totalCandidates: candidates.length,
           deletedCount: unreferenced.length,
           deletedItems: unreferenced,
-          protectedCount: protectedReferenced.length,
-          protectedItems: protectedReferenced,
+          protectedCount: 0,
+          protectedItems: [],
         };
       }
     }

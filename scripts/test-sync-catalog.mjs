@@ -323,18 +323,28 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
         const orderItemId = orderItemRes.rows[0].id;
 
         try {
-          // 3. Prune mode: Attempting physical deletion of referenced product MUST BE REFUSED!
-          const pruneResult = await safeCatalogRollback({
-            client,
-            mode: 'prune',
-            deploymentId: testDepId,
-            isApply: true,
-          });
+          // 3. Prune mode: Attempting physical deletion of referenced product MUST BE REJECTED (All-or-Nothing)!
+          await assert.rejects(
+            async () => {
+              await safeCatalogRollback({
+                client,
+                mode: 'prune',
+                deploymentId: testDepId,
+                isApply: true,
+              });
+            },
+            /PRUNE REJECTED - ALL OR NOTHING/,
+            'Referenced product must cause prune mode to be rejected with All-or-Nothing'
+          );
 
-          assert.strictEqual(pruneResult.deletedCount, 0, 'Referenced product must NOT be deleted in prune mode');
-          assert.strictEqual(pruneResult.protectedCount, 1, 'Referenced product must be marked as protected');
+          // Verify audit status is STILL 'APPLIED' after rejected prune
+          const auditStatusAfterPruneReject = await client.query(
+            'SELECT status FROM catalog_deployments WHERE "deploymentId" = $1',
+            [testDepId]
+          );
+          assert.strictEqual(auditStatusAfterPruneReject.rows[0].status, 'APPLIED');
 
-          // Verify drink still exists in products table
+          // Verify drink still exists in products table (0 products deleted)
           const verifyProduct = await client.query('SELECT count(*) FROM products WHERE id = $1', [testDrinkId]);
           assert.strictEqual(Number(verifyProduct.rows[0].count), 1);
 
@@ -712,6 +722,123 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
         }
       }
     );
+
+    await t.test(
+      '18. Prune All-or-Nothing & Subsequent Compensate (FIX-11 Refinement): Mixed referenced and unreferenced items',
+      async () => {
+        const uniqueSuffix = Date.now().toString(36);
+        const itemAName = `Mixed Item A Ordered ${uniqueSuffix}`;
+        const itemBName = `Mixed Item B Unordered ${uniqueSuffix}`;
+        const mixedDepId = `dep-mixed-${uniqueSuffix}`;
+
+        const mixedCatalog = [
+          ...TARGET_CATALOG,
+          {
+            name: itemAName,
+            description: 'Item A will have an order referencing it',
+            price: '35000',
+            imageUrl: 'https://images.unsplash.com/item-a',
+            isAvailable: true,
+            stock: 25,
+          },
+          {
+            name: itemBName,
+            description: 'Item B will have zero orders referencing it',
+            price: '40000',
+            imageUrl: 'https://images.unsplash.com/item-b',
+            isAvailable: true,
+            stock: 30,
+          },
+        ];
+
+        // 1. Sync the 2 items under mixedDepId
+        const syncRes = await syncCatalog({ client, isApply: true, targetCatalog: mixedCatalog, deploymentId: mixedDepId });
+        assert.strictEqual(syncRes.insertedCount, 2);
+        const itemAId = syncRes.insertedItems.find((i) => i.name === itemAName).id;
+        const itemBId = syncRes.insertedItems.find((i) => i.name === itemBName).id;
+
+        // 2. Create order referencing ONLY Item A! Item B has 0 orders.
+        const orderRes = await client.query(
+          `INSERT INTO orders ("customerName", "customerPhone", "totalAmount", status, "orderCode", "pickupMethod", "createdAt")
+           VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
+          ['Mixed Tester', '0901112233', '35000', 'PAID', '#BL-MIXED-ORDER', 'AT_COUNTER']
+        );
+        const orderId = orderRes.rows[0].id;
+
+        const orderItemRes = await client.query(
+          `INSERT INTO order_items ("productName", size, quantity, "unitPrice", subtotal, "orderId", "productId")
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+          [itemAName, 'SMALL', 1, '35000', '35000', orderId, itemAId]
+        );
+        const orderItemId = orderItemRes.rows[0].id;
+
+        try {
+          // 3. Attempt prune mode: MUST BE REJECTED because Item A is referenced!
+          await assert.rejects(
+            async () => {
+              await safeCatalogRollback({
+                client,
+                mode: 'prune',
+                deploymentId: mixedDepId,
+                isApply: true,
+              });
+            },
+            /PRUNE REJECTED - ALL OR NOTHING/,
+            'Prune must reject entire deployment when at least one item is referenced'
+          );
+
+          // 4. CRITICAL VERIFICATION: Zero items deleted! Item B (unreferenced) is NOT deleted!
+          const checkA = await client.query('SELECT "isAvailable", stock FROM products WHERE id = $1', [itemAId]);
+          assert.strictEqual(Number(checkA.rows.length), 1, 'Item A must still exist');
+
+          const checkB = await client.query('SELECT "isAvailable", stock FROM products WHERE id = $1', [itemBId]);
+          assert.strictEqual(Number(checkB.rows.length), 1, 'Item B must still exist (no partial deletion!)');
+          assert.strictEqual(checkB.rows[0].isAvailable, true, 'Item B must still be available');
+          assert.strictEqual(checkB.rows[0].stock, 30, 'Item B stock must be intact');
+
+          // 5. Verify audit status is STILL 'APPLIED' (allowing subsequent compensate)
+          const auditStatus = await client.query(
+            'SELECT status FROM catalog_deployments WHERE "deploymentId" = $1',
+            [mixedDepId]
+          );
+          assert.strictEqual(auditStatus.rows[0].status, 'APPLIED', 'Audit status must remain APPLIED after rejected prune');
+
+          // 6. Now, run compensate mode: Must SUCCEED cleanly!
+          const compRes = await safeCatalogRollback({
+            client,
+            mode: 'compensate',
+            deploymentId: mixedDepId,
+            isApply: true,
+          });
+
+          assert.strictEqual(compRes.deactivatedCount, 2, 'Compensate should deactivate both Item A and Item B');
+
+          // Verify both items are now deactivated with stock intact and OCC version incremented
+          const postCompA = await client.query('SELECT "isAvailable", stock, version FROM products WHERE id = $1', [itemAId]);
+          assert.strictEqual(postCompA.rows[0].isAvailable, false);
+          assert.strictEqual(postCompA.rows[0].stock, 25);
+          assert.strictEqual(postCompA.rows[0].version, 2);
+
+          const postCompB = await client.query('SELECT "isAvailable", stock, version FROM products WHERE id = $1', [itemBId]);
+          assert.strictEqual(postCompB.rows[0].isAvailable, false);
+          assert.strictEqual(postCompB.rows[0].stock, 30);
+          assert.strictEqual(postCompB.rows[0].version, 2);
+
+          // 7. Verify audit status is NOW updated to 'ROLLED_BACK'
+          const finalAuditStatus = await client.query(
+            'SELECT status FROM catalog_deployments WHERE "deploymentId" = $1',
+            [mixedDepId]
+          );
+          assert.strictEqual(finalAuditStatus.rows[0].status, 'ROLLED_BACK', 'Audit status must now be ROLLED_BACK');
+        } finally {
+          // Cleanup
+          await client.query('DELETE FROM order_items WHERE id = $1', [orderItemId]).catch(() => {});
+          await client.query('DELETE FROM orders WHERE id = $1', [orderId]).catch(() => {});
+          await client.query('DELETE FROM products WHERE id IN ($1, $2)', [itemAId, itemBId]).catch(() => {});
+          await client.query('DELETE FROM catalog_deployments WHERE "deploymentId" = $1', [mixedDepId]).catch(() => {});
+        }
+      }
+    );
   } finally {
     if (isConnected) {
       await client.end().catch(() => {});
@@ -720,7 +847,7 @@ test('Catalog Synchronization & Safe Rollback: PostgreSQL Integration Tests (FIX
 });
 
 test('Production Catalog Runner Verification (FIX-07)', async (t) => {
-  await t.test('18. Production runner scripts exist in apps/api/scripts/ for Docker packaging', () => {
+  await t.test('19. Production runner scripts exist in apps/api/scripts/ for Docker packaging', () => {
     const apiSyncPath = path.join(root, 'apps/api/scripts/sync-catalog.mjs');
     const apiRollbackPath = path.join(root, 'apps/api/scripts/safe-catalog-rollback.mjs');
     const apiSafeEnvPath = path.join(root, 'apps/api/scripts/safe-env.mjs');
@@ -730,7 +857,7 @@ test('Production Catalog Runner Verification (FIX-07)', async (t) => {
     assert.ok(existsSync(apiSafeEnvPath), 'apps/api/scripts/safe-env.mjs must exist');
   });
 
-  await t.test('19. apps/api/Dockerfile stage 3 (runner) copies scripts directory into image', () => {
+  await t.test('20. apps/api/Dockerfile stage 3 (runner) copies scripts directory into image', () => {
     const dockerfilePath = path.join(root, 'apps/api/Dockerfile');
     assert.ok(existsSync(dockerfilePath), 'apps/api/Dockerfile must exist');
     const dockerfileContent = readFileSync(dockerfilePath, 'utf8');
@@ -742,7 +869,7 @@ test('Production Catalog Runner Verification (FIX-07)', async (t) => {
     );
   });
 
-  await t.test('20. Database config supports DATABASE_* and fails closed in production with dev password', () => {
+  await t.test('21. Database config supports DATABASE_* and fails closed in production with dev password', () => {
     // Test resolution of DATABASE_*
     const cfg = resolveDatabaseConfig({
       DATABASE_HOST: 'custom-db-host',
